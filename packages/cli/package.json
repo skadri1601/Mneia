@@ -1,0 +1,21 @@
+{
+  "name": "@mneia/cli",
+  "version": "0.0.0",
+  "description": "The Mneia command line interface.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": {
+    "mneia": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@mneia/core": "workspace:*"
+  }
+}

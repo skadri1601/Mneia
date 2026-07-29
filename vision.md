@@ -90,25 +90,44 @@ Everything else in the product exists to serve those three.
 
 ## 5. Who we are targeting
 
-We target three groups in strict sequence. Do not skip ahead.
+> **Revised 2026-07-28.** The original plan targeted three groups in strict sequence and treated anything past a 15-person engineering team as a month-18 concern. That ceiling is lifted. **Mneia is architected for a medium-sized company — roughly 50 to 500 people, 5 to 20 teams, several functions — from the first migration.** We still *land* through engineering, because that is where the pain is sharpest and the distribution is free. But the data model, the scope hierarchy, and the roadmap now assume the company, not the team.
+>
+> This is a deliberate trade: more schema work in M0, security review arriving earlier, and a longer path to first revenue, in exchange for not rebuilding the foundation at month 18. The old sequencing is preserved below as the landing path.
 
-### Stage 1 (months 0 to 6): the individual agentic developer
-- **Who:** a software engineer using Claude Code, Cursor, or Codex daily on a codebase they will still be working on in three months.
-- **Pain:** cross-session context loss, compaction damage, re-explaining.
-- **Why them:** reachable with zero budget and zero relationships, through the exact communities where the pain is voiced. No sales required. No access gate.
-- **They will not pay.** That is fine. They are the adoption wedge and the source of the first dataset.
+### The unit we build for: a medium-sized company
 
-### Stage 2 (months 6 to 18): the small engineering team, 3 to 15 people
-- **Who:** a tech lead or staff engineer on a team where two or more people use agents on a shared codebase, especially during a long-running project (a migration, a large refactor, a multi-week feature).
-- **Pain:** context lives in individual heads and individual transcripts; onboarding onto in-flight work is expensive; agents contradict decisions other people already made.
-- **Buyer:** the tech lead, on a card, per seat. This is the first real revenue.
+- **Shape:** 50–500 people. 5–20 teams. Multiple functions — engineering, product, design, sales, marketing, support, success, operations, finance.
+- **Why this is the right unit:** context does not stop at a team boundary. A decision made in the payments team changes what the sales team can promise. An open question in platform blocks three feature teams. The pain the founding brief describes — *"the decisions live in a chat transcript that was compacted away, or in one person's head"* — is worse across teams than within one, because there is no shared transcript at all.
+- **What that forces into the schema:** teams as a first-class entity, a visibility hierarchy from individual to company, and function on the team so a support engineer's default view is not a backend team's debugging trail. §9 carries these from the first migration.
 
-### Stage 3 (month 18+): the platform or engineering leadership function
-- **Who:** platform engineering, developer experience, or an engineering leader at a 100+ engineer org.
-- **Pain:** no record of what agents decided or why; no audit trail; no governance over what context agents can see.
-- **Buyer:** budget owner. Governance SKU. This is where the ACV is.
+### Non-engineers are users, not just beneficiaries
 
-**The trap to avoid:** building for Stage 3 first. It requires logos we do not have and security review we cannot pass. **The trap to also avoid:** staying in Stage 1 for a year. Individual users accrue no moat. See section 7.
+Sales, support, marketing, and operations people now use Claude Code and build things with it. They do not want, and should not have, a backend team's root-cause analysis in their context. But they have a real and unserved question:
+
+> *A customer asks for a feature in a call. Is it on the roadmap? Who is building it? What is the state? Who do I talk to?*
+
+Every part of that answer already exists in the §9 model — a `decision` with rationale, `asserted_by`, an unresolved `open_question`, a supersede chain. It needs no new object. It needs enough teams checkpointing, cross-project query with scope enforcement, and a surface they will actually use.
+
+**Commercially this is the largest single number in the plan.** At §14's $24/seat, a 100-person company where only engineers buy is roughly 40 seats. With non-engineering functions it is closer to 100. That is a **~2.5× ACV multiplier on the same customer**, and it is the difference between a developer tool and company infrastructure.
+
+### The landing path
+
+Targeting a medium company does not mean selling to one on day one. The sequence below is how we get in the door; it is a go-to-market order, not an architecture constraint.
+
+| Stage | Who | Pain | Buyer |
+|---|---|---|---|
+| **1** — months 0–6 | The individual agentic developer using Claude Code, Cursor, or Codex daily | Cross-session context loss, compaction damage, re-explaining | **Nobody. They will not pay** — they are the adoption wedge and the first dataset |
+| **2** — months 6–18 | A tech lead on a 3–15 person engineering team, especially mid-migration or mid-refactor | Context in individual heads; onboarding onto in-flight work is expensive; agents contradict settled decisions | The tech lead, on a card, per seat. First real revenue |
+| **3** — months 18+ | A multi-team engineering org — platform, DX, or an engineering leader | No record of what agents decided or why; no audit trail; no governance over what context agents can see | Budget owner. Governance SKU |
+| **4** | The company — sales, support, marketing, operations alongside engineering | Cross-functional questions have no answer that is both current and trustworthy | Org-wide deployment. Where the ACV actually is |
+
+### The traps
+
+**Do not sell to Stage 3 or 4 before Stage 2 works.** Building *for* a medium company is an architecture decision. *Selling* to one still requires logos we do not have and a security review we cannot yet pass. The schema assumes the company; the sales motion does not.
+
+**Do not build surfaces before data.** The Stage 4 question — *"is this on the roadmap?"* — is unanswerable until several teams have been checkpointing for months. A Slack bot over an empty store answers nothing. Surfaces follow data, never lead it (§12.4).
+
+**Do not stay in Stage 1 for a year.** Individual users accrue no moat. See §7 and §8.
 
 ---
 
@@ -210,9 +229,40 @@ CREATE TABLE actor (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Teams are first-class. A medium company has 5 to 20 of them, and the
+-- function determines what a member's default context looks like.
+CREATE TYPE team_function AS ENUM (
+  'engineering', 'product', 'design', 'sales', 'marketing',
+  'support', 'success', 'operations', 'finance', 'other'
+);
+
+CREATE TABLE team (
+  id            UUID PRIMARY KEY,
+  workspace_id  UUID NOT NULL REFERENCES workspace(id),
+  slug          TEXT NOT NULL,
+  display_name  TEXT NOT NULL,
+  function      team_function NOT NULL DEFAULT 'engineering',
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (workspace_id, slug)
+);
+
+CREATE TYPE team_role AS ENUM ('lead', 'member');
+
+CREATE TABLE team_member (
+  team_id   UUID NOT NULL REFERENCES team(id),
+  actor_id  UUID NOT NULL REFERENCES actor(id),
+  role      team_role NOT NULL DEFAULT 'member',
+  added_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (team_id, actor_id)
+);
+
+-- A project is a body of work, not necessarily a repo. `repo_url` stays
+-- nullable so a sales team's "Q3 enterprise motion" is as valid as a
+-- backend service.
 CREATE TABLE project (
   id            UUID PRIMARY KEY,
   workspace_id  UUID NOT NULL REFERENCES workspace(id),
+  team_id       UUID REFERENCES team(id),
   slug          TEXT NOT NULL,
   repo_url      TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -238,6 +288,16 @@ CREATE TYPE item_kind AS ENUM (
 );
 
 CREATE TYPE item_status AS ENUM ('active', 'superseded', 'disputed', 'retired');
+
+-- Visibility. Ordered narrowest to widest; `restricted` is an explicit
+-- grant list and sits outside the ordering.
+CREATE TYPE access_scope AS ENUM (
+  'private',    -- the asserting actor only
+  'project',    -- this project / repo (default)
+  'team',       -- the owning team, across all its projects
+  'workspace',  -- the whole company
+  'restricted'  -- explicit grant list — several named teams or actors
+);
 
 CREATE TABLE context_item (
   id                UUID PRIMARY KEY,
@@ -266,7 +326,8 @@ CREATE TABLE context_item (
   supersedes_id     UUID REFERENCES context_item(id),
   superseded_by_id  UUID REFERENCES context_item(id),
 
-  access_scope      TEXT NOT NULL DEFAULT 'project', -- 'project' | 'private' | 'restricted'
+  -- visibility hierarchy, widest-reaching last
+  access_scope      access_scope NOT NULL DEFAULT 'project',
   embedding         VECTOR(1536)
 );
 
@@ -317,6 +378,10 @@ CREATE TABLE conflict (
 - `actor_kind` distinguishing human from agent is not cosmetic. It is how rehydration decides what to trust and how conflict resolution decides who arbitrates.
 - `load_bearing` is the flag that decides whether a contradiction blocks or merely logs. Getting this right is most of the product quality.
 - Bi-temporal (`valid_from`, `valid_to`, `supersedes_id`) means we can answer "what did we believe on March 3rd," which matters for postmortems and for audit later.
+- **`access_scope` is a hierarchy, not a flag.** Individual → project → team → company. It ships in the first migration for the same reason bi-temporality does: widening a visibility model after real multi-team data exists is a migration nobody survives cleanly.
+- **Scope is ratified, never routed.** The extractor *suggests* a scope; the human confirms or overrides it at checkpoint, exactly as with `load_bearing`. "Escalating" an item to company-wide is a scope change with provenance — attributed, dated, and visible in the checkpoint history — **not** an approval workflow with its own object and state machine. This gets the founder's escalation model with zero new machinery, and every override becomes another labelled example for §17.
+- **Function lives on the team, not the actor.** A support engineer's default view differs from a backend team's because their *team's* function differs. Deriving it from team membership keeps one source of truth and survives people moving between teams.
+- **Deliberately not modelled: a separate subject axis.** An item is *about* its project and *visible* per `access_scope`; those two carry the load. A distinct "what is this concerned with" dimension is speculative until a real case demands it.
 
 ---
 
@@ -460,7 +525,22 @@ mneia status               # what is stale, disputed, or unanswered
 mneia sync                 # push/pull with hosted (team tier only)
 ```
 
-### 12.3 File interop
+### 12.3 Surfaces, and the order they ship in
+
+Every surface is a translation of the same verbs — rehydrate, assert, checkpoint, handoff, and from M4 conflicts. **If a surface needs a fifth verb, that is the signal it is becoming its own product rather than a view onto this one.** Treat that as a tripwire.
+
+| Surface | Ships | Why |
+|---|---|---|
+| **MCP server** | M1 | The primary distribution vehicle (§12.1). Open source. |
+| **CLI** | M1 | The confirmation surface, and the only one that works offline. Open source. |
+| **Web** | M3–M4 | Thin (§4): review queue, conflict resolution, decision timeline. Hosted, closed. |
+| **Slack** | post-M4 | The non-engineering surface. Unlocks the Stage 4 question. Hosted, closed. |
+| **VS Code extension** | **not planned** | MCP already runs inside VS Code, Cursor, and Codex — a developer there *already has* the tools. An extension adds chrome, not capability, at the cost of a marketplace presence and permanent API churn. Revisit only on repeated demand. |
+| **Mobile** | **not planned** | No job to be done. Resolving a §10.4 conflict means reading two contradicting items with full provenance and writing a rationale; that is not a phone interaction. |
+
+**Surfaces follow data, never lead it.** A Slack bot over an empty store answers nothing, and shipping one early converts a distribution advantage into a support burden.
+
+### 12.4 File interop
 
 - Read `AGENTS.md`, `CLAUDE.md`, `.cursor/rules` on `init` and import constraints from them. Meet people where they already are.
 - Write a generated section back into `AGENTS.md` (clearly fenced, never clobber human-written content) so the value shows up even in sessions where the MCP server is not connected.
