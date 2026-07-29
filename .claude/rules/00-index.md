@@ -15,6 +15,7 @@ trigger it — you will not see most of them until you touch the relevant code.
 | `typescript-style.md` | `**/*.ts`, `**/*.tsx` | Strictness, error handling, no-comments rule |
 | `mcp-server.md` | `packages/mcp-server/**` | Tool naming, the 300ms budget, client neutrality |
 | `cli.md` | `packages/cli/**` | Command surface, output conventions, offline-first |
+| `design.md` | `apps/**`, `*.tsx`, `*.css` | Design token specs, the thin-web-app rule, positioning |
 
 ## Reference, read on demand
 
@@ -23,6 +24,7 @@ Not rules — background you fetch when a decision needs it.
 - `vision.md` — the founding brief. Cited as §n everywhere.
 - `ROADMAP.md` — milestones, checklist, Linear workflow, milestone-boundary ritual
 - `docs/STACK.md` — tooling choices, and the three still open
+- `docs/design/apple.md`, `docs/design/bmw-m.md` — full design token specs, read before any UI work
 - `SKILLS.md` — skill index
 
 ## If a rule and a ticket disagree
