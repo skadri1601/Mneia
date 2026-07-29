@@ -1,0 +1,21 @@
+{
+  "name": "@mneia/mcp-server",
+  "version": "0.0.0",
+  "description": "MCP server exposing Mneia to Claude Code, Cursor, Codex, and any MCP client.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "bin": {
+    "mneia-mcp": "./dist/bin.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc --build"
+  },
+  "dependencies": {
+    "@mneia/core": "workspace:*"
+  }
+}

@@ -19,7 +19,7 @@ Do not build ahead of the milestone. §12.2 has the full intended surface.
 
 ## Offline-first
 
-**Everything except `sync` works with no network**, against local storage (§12.3, §15).
+**Everything except `sync` works with no network**, against local storage (§12.4, §15).
 
 The open core has to be genuinely useful alone or the adoption wedge fails. A hard network dependency
 in a developer inner-loop tool is disqualifying — including for embeddings, which is why the local
