@@ -18,7 +18,14 @@ Team `Mneia`, prefix `MNE`. States: `Backlog` → `Todo` → `In Progress` → `
    it and do not contradict it — if you disagree, say so before starting, not after.
 3. **Note the *Done when* clause.** That is the acceptance criterion. There is always one.
 4. `save_issue` with `state: "In Progress"`.
-5. Branch: `git switch -c mne-<n>-<short-slug>`.
+5. **Check the lane first** (`CLAUDE.md` > Git lanes, MNE-182). Docs-only work — `*.md`, `docs/**`,
+   `.claude/**` other than `settings.json` and `hooks/` — commits **direct to `main`**; skip to
+   *Finishing* and ignore the branch and PR steps. Everything else needs a branch:
+   ```
+   git switch -c <type>/mne-<n>-<slug>     # feat fix docs chore refactor spike test
+   ```
+   e.g. `feat/mne-42-context-item-schema`. The `mne-<n>` segment is what Linear links on, and
+   `.claude/hooks/git-lane-guard.mjs` rejects a branch that does not match.
 
 ## While working
 
@@ -43,10 +50,13 @@ Team `Mneia`, prefix `MNE`. States: `Backlog` → `Todo` → `In Progress` → `
    Bi-temporality ships now because retrofitting it onto a live store is
    close to impossible (§9 design notes).
    ```
-   **No `Co-Authored-By`. No "Generated with Claude Code".**
-4. Push and open a PR. Body links the ticket and states which *Done when* clause it satisfies.
+   **No `Co-Authored-By`. No "Generated with Claude Code".** The `MNE-<n>:` prefix is required —
+   the hook rejects a commit message without one.
+4. **Docs lane:** push `main` and stop. **Code lane:** push the branch and open a PR whose body
+   contains `Closes MNE-<n>` (or `Part of MNE-<n>` if it does not finish the ticket) and states which
+   *Done when* clause it satisfies.
 5. `save_issue` with `state: "Done"`.
-6. Report the PR URL to the founder.
+6. Report the PR URL to the founder — or, on the docs lane, the commit SHA that landed on `main`.
 
 ## Things that must never happen silently
 
