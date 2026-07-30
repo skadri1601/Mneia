@@ -51,5 +51,20 @@
       "Bash(git push --force origin main:*)",
       "Bash(git push -f origin main:*)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/git-lane-guard.mjs",
+            "timeout": 15,
+            "statusMessage": "Checking git lane policy"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -29,7 +29,23 @@ Boundaries on the grant:
 | Deploy to production | Ask first, every time |
 | `git push --force`, `reset --hard`, branch deletion, history rewriting | Ask first, every time |
 
-Default flow: **branch → commit → push → open PR → report the URL.** `main` stays reviewable.
+## Git lanes — which changes need a PR
+
+Ruled 2026-07-29 (MNE-182). Enforced by `.claude/hooks/git-lane-guard.mjs`, not by memory.
+
+| Lane | Contents | Flow |
+|---|---|---|
+| **Docs** | `*.md`, `docs/**`, `.claude/**`, `.github/**/*.md`, `LICENSE`, `NOTICE`, dotfile configs | **Commit direct to `main`.** No branch, no PR. |
+| **Code** | Everything else — **plus `.claude/settings.json` and `.claude/hooks/**`**, which govern agent permissions and get reviewed like code | **branch → commit → push → PR → report URL** |
+
+**A commit touching both lanes is code lane.** Naming, because it is what links Linear:
+
+- Branch `<type>/mne-<n>-<slug>` — types `feat fix docs chore refactor spike test`
+- Commit subject `MNE-<n>: <imperative summary>`; several tickets `MNE-<n>, MNE-<m>: …`
+- PR body contains `Closes MNE-<n>` or `Part of MNE-<n>`
+
+No ticket yet? Create one first — `linear-ticket`. The hook rejects a commit with no `MNE-nnn`.
+Genuine exception (revert, scaffolding): prefix `MNEIA_GIT_GUARD=off` and justify it in the commit body.
 
 ## Skills
 
