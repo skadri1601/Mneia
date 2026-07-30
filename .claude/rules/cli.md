@@ -17,13 +17,22 @@ Binary is `mneia`. Config lives in `.mneia/` in the repo.
 
 Do not build ahead of the milestone. §12.2 has the full intended surface.
 
-## Offline-first
+## Every command is an authenticated API call
 
-**Everything except `sync` works with no network**, against local storage (§12.4, §15).
+**Hosted-only** (§11.1, resolved 2026-07-28). There is no local store, no `sync`, and no offline
+mode. `mneia login` runs a device flow and writes a token to `~/.mneia/credentials`; CI authenticates
+with `MNEIA_TOKEN` instead.
 
-The open core has to be genuinely useful alone or the adoption wedge fails. A hard network dependency
-in a developer inner-loop tool is disqualifying — including for embeddings, which is why the local
-fallback (MNE-55) exists even though it is worse than a hosted model.
+`.mneia/config` in the repo holds the project binding — workspace, project slug, endpoint. **No data
+and no credentials.** Credentials never enter the repo.
+
+Two consequences worth holding onto:
+
+- **Network failure is a first-class state, not an edge case.** Every command can fail because the
+  API is unreachable. Say so plainly and distinguish it from an auth failure or a real error — a
+  developer whose wifi dropped should not be told their token is invalid.
+- **§12.1's 300ms p95 is now a network budget**, not a disk budget. Whether that holds without a read
+  cache is measured, not assumed — §11.2 item 2.
 
 ## `checkpoint` is where the moat is collected
 

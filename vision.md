@@ -84,7 +84,7 @@ Everything else in the product exists to serve those three.
 
 **Surfaces:** an MCP server (works in Claude Code, Cursor, Codex, any MCP client), a CLI, and file interop with `AGENTS.md` / `CLAUDE.md`. Later, a thin web app for team review and conflict resolution.
 
-**Deployment:** open-source core, self-hostable. Hosted service for sync, multiplayer, and governance.
+**Deployment:** a hosted service. Apache-2.0 client packages — CLI, MCP server, schema, prompts, ranking — against a proprietary API. Not self-hostable until BYOC ships (§11.1, §15).
 
 ---
 
@@ -477,9 +477,14 @@ Rollback flag `payments.v2_reads` is live and tested.
 
 ## 11. Architecture and build-versus-adopt
 
+> **Revised 2026-07-28 — hosted-only.** Mneia is a hosted service. There is no local database, no
+> sync, and no offline mode. Every surface — CLI, MCP server, web, Slack — is an authenticated client
+> against one hosted API backed by one Postgres. See §11.1 for what this decided and §11.2 for what it
+> left open.
+
 | Component | Decision | Reason |
 |---|---|---|
-| Storage | **Adopt:** Postgres + pgvector | One dependency, transactional, self-hostable, good enough for hybrid retrieval at our scale. Cognee validates "just Postgres." |
+| Storage | **Adopt:** Postgres + pgvector, **hosted, single engine** | One dependency, transactional, good enough for hybrid retrieval at our scale. Cognee validates "just Postgres." No SQLite: a hosted-only product has no second engine to keep in parity. |
 | Graph / temporality | **Build thin, on Postgres** | Full graph databases are premature. Bi-temporal columns plus `supersedes` links cover the need. Revisit only if multi-hop reasoning becomes a bottleneck. |
 | Durable execution | **Adopt if needed** (Inngest or Temporal) | Do not build. Only introduce when scheduled checkpoints and long jobs demand it, probably month 6+. |
 | Embeddings | **Adopt:** provider API, pluggable | Keep the interface swappable; do not couple to one vendor. |
@@ -490,6 +495,58 @@ Rollback flag `payments.v2_reads` is live and tested.
 | Document indexing | **Do not build.** | That is Glean's job and it is a different business. |
 
 **Language:** TypeScript for the MCP server and CLI (best MCP ecosystem support, easiest distribution via npm). Python bindings later if demand appears. Do not do both on day one.
+
+### 11.1 Hosted-only: what it decided
+
+```
+  CLI ──┐
+  MCP ──┤
+  Web ──┼──►  Hosted API  ──►  Postgres + pgvector
+Slack ──┘     (scope filter                (single store,
+               applied here,                single authority)
+               MNE-169)
+```
+
+**What this bought.** One store means every surface sees the same rows the moment they are written.
+No sync protocol, no watermarks, no clock skew, no offline write queue, no cache invalidation, no
+local-versus-hosted parity testing. An entire class of distributed-systems problems does not exist.
+
+It also makes **CI runners first-class** rather than a special case — an ephemeral container with no
+disk is just another authenticated client, which matters as more work is done by agents inside
+pipelines.
+
+And it makes installation *easier*, not harder: `sqlite-vec` is a compiled native extension, and
+native modules are among the most reliable sources of cross-platform install failure. Install is now
+pure JavaScript plus a login.
+
+**What it cost.**
+
+- **The hosted API moves to M1.** The CLI does nothing without it, so M1's success test now requires
+  API, auth, database, and deploy — roughly double its original scope.
+- **§15's "self-hostable, works fully offline" claim is no longer true** and has been rewritten
+  rather than left standing.
+- **MNE-50's "no content leaves the machine by default" is gone.** That promise was already in
+  tension with the §8 arbitration-dataset moat; this resolves it in favour of the data. The privacy
+  story is now about controls — scope enforcement, retention, residency — not about locality.
+
+### 11.2 Open — infrastructure and logic
+
+**These are not settled, and the sections that follow should be read as provisional where they touch
+them.** All six are now filed. Three are strategy and sit in S0; three are implementation and sit in M1,
+because they block MNE-42 and MNE-101 rather than waiting on a business ruling.
+
+| # | Question | Ticket | Why it matters |
+|---|---|---|---|
+| 1 | **Who pays for inference?** We call the model and meter it, or the user brings their own key. | MNE-174 | Changes COGS by roughly an order of magnitude and changes what §14 is even pricing. The single biggest open item. |
+| 2 | **Does the CLI need a read cache after all?** | MNE-175 | Decided by whether hosted rehydrate can meet §12.1's 300ms p95. Currently an assumption, not a measurement. **Measure before building the cache** — a cache reintroduces exactly the staleness §11.1 was worth having for removing. |
+| 3 | **Multi-tenancy model.** Shared tables filtered by `workspace_id`, schema-per-tenant, or RLS. | MNE-172 | Hard to change later, and it has to be decided **before MNE-42 writes the six core tables.** Drives the M5 residency and isolation story. |
+| 4 | **Where embeddings are computed**, and by whom. | MNE-176 | Settled on *where* — server-side, at write time. Open on *which vendor*: Anthropic has no embeddings endpoint, so this is a separate procurement decision. |
+| 5 | **Rate limiting and abuse.** A CI loop can call checkpoint indefinitely. | MNE-173 | Directly protects the margin in §14, and it is a hard gate on MNE-105. An unmetered public endpoint that runs inference on request loses money non-linearly. |
+| 6 | **What "open source" now means** when the server is proprietary. | MNE-177 | §16's distribution depends on the answer being one the compaction-thread audience accepts. The risk is not being closed — it is being called out for describing closed as open. |
+
+**Question 1 gates the other five in practice.** If users bring their own key, 5 shrinks to ordinary
+read-path limiting, 4 loses most of its cost pressure, and §14 stops carrying variable COGS. Resolve it
+first, and resolve it with measurements from the MNE-86 dogfood rather than estimates.
 
 ---
 
@@ -522,8 +579,12 @@ mneia pickup [id]          # receive a handoff, print it, mark received
 mneia conflicts            # list and resolve interactively
 mneia log                  # decisions timeline for the project
 mneia status               # what is stale, disputed, or unanswered
-mneia sync                 # push/pull with hosted (team tier only)
+mneia login                # device-flow auth; writes a token to ~/.mneia/credentials
+mneia whoami               # show the authenticated actor, workspace, and team
 ```
+
+**Every command is an authenticated API call.** There is no `sync` — there is nothing to sync. A CI
+runner authenticates with `MNEIA_TOKEN` instead of a browser flow; otherwise the surface is identical.
 
 ### 12.3 Surfaces, and the order they ship in
 
@@ -532,7 +593,7 @@ Every surface is a translation of the same verbs — rehydrate, assert, checkpoi
 | Surface | Ships | Why |
 |---|---|---|
 | **MCP server** | M1 | The primary distribution vehicle (§12.1). Open source. |
-| **CLI** | M1 | The confirmation surface, and the only one that works offline. Open source. |
+| **CLI** | M1 | The human confirmation surface, and the one CI uses. Client is open source; it requires an account. |
 | **Web** | M3–M4 | Thin (§4): review queue, conflict resolution, decision timeline. Hosted, closed. |
 | **Slack** | post-M4 | The non-engineering surface. Unlocks the Stage 4 question. Hosted, closed. |
 | **VS Code extension** | **not planned** | MCP already runs inside VS Code, Cursor, and Codex — a developer there *already has* the tools. An extension adds chrome, not capability, at the cost of a marketplace presence and permanent API churn. Revisit only on repeated demand. |
@@ -544,7 +605,9 @@ Every surface is a translation of the same verbs — rehydrate, assert, checkpoi
 
 - Read `AGENTS.md`, `CLAUDE.md`, `.cursor/rules` on `init` and import constraints from them. Meet people where they already are.
 - Write a generated section back into `AGENTS.md` (clearly fenced, never clobber human-written content) so the value shows up even in sessions where the MCP server is not connected.
-- Keep `.mneia/` in the repo for local-first use. The store works fully offline against local Postgres or SQLite.
+- `.mneia/config` in the repo holds the project binding — workspace, project slug, API endpoint. No
+  data, no credentials. Credentials live in `~/.mneia/credentials`, outside the repo, and are never
+  committed.
 
 ---
 
@@ -552,13 +615,15 @@ Every surface is a translation of the same verbs — rehydrate, assert, checkpoi
 
 | Milestone | Deliverable | Success test |
 |---|---|---|
-| **Week 2** | OSS CLI + MCP server. Checkpoint and rehydrate against local Postgres. Works in Claude Code and Cursor. | The founder uses it daily on this repo and does not turn it off. |
-| **Week 6** | Handoff artifact shipped. `AGENTS.md` interop. Hosted sync (single user). Published to npm and MCP registries. | 5 external people use it for a week without hand-holding. |
+| **Week 2–3** | **Hosted API, auth, and Postgres**, plus CLI + MCP server doing checkpoint and rehydrate against it. Works in Claude Code and Cursor. | The founder uses it daily on this repo and does not turn it off. |
+| **Week 6** | Handoff artifact shipped. `AGENTS.md` interop. Metering and quotas. Published to npm and MCP registries. | 5 external people use it for a week without hand-holding. |
 | **Week 12** | Provenance, freshness/decay, contradiction detection, `mneia status`. Public launch. | 100+ installs, measurable week-2 retention, first inbound "can my team use this." |
 | **Month 6** | **Multiplayer.** Shared projects, roles, conflict resolution UI, team handoffs. Paid team tier live. | First paying team. This is the moat clock starting. |
 | **Month 12** | Governance: SSO, audit export, permission scopes, on-prem/BYOC. | First org-level contract. |
 
 **Sequencing logic:** individual value first because it is the only thing reachable with no relationships. Multiplayer at month 6 and not later, because the moat does not start accruing until multiple actors write to one project. Governance last because it requires customers to exist first.
+
+**Revised 2026-07-28:** the hosted-only decision (§11.1) moved the API, auth, and database from Week 6 into Week 2, which is why that milestone is now Week 2–3. Nothing works before the backend exists.
 
 ---
 
@@ -566,23 +631,78 @@ Every surface is a translation of the same verbs — rehydrate, assert, checkpoi
 
 | Tier | Price | Contents |
 |---|---|---|
-| **OSS self-host** | Free, Apache 2.0 | Full core: checkpoint, rehydrate, handoff, CLI, MCP server, local storage. |
-| **Solo hosted** | Free | 1 project, 30-day history, sync across your own machines. Conversion funnel, not a business. |
-| **Team** | **$24 per user per month** | Shared projects, roles, conflict resolution UI, unlimited history, team handoffs, web review app. |
-| **Enterprise** | Custom (target $15k to $60k ACV) | SSO/SAML, audit export, permission scopes, BYOC or on-prem, support SLA. |
+| **Solo** | Free | 1 project, 30-day history, capped checkpoints. Conversion funnel, not a business. |
+| **Team** | **$24 per user per month** + included checkpoint allowance | Shared projects, roles, cross-team scope, conflict resolution UI, unlimited history, team handoffs, web review app. |
+| **Enterprise** | Custom (target $15k to $60k ACV) | SSO/SAML, audit export, permission scopes, residency, BYOC or on-prem, support SLA. |
 
 **Anchors this is set against:** Zep Flex around $25/month, Letta cloud $20 to $200/month, LangSmith around $39/seat plus usage, Mem0 free to $249/month. $24/user sits deliberately below the observability tools (we are not a replacement for those budgets) and above the hobbyist line (we are not a toy).
 
-**Do not** charge for the individual tier. Developers do not pay for tools they can replace with a markdown file, and the individual tier's job is distribution, not revenue.
+### 14.1 Metering — seats plus a checkpoint allowance
+
+There is exactly one marginal cost worth metering:
+
+| Action | Marginal cost | Metered |
+|---|---|---|
+| **Checkpoint** | The LLM extraction call — the entire cost | **Yes** |
+| Contradiction detection | Small, higher-tier model | Rolled into checkpoint |
+| Rehydrate | One indexed query. Fractions of a cent. | No |
+| Handoff, log, status, search | Negligible | No |
+| Storage | Meaningful only at extremes | Only as a fair-use ceiling |
+
+**Structure:** seat price with a generous included checkpoint allowance, then overage. Set the
+allowance at several times typical use so ordinary customers experience it as seat pricing and never
+think about it, while a runaway CI loop cannot quietly invert the margin.
+
+**Convenient consequence:** §17's event spine *is* the metering spine. `checkpoint.item_extracted`
+already fires per checkpoint for the arbitration dataset. One system, two purposes — do not build a
+second.
+
+> **Provisional.** These economics assume *we* pay for inference. If the user brings their own key
+> (§11.2 item 1) the marginal cost collapses and this whole section is repriced. Do not treat the
+> seat number as settled until that is decided.
+
+**Do not** charge for the solo tier. Developers do not pay for tools they can replace with a markdown
+file, and the solo tier's job is distribution, not revenue.
 
 ---
 
 ## 15. Open source and licensing
 
-- **License: Apache 2.0.** Deliberate. Byterover uses Elastic License 2.0, which suppresses adoption and contribution. Permissive licensing is a wedge against the one competitor that matters.
-- **Open:** data model, CLI, MCP server, checkpoint and rehydration logic, the handoff spec.
-- **Closed / hosted only:** multiplayer sync, conflict resolution UI, permissions and roles, audit and governance, the web app.
-- **Rationale:** the open core must be genuinely useful alone, or nobody adopts. The commercial layer is everything that only matters when more than one person is involved, which is also where the willingness to pay is.
+> **Rewritten 2026-07-28.** The previous version promised a *"self-hostable open core"* that
+> *"works fully offline."* Hosted-only (§11.1) makes both untrue. Claiming them anyway in a README
+> that §16's audience will read closely is worse than claiming less.
+
+**What is open, under Apache 2.0:**
+
+- `@mneia/cli` and `@mneia/mcp-server` — the client surfaces
+- `@mneia/core` — the schema definitions, the handoff format, the extraction prompts, the §10.2
+  ranking algorithm
+- The handoff spec itself, when §16 item 5's condition is met
+
+**What is proprietary:** the hosted API, the store, multiplayer, conflict resolution UI, permissions
+and roles, audit and governance, and the web app. **The clients require an account and do not
+function without the service.**
+
+**Say that plainly.** Do not describe Mneia as self-hostable until BYOC (MNE-147) actually ships, at
+which point it becomes true for enterprise customers under a commercial licence.
+
+**What the licence still buys.** Less than the original section claimed, and the difference matters:
+
+- The parts that carry our judgement — extraction prompts, ranking weights, the handoff format — are
+  inspectable, forkable, and criticisable. That is a real invitation to the practitioners in §2.2 who
+  built their own versions, and a real constraint on us to make them defensible.
+- No Elastic-License redistribution restrictions on the client, so it can be packaged, wrapped, and
+  embedded freely.
+
+**What it no longer buys.** A meaningful self-host story, and therefore most of the licensing wedge
+against Byterover described in §6.1. That wedge is now smaller and should not be leaned on in
+positioning.
+
+> **Open, and the sharpest unresolved question in the brief (§11.2 item 6).** §16's distribution plan
+> targets people who hand-rolled their own memory tools *specifically because they wanted something
+> they controlled.* "Sign in to use it" lands differently with that audience than with any other.
+> Vercel, Sentry, and Linear all ship account-required CLIs successfully — but none of them recruited
+> their first thousand users from a thread about not trusting a vendor with your context.
 
 ---
 
@@ -658,7 +778,7 @@ Explicitly out of scope. If a feature request falls here, the answer is no.
 Things not yet settled. Resolve deliberately, do not drift into them.
 
 1. ~~**Name.**~~ **RESOLVED 2026-07-28: Mneia.** The company and the product both. npm scope, GitHub org, and domain still need reserving before the name goes into code — tracked as MNE-33.
-2. **Local store default:** SQLite for zero-friction install versus Postgres for parity with hosted. Leaning SQLite locally with a Postgres-compatible schema.
+2. ~~**Local store default.**~~ **RESOLVED 2026-07-28: hosted Postgres only, no local store.** See §11.1. The follow-on infrastructure questions this opened are listed in §11.2 and are the next thing to settle.
 3. **Pre-compaction hook:** does Claude Code expose one? If yes, checkpointing right before compaction is the single highest-value trigger and should be prioritized.
 4. **Should `AGENTS.md` write-back be default-on?** It gives value without the MCP server connected, but writing to a user's repo by default is invasive.
 5. **Vertical wedge:** stay horizontal, or lead with long-running migrations and large refactors specifically? A vertical story makes the pitch sharper but narrows early adoption.
@@ -678,3 +798,6 @@ Things not yet settled. Resolve deliberately, do not drift into them.
 - Competitor documentation: Byterover/Cipher, Mem0, Zep/Graphiti, Letta, Supermemory, Cognee, LangGraph persistence
 
 **Note on figures:** competitor funding amounts, benchmark scores, and traction numbers cited during research come from a mix of primary announcements and aggregators, and several are vendor-reported and unreplicated. Verify anything before it goes into a pitch deck or a public comparison page.
+
+### open-question
+ how about this we will divide Mneia in to parts Individual, Team, across team and repo levels and main company level. we will divide in a few ways set it up with logic builting around if it has anything do bug/debug goes with individual, team level and the team leader will decide is it worth going into other categories, if anything about new feature/building existing ones same individual, team, across team, particular repo level, and company level, if working on client side request by solution engineer/fde then individual, teAM level and upto team leader, same with other teams like marketing, accounting, operations, product, customer support, customer success managers/team, sales and different tech team according to the company and according to the seat they wanna purchase. because accounting, sale marketing and others does use claude code and vibe code things out but they don't wanna know where's the bug what caused it how we're fixing it it doesn't make sense that they should know or their AI needs to know this. But if a sales person have a meeting and some customers/client says I wish you had this feature then that sales exec asks Mneia through (slack or CLI or idk what we have think of here in terms of integration) and asks Mneia if we have this or not and it check all the context accross the level and see it's on the roadmap or this team is building and that's their progress and point of contact with the team. something like this!

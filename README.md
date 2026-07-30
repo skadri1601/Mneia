@@ -68,10 +68,24 @@ pnpm lint
 | `@mneia/cli` | The `mneia` command line interface |
 | `@mneia/mcp-server` | MCP server for Claude Code, Cursor, Codex, and any MCP client |
 
+## How it runs
+
+Mneia is a **hosted service**. The CLI and MCP server are clients — they authenticate and talk to the
+API; there is no local database to install or operate.
+
+```bash
+mneia login          # device flow, once
+mneia checkpoint     # everything else is an authenticated call
+```
+
+In CI, set `MNEIA_TOKEN` instead of logging in. The surface is otherwise identical, which makes an
+ephemeral runner a first-class client rather than a special case.
+
 ## Licence
 
-Apache 2.0. See [LICENSE](./LICENSE).
+**The client packages are Apache 2.0** — see [LICENSE](./LICENSE). That covers `@mneia/cli`,
+`@mneia/mcp-server`, and `@mneia/core`: the schema, the handoff format, the extraction prompts, and
+the ranking algorithm. The parts that carry our judgement are inspectable and forkable.
 
-The core — data model, CLI, MCP server, checkpoint and rehydration logic, and the handoff format — is
-open source and self-hostable. It works fully offline against local storage. Sync, multiplayer, and
-governance are the commercial layer.
+**The server is proprietary**, and the clients require an account to function. We are not claiming to
+be self-hostable — that becomes true for enterprise customers when BYOC ships, and not before.

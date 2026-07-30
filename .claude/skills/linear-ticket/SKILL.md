@@ -39,7 +39,7 @@ Team `Mneia`, prefix `MNE`. States: `Backlog` → `Todo` → `In Progress` → `
    ```
    MNE-42: add context_item with bi-temporal validity
 
-   Implements §9 provenance, trust, and bi-temporal columns on both engines.
+   Implements §9 provenance, trust, and bi-temporal columns on hosted Postgres.
    Bi-temporality ships now because retrofitting it onto a live store is
    close to impossible (§9 design notes).
    ```

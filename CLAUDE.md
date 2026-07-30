@@ -40,7 +40,7 @@ Load these rather than improvising the procedure. Index and full descriptions: `
 | `linear-ticket` | Starting or finishing any unit of work |
 | `scope-check` | A request may touch a `vision.md` §19 non-goal |
 | `milestone-gate` | A milestone is ending and the `GATE:` ticket needs running |
-| `db-migration` | Adding or changing a table, on both SQLite and Postgres |
+| `db-migration` | Adding or changing a table, column, or index on hosted Postgres |
 
 ## MCP servers
 
