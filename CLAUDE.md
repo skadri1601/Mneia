@@ -31,7 +31,9 @@ Boundaries on the grant:
 
 ## Git lanes — which changes need a PR
 
-Ruled 2026-07-29 (MNE-182). Enforced by `.claude/hooks/git-lane-guard.mjs`, not by memory.
+Ruled 2026-07-29 (MNE-182). Enforced by `.claude/hooks/git-lane-guard.mjs` before a commit is made,
+and again by the `policy` job in CI on every PR (MNE-36). Both read one definition of the lanes,
+`scripts/git-lanes.mjs` — change the lanes there, not in either caller.
 
 | Lane | Contents | Flow |
 |---|---|---|

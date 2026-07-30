@@ -1,21 +1,9 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { BRANCH_RE, TICKET_RE, classify } from '../../scripts/git-lanes.mjs';
 
 const OVERRIDE = process.env.MNEIA_GIT_GUARD === 'off';
-
-const BRANCH_RE = /^(feat|fix|docs|chore|refactor|spike|test)\/mne-\d+(-[a-z0-9]+)+$/;
-const TICKET_RE = /MNE-\d+/;
-
-const DOCS_LANE = [
-  /^[^/]+\.md$/,
-  /^docs\//,
-  /^\.github\/.*\.md$/,
-  /^\.claude\//,
-  /^(LICENSE|NOTICE|\.gitignore|\.gitattributes|\.editorconfig)$/,
-];
-
-const CODE_LANE_OVERRIDES = [/^\.claude\/settings(\.local)?\.json$/, /^\.claude\/hooks\//];
 
 function git(args) {
   try {
@@ -26,11 +14,6 @@ function git(args) {
   } catch {
     return '';
   }
-}
-
-function isDocsLane(file) {
-  if (CODE_LANE_OVERRIDES.some((re) => re.test(file))) return false;
-  return DOCS_LANE.some((re) => re.test(file));
 }
 
 function deny(reason) {
@@ -76,11 +59,6 @@ function commitMessage() {
     if (existsSync(path)) return readFileSync(path, 'utf8');
   }
   return cmd;
-}
-
-function classify(files) {
-  const code = files.filter((f) => f && !isDocsLane(f));
-  return { code, docsOnly: code.length === 0 };
 }
 
 if (isCommit) {

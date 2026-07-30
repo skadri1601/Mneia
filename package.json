@@ -13,9 +13,12 @@
     "test:watch": "vitest",
     "typecheck": "tsc --build --force",
     "lint": "biome check .",
+    "lint:ci": "biome lint --diagnostic-level=error .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
-    "format:check": "biome format ."
+    "format:check": "biome format .",
+    "check:tests": "node scripts/check-test-integrity.mjs",
+    "check:policy": "node scripts/check-git-policy.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",

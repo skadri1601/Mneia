@@ -10,7 +10,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
+  static:
+    name: static
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: format
+        run: pnpm format:check
+
+      - name: lint (errors only)
+        run: pnpm lint:ci
+
+      - name: typecheck packages
+        run: pnpm typecheck
+
+      - name: typecheck apps
+        run: pnpm -r --if-present typecheck
+
+      - name: build every workspace member
+        run: pnpm -r --if-present build
+
+  test:
+    name: test
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -45,10 +78,25 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm format:check
+      - name: no disabled or exclusive tests
+        run: pnpm check:tests
 
-      - run: pnpm typecheck
-
-      - run: pnpm test
+      - name: test
+        run: pnpm test
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/mneia
+
+  policy:
+    name: policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: branch, commit, and lane policy
+        run: node scripts/check-git-policy.mjs
