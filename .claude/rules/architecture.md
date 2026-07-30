@@ -20,21 +20,25 @@ paths:
 on each other, and `core` never imports from either. If a behaviour is needed in both surfaces, it
 belongs in `core`.
 
-Keeping the surfaces thin is what makes MNE-104 possible — self-hosted and hosted producing identical
-results on the same input requires the logic to live in one place.
+Keeping the surfaces thin is what makes MNE-104 possible — the CLI and the MCP server returning
+identical results for the same input requires the logic to live in one place.
 
 ## The open/closed split is physical
 
-§15 keeps the three packages above open source. The hosted layer — sync, web app, billing, conflict
-UI, permissions, audit — is **closed and lives in a separate private repo**, consuming `@mneia/core`
-from npm.
+The three packages above are Apache 2.0 **clients**. The hosted layer — API, store, web app, billing,
+conflict UI, permissions, audit — is **proprietary and lives in a separate private repo**, consuming
+`@mneia/core` from npm.
 
 A private directory inside a public repo is not possible, and a single repo with a licence split
 confuses contributors. MNE-37 requires CONTRIBUTING to state the boundary; two repos make it
 self-evident instead of a rule anyone has to remember.
 
-**Never add closed-source concerns to these packages.** If a feature only matters when more than one
-person is involved, it is hosted-layer work.
+**Never add server concerns to these packages.** They hold the schema, the prompts, the ranking
+algorithm, and the surface translation — nothing that requires the database.
+
+**And never claim self-hostability here.** §15 was rewritten on 2026-07-28: the clients require an
+account and do not function without the service. Language implying otherwise in a README, a package
+description, or a registry listing is a claim we do not currently meet.
 
 ## Build versus adopt (§11)
 

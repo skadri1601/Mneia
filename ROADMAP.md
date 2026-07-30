@@ -73,17 +73,22 @@ Seven projects. Six are sequential milestones from `vision.md` §13; one is stan
 
 | Project | Window | Success test (§13) |
 |---|---|---|
-| **M0 · Foundations & Instrumentation** | Jul 28 – Aug 4 | Schema migrates clean on both engines; every write path emits its §17 event |
-| **M1 · Core Loop — Checkpoint & Rehydrate** | Aug 4 – Aug 11 | The founder uses it daily and does not turn it off |
-| **M2 · Handoff & Distribution** | Aug 11 – Sep 8 | 5 external people use it for a week without hand-holding |
+| **M0 · Foundations & Instrumentation** | Jul 28 – Aug 4 | Schema migrates clean on hosted Postgres; every write path emits its §17 event |
+| **M1 · Core Loop — Checkpoint & Rehydrate** | Aug 4 – Aug 18 | The founder uses it daily and does not turn it off |
+| **M2 · Handoff & Distribution** | Aug 18 – Sep 8 | 5 external people use it for a week without hand-holding |
 | **M3 · Trust Layer & Public Launch** | Sep 8 – Oct 20 | 100+ installs, week-2 retention, first inbound "can my team use this" |
 | **M4 · Multiplayer** | Oct 20 – Jan 26 | First paying team. **The moat clock starts.** |
 | **M5 · Governance** | Jan 26 – Jul 28 | First org-level contract |
 | **S0 · Strategy, Open Decisions & Risk Watch** | Standing | Never completes. Reviewed at every milestone boundary. |
 
+> **Revised 2026-07-28 for hosted-only (§11.1).** M1 absorbed one week and MNE-101 (hosted API), because
+> hosted-only means there is nothing to dogfood until the API exists. M2 lost that week and that ticket,
+> so **Sep 8 holds** and nothing downstream moves. If M1 slips past Aug 18, everything after it does too —
+> that is the risk the decision bought, and it is worth naming rather than absorbing quietly.
+
 ### 1.2 Issue structure
 
-**28 epics, 132 tasks, 160 issues total.** Every task hangs off an epic; every epic belongs to a project and a milestone.
+**29 epics, ~140 tasks.** Every task hangs off an epic; every epic belongs to a project and a milestone. Linear is authoritative on counts — this line is a shape, not a ledger.
 
 Epics are titled `EPIC · <name>` and carry the strategic argument. Tasks carry a **Done when** clause. Two special prefixes:
 
@@ -131,9 +136,10 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 - [ ] MNE-41 — Schema: workspace, actor, project, session
 - [ ] MNE-42 — Schema: `context_item` — provenance, trust, bi-temporal validity
 - [ ] MNE-43 — Schema: checkpoint, checkpoint_item, handoff, conflict
-- [ ] MNE-44 — Storage adapter interface + SQLite
+- [ ] MNE-44 — Storage adapter interface (Postgres only — SQLite dropped, §11.1)
 - [ ] MNE-45 — Postgres + pgvector
-- [ ] MNE-46 — Vector index and retrieval parity across both engines
+- [x] ~~MNE-46 — Vector index and retrieval parity across both engines~~ — cancelled, one engine (§11.1)
+- [ ] MNE-169 — Scope enforcement at the query layer
 - [ ] MNE-47 — Test fixtures, seed harness, full-column round-trip test
 
 **MNE-7 · Telemetry spine (§17, non-negotiable)**
@@ -146,14 +152,25 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 
 **MNE-8 · Embeddings layer**
 - [ ] MNE-54 — Embedding provider interface
-- [ ] MNE-55 — Default hosted provider + local offline fallback
+- [x] ~~MNE-55 — Default hosted provider + local offline fallback~~ — cancelled, embeddings are server-side (§11.1)
 - [ ] MNE-56 — Embedding cache and backfill on provider change
 
 ---
 
-### M1 · Core Loop — Week 2
+### M1 · Core Loop — Week 2–3
 
 > §13 success test: **the founder uses it daily on this repo and does not turn it off.**
+>
+> **§11.1 widened this milestone.** Hosted-only means there is no local fallback to dogfood against —
+> the API has to exist before MNE-86 can run at all. MNE-101 moved here from M2, which is the whole
+> cost of the decision. Do not treat M1 as a one-week milestone any more.
+
+**MNE-171 · Hosted API — the prerequisite hosted-only created**
+- [ ] MNE-101 — Hosted API service scaffold and auth — **blocks MNE-74, MNE-81, MNE-86**
+- [ ] MNE-172 — Multi-tenancy: shared schema + RLS, or schema-per-tenant (§11.2 Q3) — **decide before MNE-42**
+- [ ] MNE-173 — Rate limiting and abuse controls — **hard gate on MNE-105**
+- [ ] MNE-165 — Vercel vs Fly ruling (needed before MNE-101 lands)
+- [ ] MNE-166 — Clerk vs WorkOS ruling (needed before MNE-101 lands)
 
 **MNE-9 · Checkpoint pipeline**
 - [ ] MNE-57 — Session trajectory reader: Claude Code and Cursor
@@ -175,6 +192,7 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 - [ ] MNE-71 — Slice render format
 - [ ] MNE-72 — Reference detection: item_referenced vs item_ignored
 - [ ] MNE-73 — Perf benchmark harness and p95 budget
+- [ ] MNE-175 — **SPIKE:** is 300ms p95 reachable over the network? (§11.2 Q2) — measure before building a cache
 
 **MNE-11 · MCP server v1**
 - [ ] MNE-74 — Server scaffold and stdio transport
@@ -219,11 +237,12 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 - [ ] MNE-99 — Fenced generated-section write-back
 - [ ] MNE-100 — Round-trip and clobber-protection tests
 
-**MNE-16 · Hosted sync (solo tier)**
-- [ ] MNE-101 — Hosted API service scaffold and auth
-- [ ] MNE-102 — `mneia sync` push and pull
+**MNE-16 · Solo tier limits and usage ledger** — *rescoped by §11.1; sync is gone*
+- [x] ~~MNE-101 — Hosted API service scaffold and auth~~ — **moved to M1** under MNE-171
+- [x] ~~MNE-102 — `mneia sync` push and pull~~ — cancelled, there is nothing to sync (§11.1)
 - [ ] MNE-103 — Solo tier limits enforced server-side
-- [ ] MNE-104 — Self-host versus hosted parity test
+- [ ] MNE-104 — CLI/MCP result parity test (was self-host vs hosted)
+- [ ] MNE-178 — Metering and quota on the §17 event spine (§14.1) — blocked by MNE-174
 
 **MNE-17 · Distribution v1**
 - [ ] MNE-105 — npm publish and install documentation
@@ -319,12 +338,21 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 
 **MNE-31 · Open decisions (§20)** — each closes with a written ruling **and** a `vision.md` update
 
-- [ ] MNE-151 — **DECISION 1: Product name** (due Jul 31) — blocks the repo, npm scope, and every identifier
-- [ ] MNE-152 — **DECISION 2: Local store default**, SQLite or Postgres (due Aug 1) — blocks MNE-44/45/46
+- [x] ~~MNE-151 — **DECISION 1: Product name**~~ — **RESOLVED: Mneia**
+- [x] ~~MNE-152 — **DECISION 2: Local store default**~~ — **RESOLVED: hosted Postgres only** (§11.1)
 - [ ] MNE-153 — DECISION 3: Does Claude Code expose a pre-compaction hook (due Aug 7)
 - [ ] MNE-154 — DECISION 4: Should AGENTS.md write-back be default-on (due Aug 25)
 - [ ] MNE-155 — DECISION 5: Vertical wedge or stay horizontal (due Sep 30)
 - [ ] MNE-156 — DECISION 6: Co-founder profile and when to start looking (due Oct 20)
+
+*Opened by the MNE-152 ruling — the §11.2 questions hosted-only created:*
+
+- [ ] MNE-174 — **DECISION 7: Who pays for inference** (due Aug 11) — ⚠️ **the largest open item; changes COGS by an order of magnitude and reprices §14**
+- [ ] MNE-176 — DECISION 8: Embedding vendor and dimensions — Anthropic has no embeddings endpoint
+- [ ] MNE-177 — DECISION 9: What "open source" means once the server is proprietary
+- [x] ~~MNE-170 — Cross-department scope~~ — **RESOLVED: in scope** (§5 Stage 4)
+
+Three more §11.2 questions are implementation rather than strategy and live in M1: **MNE-172** (multi-tenancy), **MNE-173** (rate limiting), **MNE-175** (latency spike).
 
 **MNE-29 · Kill-criteria watch (§18)** — **these never close**
 

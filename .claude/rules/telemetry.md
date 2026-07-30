@@ -33,16 +33,25 @@ A convention will not survive twelve months of solo development; a failing test 
 
 Adding a write path means adding its event in the same PR. There is no follow-up ticket for this.
 
-## Privacy is a hard boundary
+## Privacy is a hard boundary — restated for hosted-only
 
-**No code and no conversation content leaves the machine by default** (MNE-50). Ids, types, and
-outcomes carry the ranking signal; item bodies do not.
+MNE-50 originally read *"no code and no conversation content leaves the machine by default."*
+**Hosted-only (§11.1) makes that literally false** — item bodies live in our Postgres, because a
+shared memory layer with no shared bodies is not a product. Do not quote the old wording.
 
-Events land in a local JSONL sink first, always. Remote transmission is opt-in and purely additive —
-that ordering is what lets a self-hosted user (§15) accumulate their own arbitration data and get the
-benefit of ranking that learns from it, without sending us anything.
+Three boundaries replace it, and all three are enforceable:
 
-A test asserts no item `body` appears in the remote payload. Keep it passing.
+1. **We store extracted items, not raw material.** A checkpoint reads the transcript, extracts typed
+   items, and discards the transcript. Full conversation logs and file contents are never persisted.
+   The user's own words survive only inside an item they would recognise as theirs.
+2. **§17 events carry ids, types, and outcomes — never bodies.** The ranking signal does not need the
+   prose, and keeping it out means the training corpus is structurally incapable of leaking one
+   customer's decisions into another's ranking.
+3. **Scope is enforced on read** (MNE-169), not on write. A `private` item is invisible to a
+   workspace query even though it sits in the same table.
+
+The invariant test survives the rewrite unchanged: **no item `body` appears in a §17 event payload.**
+Keep it passing — it is now the load-bearing half of the promise rather than a nice-to-have.
 
 ## Do not route §17 events into a product-analytics tool
 

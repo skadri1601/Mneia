@@ -26,10 +26,11 @@ are tests rather than comments. **Never weaken, skip, or delete them.**
 If one of these starts failing, the code is wrong. Fix the code. If you genuinely believe the test is
 wrong, that is a `vision.md` change and needs the founder — not a test edit.
 
-## Engine parity
+## One engine
 
-Store tests run against **both** SQLite and Postgres from the same suite. A test that passes on one
-engine and is skipped on the other is not a passing test.
+Store tests run against **Postgres only** — there is no second engine (§11.1). Use a CI service
+container or a throwaway Neon branch; do not reach for an in-memory substitute that behaves
+differently from the thing you ship on.
 
 ## Fixtures
 

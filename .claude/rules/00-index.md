@@ -9,12 +9,12 @@ trigger it — you will not see most of them until you touch the relevant code.
 | Rule | Loads when you touch | Covers |
 |---|---|---|
 | `architecture.md` | `packages/**` | Package boundaries, the open/closed split, dependency direction |
-| `data-model.md` | schema, migrations, store | The §9 tables, bi-temporality, engine parity |
+| `data-model.md` | schema, migrations, store | The §9 tables, bi-temporality, scope enforcement |
 | `telemetry.md` | `**/telemetry/**`, events | The §17 event spine and its coverage test |
 | `testing.md` | `**/*.test.ts`, `**/*.spec.ts` | Vitest conventions, the two GUARD invariants |
 | `typescript-style.md` | `**/*.ts`, `**/*.tsx` | Strictness, error handling, no-comments rule |
 | `mcp-server.md` | `packages/mcp-server/**` | Tool naming, the 300ms budget, client neutrality |
-| `cli.md` | `packages/cli/**` | Command surface, output conventions, offline-first |
+| `cli.md` | `packages/cli/**` | Command surface, auth, output conventions |
 | `design.md` | `apps/**`, `*.tsx`, `*.css` | Design token specs, the thin-web-app rule, positioning |
 
 ## Reference, read on demand

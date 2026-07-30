@@ -39,16 +39,16 @@ a migration nightmare once M4 has multi-actor data in flight.
 
 The extractor **suggests** a scope; the human confirms or overrides it at checkpoint, exactly as with `load_bearing`. Promoting an item to company-wide is a scope change with provenance, **not** an approval workflow. Do not build an escalation object, a state machine, or a notification pipeline for this — every one of those serves none of checkpoint, rehydrate, or handoff (§4), and the override itself is a labelled example for §17.
 
-## Engine parity
+## One engine
 
-Every change lands on **both** SQLite (local) and Postgres + pgvector (hosted), in the same PR.
+**Postgres + pgvector, hosted. There is no SQLite and no local store** (§11.1, resolved 2026-07-28).
 
-Divergence is corrosive in a specific way: a user who develops locally and syncs to hosted would get
-different rehydration slices from identical data, and would reasonably conclude the product is
-unreliable. The parity test (MNE-46) exists to catch exactly that.
+That removes engine parity as a concern entirely — no dual adapters, no `sqlite-vec` versus
+`pgvector` ranking divergence, no parity test. If you find yourself writing a second storage backend,
+stop: that decision was made and reversing it is a `vision.md` change, not an implementation choice.
 
 Migrations are versioned and forward-only. A runner that meets a store newer than the binary must
-refuse to operate rather than half-apply — self-hosted users upgrade on their own schedule (§15).
+refuse to operate rather than half-apply.
 
 ## Writes
 

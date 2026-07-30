@@ -23,7 +23,7 @@ That criterion outweighs marginal feature differences between otherwise-similar 
 | Repo + CI/CD | **GitHub + Actions** | `gh` is fully agent-operable. Also required for §16 — the claude-code compaction threads *are* the distribution channel. |
 | Hosting | **Vercel** | MCP connected: deploy, build logs, runtime errors, rollback without a dashboard. |
 | Database | **Neon Postgres** | §11 already ruled Postgres + pgvector. Branching gives every PR an isolated database. |
-| Local store | **SQLite + `sqlite-vec`** | Pending MNE-152. Makes the MNE-46 parity test tractable. |
+| ~~Local store~~ | **None** | Resolved by §11.1 — hosted-only, one engine. MNE-152 closed, MNE-46 cancelled. |
 | Errors | **Sentry** | MCP connected — issues can be pulled and triaged without relaying stack traces. |
 | Auth | **Clerk** | Organizations built in, which is MNE-126/127 rather than a rewrite. |
 | Billing | **Stripe** | §14, $24/seat. No real alternative for self-serve seat-based. |
@@ -48,8 +48,9 @@ write MNE-42.
 
 | Milestone | Adopt | Monthly |
 |---|---|---|
-| **M0** | GitHub, Actions, Vitest, Biome, changesets, SQLite, Postgres in CI services | **$0** |
-| **M2** | Vercel, Neon, Clerk, Sentry | ~$0–20 |
+| **M0** | GitHub, Actions, Vitest, Biome, changesets, Postgres in CI services | **$0** |
+| **M1** | Vercel, Neon, Clerk — pulled forward from M2 by §11.1: nothing works without the API | ~$0–20 |
+| **M2** | Sentry | ~$0–20 |
 | **M3** | PostHog (funnel only) | ~$20 |
 | **M4** | Stripe | + fees |
 | **M5** | SSO provider, revisit IaC for BYOC | enterprise |
@@ -68,10 +69,15 @@ is request/response, so Vercel is fine, but the M4 multiplayer design may change
 (MNE-144) and avoids a migration. Either way **CLI device-flow auth is custom work** — neither gives
 it free, and MNE-101 should say so.
 
-**3. Sentry in the CLI, or server-side only?** MNE-50 says no code or conversation content leaves the
-machine by default. A crash reporter in a CLI handling people's project decisions is in genuine
-tension with that. Leaning server-side only, with CLI errors written locally and attached manually if
-a user chooses — the OSS trust story is worth more than the crash telemetry.
+**3. Sentry in the CLI, or server-side only?** Weaker than it was: under §11.1 the item bodies are
+already on our servers, so the old *"nothing leaves the machine"* argument no longer applies. What
+still applies is that a crash reporter captures **local** state the product never asked for — file
+paths, branch names, argv, environment. Leaning server-side only, with CLI errors written locally and
+attached manually if a user chooses. Tracked as MNE-167.
+
+**4. Who pays for inference?** The largest open item, and not really a stack question — it changes
+COGS by roughly an order of magnitude and reprices §14 entirely. See §11.2 question 1. Nothing in this
+document should be treated as settled until it is answered.
 
 ## Repo split
 

@@ -13,7 +13,7 @@ Live in `.claude/skills/<name>/SKILL.md`. Other agents can read them directly as
 | **`linear-ticket`** | Starting or finishing any unit of work | Six-step procedure with easy-to-skip steps — the *Done when* verification and the status transitions |
 | **`scope-check`** | A request may touch a `vision.md` §19 non-goal | Needs a written ruling logged under MNE-164, not a judgement call in the moment |
 | **`milestone-gate`** | A milestone is ending, or a `GATE:` ticket needs running | Four-part ritual from `ROADMAP.md` §4, and it must be able to fail |
-| **`db-migration`** | Adding or changing a table, column, or index | Both engines, seed harness, round-trip, parity, telemetry — in one PR |
+| **`db-migration`** | Adding or changing a table, column, or index | Forward-only, old-client-safe, seed harness, round-trip, scope filter, telemetry — in one PR |
 
 ## Why these are skills and not rules
 
