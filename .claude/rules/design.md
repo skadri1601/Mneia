@@ -25,14 +25,21 @@ UI. Ask.
 
 ## When this matters
 
-Nothing in M0, M1, or M2 renders a pixel. The surfaces that consume these specs are:
+> **Rewritten 2026-07-29.** This section previously said *"nothing in M0, M1, or M2 renders a pixel"* and
+> *"file it, do not build it."* The founder ruling that moved the web app and billing into M1 (§12.3) makes
+> both false. **M1 renders pixels.** If you are building M1 and reached this file expecting permission to
+> defer design decisions, you do not have it.
 
+M0 renders nothing. Everything after does. The surfaces that consume these specs:
+
+- **MNE-181** — web account plane: signup, device-flow approval, workspace and project management (**M1**)
+- **MNE-25** — web review app: decision browser, review queue, timeline (**M1**)
 - **MNE-120** — landing page and docs site (M3)
-- **MNE-25** — web review app (M4)
-- **MNE-133** — conflict resolution UI (M4)
+- **MNE-133** — conflict resolution UI (M4, with the conflict engine it renders)
 
-Adopting a design system before there is a surface to apply it to is the same premature-infrastructure
-mistake as standing up Kubernetes in week one. File it, do not build it.
+**So pick the design language before MNE-181 starts, not after.** Read `docs/design/apple.md` and
+`docs/design/bmw-m.md` and get a ruling. The first screen built without one sets the defaults for every
+screen after it, and the account plane is now the first screen.
 
 ## Rules that hold whichever language wins
 
@@ -47,12 +54,18 @@ mistake as standing up Kubernetes in week one. File it, do not build it.
 
 ## The web app stays thin
 
-§4 calls it *"a thin web app for team review and conflict resolution,"* and §19 rules out a chat
-interface or an agent of our own. **Thin is the specification, not a hedge.**
+§4 calls it a thin web app, and §19 rules out a chat interface or an agent of our own. **Thin is the
+specification, not a hedge.**
 
 The developer inner loop stays in the terminal and the editor. The web app exists only for what a CLI
 is genuinely bad at: reviewing a queue, comparing two conflicting items side by side, and browsing a
-decision timeline.
+decision timeline — plus the account plane, which exists because hosted-only requires somewhere to sign
+up and approve a device code, not because anyone should want to visit it.
+
+**Shipping web in M1 makes this rule harder to hold, not softer.** The web app arriving at the same time
+as the CLI invites treating it as the primary surface. It is not. If a feature could live in the MCP
+server or the CLI, it goes there — §12.3's tripwire still applies: a surface that needs a fifth verb is
+becoming its own product.
 
 If a feature would pull daily work out of the CLI and into the browser, that is a scope question —
 run the `scope-check` skill.
