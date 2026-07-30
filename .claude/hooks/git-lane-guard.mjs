@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 const OVERRIDE = process.env.MNEIA_GIT_GUARD === 'off';
 
