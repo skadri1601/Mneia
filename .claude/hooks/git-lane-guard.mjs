@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { execFileSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { execFileSync } from 'node:child_process';
+import { readFileSync, existsSync } from 'node:fs';
 
-const OVERRIDE = process.env.MNEIA_GIT_GUARD === "off";
+const OVERRIDE = process.env.MNEIA_GIT_GUARD === 'off';
 
 const BRANCH_RE = /^(feat|fix|docs|chore|refactor|spike|test)\/mne-\d+(-[a-z0-9]+)+$/;
 const TICKET_RE = /MNE-\d+/;
@@ -15,16 +15,16 @@ const DOCS_LANE = [
   /^(LICENSE|NOTICE|\.gitignore|\.gitattributes|\.editorconfig)$/,
 ];
 
-const CODE_LANE_OVERRIDES = [
-  /^\.claude\/settings(\.local)?\.json$/,
-  /^\.claude\/hooks\//,
-];
+const CODE_LANE_OVERRIDES = [/^\.claude\/settings(\.local)?\.json$/, /^\.claude\/hooks\//];
 
 function git(args) {
   try {
-    return execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execFileSync('git', args, {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
   } catch {
-    return "";
+    return '';
   }
 }
 
@@ -37,8 +37,8 @@ function deny(reason) {
   process.stdout.write(
     JSON.stringify({
       hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
+        hookEventName: 'PreToolUse',
+        permissionDecision: 'deny',
         permissionDecisionReason: reason,
       },
     }),
@@ -50,10 +50,10 @@ function pass() {
   process.exit(0);
 }
 
-const raw = readFileSync(0, "utf8");
-let cmd = "";
+const raw = readFileSync(0, 'utf8');
+let cmd = '';
 try {
-  cmd = JSON.parse(raw)?.tool_input?.command ?? "";
+  cmd = JSON.parse(raw)?.tool_input?.command ?? '';
 } catch {
   pass();
 }
@@ -65,15 +65,15 @@ const isCommit = /\bgit\s+(-C\s+\S+\s+)?commit\b/.test(cmd);
 const isPush = /\bgit\s+(-C\s+\S+\s+)?push\b/.test(cmd);
 if (!isCommit && !isPush) pass();
 
-const branch = git(["rev-parse", "--abbrev-ref", "HEAD"]);
+const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
 if (!branch) pass();
-const onMain = branch === "main" || branch === "master";
+const onMain = branch === 'main' || branch === 'master';
 
 function commitMessage() {
   const f = cmd.match(/-F\s+(?:"([^"]+)"|'([^']+)'|(\S+))/);
   if (f) {
     const path = f[1] || f[2] || f[3];
-    if (existsSync(path)) return readFileSync(path, "utf8");
+    if (existsSync(path)) return readFileSync(path, 'utf8');
   }
   return cmd;
 }
@@ -84,7 +84,7 @@ function classify(files) {
 }
 
 if (isCommit) {
-  const staged = git(["diff", "--cached", "--name-only"]).split("\n").filter(Boolean);
+  const staged = git(['diff', '--cached', '--name-only']).split('\n').filter(Boolean);
   if (staged.length === 0) pass();
 
   const { code, docsOnly } = classify(staged);
@@ -92,7 +92,7 @@ if (isCommit) {
   if (onMain && !docsOnly) {
     deny(
       `BLOCKED: code-lane files cannot be committed straight to ${branch}.\n\n` +
-        `Code-lane files staged:\n${code.map((f) => `  - ${f}`).join("\n")}\n\n` +
+        `Code-lane files staged:\n${code.map((f) => `  - ${f}`).join('\n')}\n\n` +
         `Two-lane policy (CLAUDE.md > Git lanes):\n` +
         `  docs lane -> commit direct to main. *.md, docs/**, .claude/** (except settings.json and hooks/)\n` +
         `  code lane -> branch + PR. Everything else.\n\n` +
@@ -131,18 +131,20 @@ if (isPush) {
   const pushingMain = /\borigin\s+(main|master)\b/.test(cmd) || (!target && onMain);
   if (!pushingMain) pass();
 
-  git(["fetch", "origin", "--quiet"]);
-  const base = git(["rev-parse", "--verify", "--quiet", "origin/main"]) ? "origin/main" : "";
+  git(['fetch', 'origin', '--quiet']);
+  const base = git(['rev-parse', '--verify', '--quiet', 'origin/main']) ? 'origin/main' : '';
   if (!base) pass();
 
-  const files = git(["diff", "--name-only", `${base}..HEAD`]).split("\n").filter(Boolean);
+  const files = git(['diff', '--name-only', `${base}..HEAD`])
+    .split('\n')
+    .filter(Boolean);
   if (files.length === 0) pass();
 
   const { code, docsOnly } = classify(files);
   if (!docsOnly) {
     deny(
       `BLOCKED: this push to main carries code-lane changes.\n\n` +
-        `Code-lane files in ${base}..HEAD:\n${code.map((f) => `  - ${f}`).join("\n")}\n\n` +
+        `Code-lane files in ${base}..HEAD:\n${code.map((f) => `  - ${f}`).join('\n')}\n\n` +
         `Code reaches main through a reviewed PR, not a direct push (CLAUDE.md > Git lanes).\n` +
         `Fix: move these commits onto <type>/mne-<n>-<slug>, push that, and open a PR.\n\n` +
         `Override with MNEIA_GIT_GUARD=off only if the founder asked for it explicitly.`,
