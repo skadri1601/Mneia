@@ -2,7 +2,7 @@
 
 > **Status: proposed, partly unresolved.** Three forks below are awaiting a founder ruling and are
 > tracked as Linear decision tickets. Nothing here is settled until those close.
-> Last updated 2026-07-28.
+> Last updated 2026-07-29 — fork 4 (inference) closed; Stripe and the web app pulled into M1.
 
 ## Selection criterion
 
@@ -25,8 +25,9 @@ That criterion outweighs marginal feature differences between otherwise-similar 
 | Database | **Neon Postgres** | §11 already ruled Postgres + pgvector. Branching gives every PR an isolated database. |
 | ~~Local store~~ | **None** | Resolved by §11.1 — hosted-only, one engine. MNE-152 closed, MNE-46 cancelled. |
 | Errors | **Sentry** | MCP connected — issues can be pulled and triaged without relaying stack traces. |
-| Auth | **Clerk** | Organizations built in, which is MNE-126/127 rather than a rewrite. |
-| Billing | **Stripe** | §14, $24/seat. No real alternative for self-serve seat-based. |
+| Auth | **Clerk** | Organizations built in, which is MNE-126/127 rather than a rewrite. Now needed at M1, not M4 — MNE-181's device-flow approval page cannot be built before the provider is chosen, which is why MNE-166 went Urgent. |
+| Billing | **Stripe** | §14, $24/seat. No real alternative for self-serve seat-based. Pulled into M1 by the 2026-07-29 ruling. |
+| Inference | **Anthropic, our account** | Fork 4 closed: we pay, BYOK rejected. Server-side credential, spent on every checkpoint. Model tier still open — see MNE-180. |
 | Test + lint | **Vitest + Biome** | One binary for lint and format; fewer configs to get wrong. |
 | Releases | **changesets** | MNE-38. Publish on tag with npm provenance. |
 
@@ -49,11 +50,14 @@ write MNE-42.
 | Milestone | Adopt | Monthly |
 |---|---|---|
 | **M0** | GitHub, Actions, Vitest, Biome, changesets, Postgres in CI services | **$0** |
-| **M1** | Vercel, Neon, Clerk — pulled forward from M2 by §11.1: nothing works without the API | ~$0–20 |
+| **M1** | Vercel, Neon, Clerk — pulled forward from M2 by §11.1: nothing works without the API. **Plus Stripe and an Anthropic account**, pulled forward from M4 by the 2026-07-29 web-and-billing ruling | ~$20–50 + inference + fees |
 | **M2** | Sentry | ~$0–20 |
 | **M3** | PostHog (funnel only) | ~$20 |
-| **M4** | Stripe | + fees |
+| **M4** | — | + fees |
 | **M5** | SSO provider, revisit IaC for BYOC | enterprise |
+
+**M1 is now the milestone where cost starts.** Inference is the line item to watch: it is unbounded until
+MNE-173's ceilings land, and unpriced until MNE-180 measures it. Those two are not M1 nice-to-haves.
 
 M0 needs no account beyond GitHub.
 
@@ -62,12 +66,14 @@ M0 needs no account beyond GitHub.
 Each is a Linear decision ticket. Do not drift into them (§20).
 
 **1. Vercel vs Fly.io.** Vercel wins on agent operability — a measurable difference in how much runs
-unattended. Fly is better if the sync service ever needs long-lived connections or websockets. M2 sync
-is request/response, so Vercel is fine, but the M4 multiplayer design may change that.
+unattended. Fly is better if the hosted API ever needs long-lived connections or websockets. Every M1
+call is request/response, so Vercel is fine, but the M4 multiplayer design may change that. **More urgent
+than it was:** M1 now hosts the web app too, not just the API. Tracked as MNE-165.
 
-**2. Clerk vs WorkOS.** Clerk is faster to M2 and has orgs. WorkOS is built for the M5 SSO story
-(MNE-144) and avoids a migration. Either way **CLI device-flow auth is custom work** — neither gives
-it free, and MNE-101 should say so.
+**2. Clerk vs WorkOS.** Clerk is faster and has orgs. WorkOS is built for the M5 SSO story (MNE-144) and
+avoids a migration. Either way **CLI device-flow auth is custom work** — neither gives it free, and
+MNE-101 should say so. **Raised to Urgent 2026-07-29:** MNE-181's signup and device-flow approval pages
+are M1 work and cannot start until this closes. This is now the decision most likely to block M1.
 
 **3. Sentry in the CLI, or server-side only?** Weaker than it was: under §11.1 the item bodies are
 already on our servers, so the old *"nothing leaves the machine"* argument no longer applies. What
@@ -75,16 +81,28 @@ still applies is that a crash reporter captures **local** state the product neve
 paths, branch names, argv, environment. Leaning server-side only, with CLI errors written locally and
 attached manually if a user chooses. Tracked as MNE-167.
 
-**4. Who pays for inference?** The largest open item, and not really a stack question — it changes
-COGS by roughly an order of magnitude and reprices §14 entirely. See §11.2 question 1. Nothing in this
-document should be treated as settled until it is answered.
+**4. ~~Who pays for inference?~~ CLOSED 2026-07-29 (MNE-174): we do. BYOK rejected on every tier.**
+Asking for a seat price *and* the customer's own key funds the product twice; owning the call also keeps
+prompt caching and the Batches API discount, which both require the call to be ours. See §14.1.
+
+The stack consequence: **we hold an Anthropic account credential server-side and every checkpoint spends
+it.** That makes two things load-bearing rather than optional — MNE-173's rate limits and per-account
+inference ceilings, and MNE-180's measurement of what a real checkpoint actually costs. A flat seat price
+over metered inference is only safe if both exist.
+
+What is still open is the extraction model tier, not the payer. A Haiku-first pass with escalation to a
+larger model on low-confidence or contradiction candidates may cover most items; contradiction detection
+(§10.1 step 3) probably needs more. MNE-180 measures it.
 
 ## Repo split
 
 Per `.claude/rules/architecture.md` and §15:
 
 - **`mneia/mneia`** — public, Apache 2.0: `core`, `cli`, `mcp-server`
-- **`mneia/cloud`** — private: sync API, web app, billing, conflict UI
+- **`mneia/cloud`** — private: hosted API, web app, billing, conflict UI
+
+**This repo is now M1 work, not M4 work.** The 2026-07-29 ruling puts the web app and billing in the
+first milestone, so `mneia/cloud` gets created alongside `mneia/mneia` rather than months later.
 
 Cloud consumes `@mneia/core` from npm. A private directory inside a public repo is not possible, and
 a single repo with a licence split confuses contributors.

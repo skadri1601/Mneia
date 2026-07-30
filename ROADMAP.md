@@ -74,17 +74,29 @@ Seven projects. Six are sequential milestones from `vision.md` §13; one is stan
 | Project | Window | Success test (§13) |
 |---|---|---|
 | **M0 · Foundations & Instrumentation** | Jul 28 – Aug 4 | Schema migrates clean on hosted Postgres; every write path emits its §17 event |
-| **M1 · Core Loop — Checkpoint & Rehydrate** | Aug 4 – Aug 18 | The founder uses it daily and does not turn it off |
-| **M2 · Handoff & Distribution** | Aug 18 – Sep 8 | 5 external people use it for a week without hand-holding |
-| **M3 · Trust Layer & Public Launch** | Sep 8 – Oct 20 | 100+ installs, week-2 retention, first inbound "can my team use this" |
-| **M4 · Multiplayer** | Oct 20 – Jan 26 | First paying team. **The moat clock starts.** |
-| **M5 · Governance** | Jan 26 – Jul 28 | First org-level contract |
+| **M1 · Core Loop — Checkpoint & Rehydrate** | Aug 4 – **Sep 1** | The founder uses it daily and does not turn it off |
+| **M2 · Handoff & Distribution** | Sep 1 – Sep 22 | 5 external people use it for a week without hand-holding |
+| **M3 · Trust Layer & Public Launch** | Sep 22 – Nov 3 | 100+ installs, week-2 retention, first inbound "can my team use this" |
+| **M4 · Multiplayer** | Nov 3 – Feb 9 | First paying team. **The moat clock starts.** |
+| **M5 · Governance** | Feb 9 – Aug 11 | First org-level contract |
 | **S0 · Strategy, Open Decisions & Risk Watch** | Standing | Never completes. Reviewed at every milestone boundary. |
 
 > **Revised 2026-07-28 for hosted-only (§11.1).** M1 absorbed one week and MNE-101 (hosted API), because
 > hosted-only means there is nothing to dogfood until the API exists. M2 lost that week and that ticket,
-> so **Sep 8 holds** and nothing downstream moves. If M1 slips past Aug 18, everything after it does too —
-> that is the risk the decision bought, and it is worth naming rather than absorbing quietly.
+> so Sep 8 held and nothing downstream moved.
+
+> **Revised 2026-07-29 — web and billing moved into M1 by founder ruling (§12.3).** MNE-25 (web review
+> app), MNE-26 (billing), and the new MNE-181 (web account plane) all moved out of M4 and into M1.
+> **This time the week did not come from somewhere else.** M1 grows by two weeks and **every date after it
+> shifts by two weeks** — Sep 8 no longer holds.
+>
+> M1 is now carrying the core loop, the entire hosted API, the web app, and billing. That is three
+> milestones' worth of surface in one window, and it is the single largest schedule risk on the board.
+> If it slips, everything slips. Named here rather than absorbed quietly, per the same convention as above.
+>
+> **What stayed in M4:** MNE-22 (invites, roles, actor identity) and MNE-23 (the conflict engine, including
+> MNE-133's UI). Those are multiplayer. Moving them too would have collapsed M4 entirely and stopped the
+> §8.1 moat clock from meaning anything.
 
 ### 1.2 Issue structure
 
@@ -157,20 +169,41 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 
 ---
 
-### M1 · Core Loop — Week 2–3
+### M1 · Core Loop — Week 2–6
 
 > §13 success test: **the founder uses it daily on this repo and does not turn it off.**
 >
 > **§11.1 widened this milestone.** Hosted-only means there is no local fallback to dogfood against —
 > the API has to exist before MNE-86 can run at all. MNE-101 moved here from M2, which is the whole
 > cost of the decision. Do not treat M1 as a one-week milestone any more.
+>
+> **The 2026-07-29 ruling widened it again**, and by more. The web app and billing infra moved here from
+> M4 (§12.3). M1 now covers the core loop, the hosted API, the full web surface, and Stripe. **Four
+> milestones' worth of scope in one window.** Treat every date here as the thing most likely to be wrong.
 
 **MNE-171 · Hosted API — the prerequisite hosted-only created**
 - [ ] MNE-101 — Hosted API service scaffold and auth — **blocks MNE-74, MNE-81, MNE-86**
 - [ ] MNE-172 — Multi-tenancy: shared schema + RLS, or schema-per-tenant (§11.2 Q3) — **decide before MNE-42**
-- [ ] MNE-173 — Rate limiting and abuse controls — **hard gate on MNE-105**
+- [ ] MNE-173 — Rate limiting and abuse controls — **hard gate on MNE-105.** Urgent since the MNE-174 ruling: we pay for inference, so this is the whole margin guard
+- [ ] MNE-180 — Measure real checkpoint cost and size the §14.1 allowance — **blocks MNE-141**
+- [ ] MNE-181 — Web account plane: signup, device-flow approval, workspace and project management — **blocked by MNE-166**
 - [ ] MNE-165 — Vercel vs Fly ruling (needed before MNE-101 lands)
-- [ ] MNE-166 — Clerk vs WorkOS ruling (needed before MNE-101 lands)
+- [ ] MNE-166 — Clerk vs WorkOS ruling — **Urgent, now blocks MNE-181 as well as MNE-101**
+
+**MNE-25 · Web review app** — *moved from M4, 2026-07-29*
+- [ ] MNE-138 — Project decision browser
+- [ ] MNE-139 — Checkpoint review queue
+- [ ] MNE-140 — Bi-temporal timeline view — what did we believe on a given date
+
+**MNE-26 · Billing & team tier** — *moved from M4, 2026-07-29*
+- [ ] MNE-141 — Stripe integration at $24 per user per month — **blocked by MNE-180**
+- [ ] MNE-142 — Seat management and upgrade flow
+- [ ] MNE-143 — Individual-to-team conversion funnel instrumentation — the §18 kill-criterion measurement
+
+> ⚠️ **Billing plumbing here does not make the §14 Team tier sellable.** Roles (MNE-127), conflict
+> resolution UI (MNE-133), and team handoffs (MNE-24) are all still M4, so most of §14's Team feature
+> table is not true yet. What a paying customer gets before M4 is open on MNE-26 and §20 item 9.
+> **Do not ship a checkout page against §14's table until that is answered.**
 
 **MNE-9 · Checkpoint pipeline**
 - [ ] MNE-57 — Session trajectory reader: Claude Code and Cursor
@@ -217,7 +250,7 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 
 ---
 
-### M2 · Handoff & Distribution — Week 6
+### M2 · Handoff & Distribution — Week 8
 
 > §3: *"The unit of value is not memory. It is the handoff."* This is the first thing we ship that nobody else ships.
 
@@ -252,7 +285,7 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 
 ---
 
-### M3 · Trust Layer & Public Launch — Week 12
+### M3 · Trust Layer & Public Launch — Week 14
 
 > §16: lead with the compaction pain and the handoff artifact, **not** with "AI memory."
 
@@ -305,15 +338,17 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 - [ ] MNE-136 — Handoff notifications
 - [ ] MNE-137 — Cross-human `time_to_first_action` measurement
 
-**MNE-25 · Web review app**
-- [ ] MNE-138 — Project decision browser
-- [ ] MNE-139 — Checkpoint review queue
-- [ ] MNE-140 — Bi-temporal timeline view
+- [x] ~~MNE-25 · Web review app~~ — **moved to M1** (2026-07-29 ruling, §12.3)
+- [x] ~~MNE-26 · Billing & team tier~~ — **moved to M1** (2026-07-29 ruling, §12.3)
 
-**MNE-26 · Billing & team tier**
-- [ ] MNE-141 — Stripe at $24 per user per month
-- [ ] MNE-142 — Seat management and upgrade flow
-- [ ] MNE-143 — **Individual-to-team conversion funnel instrumentation**
+> **What this milestone is now for.** With web and billing gone, M4 is exactly the multiplayer semantics:
+> invites and roles, the conflict engine, and team handoffs. That is the right residue — §8.1 rule 3 says
+> the moat clock starts when a **second actor** writes to one project, and none of the three blocks above
+> are reachable with one user. **MNE-133's conflict UI stayed here deliberately**, with the engine it
+> renders, rather than following the rest of the web app forward into a screen with no rows.
+>
+> It also means M4 is where §14's Team feature table finally becomes true, which is what §20 item 9 is
+> waiting on.
 
 ---
 
@@ -347,12 +382,23 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 
 *Opened by the MNE-152 ruling — the §11.2 questions hosted-only created:*
 
-- [ ] MNE-174 — **DECISION 7: Who pays for inference** (due Aug 11) — ⚠️ **the largest open item; changes COGS by an order of magnitude and reprices §14**
+- [x] ~~MNE-174 — **DECISION 7: Who pays for inference**~~ — **RESOLVED 2026-07-29: we do. BYOK rejected on every tier** (§14.1)
 - [ ] MNE-176 — DECISION 8: Embedding vendor and dimensions — Anthropic has no embeddings endpoint
 - [ ] MNE-177 — DECISION 9: What "open source" means once the server is proprietary
 - [x] ~~MNE-170 — Cross-department scope~~ — **RESOLVED: in scope** (§5 Stage 4)
 
 Three more §11.2 questions are implementation rather than strategy and live in M1: **MNE-172** (multi-tenancy), **MNE-173** (rate limiting), **MNE-175** (latency spike).
+
+*Opened by the MNE-174 ruling — because we pay, none of the BYOK relief arrives:*
+
+- [ ] MNE-180 — Measure real checkpoint cost and size the §14.1 allowance (M1) — **the $24 is not load-bearing until this lands**
+- MNE-173 raised to Urgent: it is now the full margin guard, not ordinary read-path limiting
+- MNE-176 keeps all of its cost pressure — we own that call too
+
+*Opened by the 2026-07-29 web ruling:*
+
+- [ ] MNE-166 — DECISION: Clerk or WorkOS — raised to **Urgent**; now blocks MNE-181 as well as MNE-101
+- [ ] **§20 item 9 — what a paying customer gets before M4.** Billing plumbing lands in M1 but §14's Team feature table does not become true until M4. Tracked on MNE-26; needs a founder ruling before any checkout page ships.
 
 **MNE-29 · Kill-criteria watch (§18)** — **these never close**
 

@@ -82,7 +82,7 @@ Two corollaries:
 
 Everything else in the product exists to serve those three.
 
-**Surfaces:** an MCP server (works in Claude Code, Cursor, Codex, any MCP client), a CLI, and file interop with `AGENTS.md` / `CLAUDE.md`. Later, a thin web app for team review and conflict resolution.
+**Surfaces:** an MCP server (works in Claude Code, Cursor, Codex, any MCP client), a CLI, file interop with `AGENTS.md` / `CLAUDE.md`, and a thin web app — account plane plus review. All four ship together in the first milestone (§12.3). Conflict resolution joins the web app later, with multiplayer.
 
 **Deployment:** a hosted service. Apache-2.0 client packages — CLI, MCP server, schema, prompts, ranking — against a proprietary API. Not self-hostable until BYOC ships (§11.1, §15).
 
@@ -532,21 +532,29 @@ pure JavaScript plus a login.
 ### 11.2 Open — infrastructure and logic
 
 **These are not settled, and the sections that follow should be read as provisional where they touch
-them.** All six are now filed. Three are strategy and sit in S0; three are implementation and sit in M1,
-because they block MNE-42 and MNE-101 rather than waiting on a business ruling.
+them.** All six are filed. **Item 1 is now ruled**; five remain open. Of those, two are strategy and sit
+in S0; three are implementation and sit in M1, because they block MNE-42 and MNE-101 rather than waiting
+on a business ruling.
+
+Numbering is preserved after the ruling on purpose — other sections cite these by number.
 
 | # | Question | Ticket | Why it matters |
 |---|---|---|---|
-| 1 | **Who pays for inference?** We call the model and meter it, or the user brings their own key. | MNE-174 | Changes COGS by roughly an order of magnitude and changes what §14 is even pricing. The single biggest open item. |
+| 1 | ~~Who pays for inference?~~ **RULED 2026-07-29: we do.** BYOK rejected on every tier — see §14.1. | MNE-174 ✅ | Settled the model, not the number. The allowance still has to be sized against measured cost (MNE-180). |
 | 2 | **Does the CLI need a read cache after all?** | MNE-175 | Decided by whether hosted rehydrate can meet §12.1's 300ms p95. Currently an assumption, not a measurement. **Measure before building the cache** — a cache reintroduces exactly the staleness §11.1 was worth having for removing. |
 | 3 | **Multi-tenancy model.** Shared tables filtered by `workspace_id`, schema-per-tenant, or RLS. | MNE-172 | Hard to change later, and it has to be decided **before MNE-42 writes the six core tables.** Drives the M5 residency and isolation story. |
 | 4 | **Where embeddings are computed**, and by whom. | MNE-176 | Settled on *where* — server-side, at write time. Open on *which vendor*: Anthropic has no embeddings endpoint, so this is a separate procurement decision. |
 | 5 | **Rate limiting and abuse.** A CI loop can call checkpoint indefinitely. | MNE-173 | Directly protects the margin in §14, and it is a hard gate on MNE-105. An unmetered public endpoint that runs inference on request loses money non-linearly. |
 | 6 | **What "open source" now means** when the server is proprietary. | MNE-177 | §16's distribution depends on the answer being one the compaction-thread audience accepts. The risk is not being closed — it is being called out for describing closed as open. |
 
-**Question 1 gates the other five in practice.** If users bring their own key, 5 shrinks to ordinary
-read-path limiting, 4 loses most of its cost pressure, and §14 stops carrying variable COGS. Resolve it
-first, and resolve it with measurements from the MNE-86 dogfood rather than estimates.
+**Question 1 gated the other five, and the ruling went the expensive way.** Because we pay for inference,
+none of the relief a BYOK answer would have provided arrives: **5 is the full margin guard rather than
+ordinary read-path limiting, and it is now a hard gate on public install.** 4 keeps all of its cost
+pressure. §14 carries variable COGS behind a flat seat price, which is exactly the configuration that
+makes the §14.1 allowance the thing standing between us and a runaway CI loop.
+
+That is the accepted cost of the simpler product. It is not a reason to relitigate it — it is a reason
+MNE-173 and MNE-180 are both Urgent.
 
 ---
 
@@ -594,12 +602,26 @@ Every surface is a translation of the same verbs — rehydrate, assert, checkpoi
 |---|---|---|
 | **MCP server** | M1 | The primary distribution vehicle (§12.1). Open source. |
 | **CLI** | M1 | The human confirmation surface, and the one CI uses. Client is open source; it requires an account. |
-| **Web** | M3–M4 | Thin (§4): review queue, conflict resolution, decision timeline. Hosted, closed. |
+| **Web** | **M1** | Thin (§4), in two parts. **Account plane** — signup, device-flow approval, workspace and project management (MNE-181); this is a hosted-only prerequisite, not a review surface. **Review app** — decision browser, review queue, decision timeline (MNE-25). Hosted, closed. |
+| **Web — conflict resolution** | M4 | Stays with the conflict engine (MNE-23), not the web epic. §10.4's load-bearing case is human-versus-human; the screen is useless until two humans write to one project. |
 | **Slack** | post-M4 | The non-engineering surface. Unlocks the Stage 4 question. Hosted, closed. |
 | **VS Code extension** | **not planned** | MCP already runs inside VS Code, Cursor, and Codex — a developer there *already has* the tools. An extension adds chrome, not capability, at the cost of a marketplace presence and permanent API churn. Revisit only on repeated demand. |
 | **Mobile** | **not planned** | No job to be done. Resolving a §10.4 conflict means reading two contradicting items with full provenance and writing a rationale; that is not a phone interaction. |
 
 **Surfaces follow data, never lead it.** A Slack bot over an empty store answers nothing, and shipping one early converts a distribution advantage into a support burden.
+
+> **Revised 2026-07-29 — web moved from M3–M4 to M1 by founder ruling.** CLI, MCP, hosted API, full web,
+> and billing infra ship together rather than in sequence.
+>
+> Two honest notes on the trade. First, hosted-only (§11.1) had already forced part of this: `mneia login`
+> is a device flow, a device flow needs a page to approve on, and nothing tracked that page until MNE-181.
+> The old M3–M4 date described the *review app*, and quietly understated what M1 already required.
+>
+> Second, the rule above still bites on the rest. The review app has rows the moment anyone checkpoints
+> once, so it is not a surface leading data. Conflict resolution is, which is why it stayed in M4. **The
+> cost is concentrated in M1**, which had already absorbed the entire hosted API (MNE-171) and now carries
+> the web app and billing too. §13's window for it moves accordingly — that is a real schedule cost, taken
+> deliberately, not a free reshuffle.
 
 ### 12.4 File interop
 
@@ -615,15 +637,26 @@ Every surface is a translation of the same verbs — rehydrate, assert, checkpoi
 
 | Milestone | Deliverable | Success test |
 |---|---|---|
-| **Week 2–3** | **Hosted API, auth, and Postgres**, plus CLI + MCP server doing checkpoint and rehydrate against it. Works in Claude Code and Cursor. | The founder uses it daily on this repo and does not turn it off. |
-| **Week 6** | Handoff artifact shipped. `AGENTS.md` interop. Metering and quotas. Published to npm and MCP registries. | 5 external people use it for a week without hand-holding. |
-| **Week 12** | Provenance, freshness/decay, contradiction detection, `mneia status`. Public launch. | 100+ installs, measurable week-2 retention, first inbound "can my team use this." |
-| **Month 6** | **Multiplayer.** Shared projects, roles, conflict resolution UI, team handoffs. Paid team tier live. | First paying team. This is the moat clock starting. |
-| **Month 12** | Governance: SSO, audit export, permission scopes, on-prem/BYOC. | First org-level contract. |
+| **Week 2–6** | **Hosted API, auth, and Postgres**, plus CLI + MCP server doing checkpoint and rehydrate against it. Works in Claude Code and Cursor. **Plus the web app — account plane and review app — and billing infra.** | The founder uses it daily on this repo and does not turn it off. |
+| **Week 8** | Handoff artifact shipped. `AGENTS.md` interop. Metering and quotas enforced against a measured allowance. Published to npm and MCP registries. | 5 external people use it for a week without hand-holding. |
+| **Week 14** | Provenance, freshness/decay, contradiction detection, `mneia status`. Public launch. | 100+ installs, measurable week-2 retention, first inbound "can my team use this." |
+| **Month 6** | **Multiplayer.** Shared projects, invites, roles, conflict resolution UI, team handoffs. Team tier's feature table becomes true. | First paying team. This is the moat clock starting. |
+| **Month 12** | Governance: SSO, audit export, permission scopes, BYOC. | First org-level contract. |
 
 **Sequencing logic:** individual value first because it is the only thing reachable with no relationships. Multiplayer at month 6 and not later, because the moat does not start accruing until multiple actors write to one project. Governance last because it requires customers to exist first.
 
-**Revised 2026-07-28:** the hosted-only decision (§11.1) moved the API, auth, and database from Week 6 into Week 2, which is why that milestone is now Week 2–3. Nothing works before the backend exists.
+**Revised 2026-07-28:** the hosted-only decision (§11.1) moved the API, auth, and database from Week 6 into Week 2. Nothing works before the backend exists.
+
+**Revised 2026-07-29:** the web app and billing infra moved from Month 6 into the first milestone (§12.3),
+which is why it is now Week 2–6 rather than Week 2–3, and why everything after it shifts by roughly two
+weeks. **Two things did not move: invites and roles (still Month 6, because that is multiplayer) and
+conflict resolution UI (still Month 6, because it needs two humans to be worth opening).**
+
+One consequence to hold onto: **billing plumbing existing in the first milestone is not the same as the
+§14 Team tier being sellable.** Roles, conflict resolution, and team handoffs are all still Month 6, so most of what §14
+lists under Team does not exist yet. What a paying customer gets before Month 6 — a thinner tier, an
+early-access price, or plumbing that stays dark — is an open call tracked on MNE-26. Do not put up a
+checkout page advertising §14's feature table before that table is true.
 
 ---
 
@@ -657,9 +690,15 @@ think about it, while a runaway CI loop cannot quietly invert the margin.
 already fires per checkpoint for the arbitration dataset. One system, two purposes — do not build a
 second.
 
-> **Provisional.** These economics assume *we* pay for inference. If the user brings their own key
-> (§11.2 item 1) the marginal cost collapses and this whole section is repriced. Do not treat the
-> seat number as settled until that is decided.
+> **Ruled 2026-07-29 (MNE-174): we pay for inference. BYOK is rejected, on every tier.**
+> Asking a customer for $24/seat *and* their own Anthropic key funds the product twice and puts our
+> COGS on their monthly bill. Owning the call also keeps prompt caching and the Batches API discount,
+> both of which require the call to be ours, and keeps one credential path instead of two.
+>
+> So these economics are the real ones: the seat price carries variable cost, which makes the included
+> allowance load-bearing rather than a formality. **What is still open is the number, not the model** —
+> the allowance has to be sized against measured checkpoint cost from the MNE-86 dogfood (MNE-180),
+> and the $24 should not be treated as load-bearing until that lands.
 
 **Do not** charge for the solo tier. Developers do not pay for tools they can replace with a markdown
 file, and the solo tier's job is distribution, not revenue.
@@ -782,7 +821,10 @@ Things not yet settled. Resolve deliberately, do not drift into them.
 3. **Pre-compaction hook:** does Claude Code expose one? If yes, checkpointing right before compaction is the single highest-value trigger and should be prioritized.
 4. **Should `AGENTS.md` write-back be default-on?** It gives value without the MCP server connected, but writing to a user's repo by default is invasive.
 5. **Vertical wedge:** stay horizontal, or lead with long-running migrations and large refactors specifically? A vertical story makes the pitch sharper but narrows early adoption.
-6. **Co-founder profile:** distribution and developer-relations, not a second backend engineer. The technical seat is filled. Start looking during the week-12 launch, recruit from the responding community.
+6. **Co-founder profile:** distribution and developer-relations, not a second backend engineer. The technical seat is filled. Start looking during the launch milestone, recruit from the responding community.
+7. ~~**Who pays for inference.**~~ **RESOLVED 2026-07-29: we do. BYOK rejected on every tier.** See §14.1 and MNE-174. The seat price carries variable COGS, so MNE-173 (rate limiting) and MNE-180 (measure the allowance) are both Urgent consequences rather than follow-ups.
+8. ~~**When the web app ships.**~~ **RESOLVED 2026-07-29: with CLI, MCP, and the hosted API in the first milestone**, not at Month 6. See §12.3. Invites, roles, and conflict resolution UI stay at Month 6 — they are multiplayer, not web.
+9. **What a paying customer gets before Month 6.** Billing plumbing now exists in the first milestone, but most of §14's Team tier — roles, conflict resolution, team handoffs — does not. Thinner tier, early-access price, or dark plumbing? Tracked on MNE-26. **Do not ship a checkout page until this is answered.**
 
 ---
 
