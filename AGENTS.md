@@ -21,9 +21,14 @@ re-explain what is already in those files, and do not restate their content in t
 
 ## Current status
 
-**Pre-code.** M0 (Foundations & Instrumentation) is the active milestone. No `src/` exists yet.
-If you are looking for an implementation and cannot find it, that is expected — check `ROADMAP.md`
-for which milestone it belongs to before assuming it is missing.
+M0 (Foundations & Instrumentation) is the active milestone. Implementation has started: the
+migration runner and schema versioning landed with MNE-40, so `packages/core/src/store/` is real.
+Almost everything else is still ahead — if you are looking for an implementation and cannot find it,
+that is expected. Check `ROADMAP.md` for which milestone it belongs to before assuming it is missing.
+
+**The schema itself is not written yet, and is blocked.** MNE-41/42/43 create the §9 tables, and
+§11.2 Q3 (multi-tenancy: shared tables filtered by `workspace_id`, schema-per-tenant, or RLS —
+MNE-172) has to be ruled on first. Do not start those tables before that closes.
 
 ## Repo map
 
@@ -39,16 +44,26 @@ for which milestone it belongs to before assuming it is missing.
 
 ## Commands
 
-**None of these exist yet.** They are the intended surface, established in MNE-34/35/36.
-Update this section the moment they become real — a stale command list is worse than none.
+These are real as of MNE-34/35/36. Keep this section current — a stale command list is worse than none.
 
 ```
 pnpm install          # deps
-pnpm build            # build all packages
+pnpm build            # tsc --build across packages
 pnpm test             # vitest
-pnpm typecheck        # tsc --noEmit
-pnpm lint             # biome check
+pnpm typecheck        # tsc --build --force
 pnpm format           # biome format --write
+pnpm format:check     # what CI runs
+pnpm lint             # biome check — local only, dropped from CI by MNE-183
+```
+
+`pnpm test` runs unit tests anywhere. The Postgres integration tests under `tests/integration/`
+need a real engine and **skip themselves when `DATABASE_URL` is unset** — except in CI, where a
+missing `DATABASE_URL` is a hard error rather than a silent skip. To run them locally:
+
+```
+docker run -d --name mneia-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=mneia \
+  -p 5433:5432 pgvector/pgvector:pg17
+DATABASE_URL='postgres://postgres:postgres@localhost:5433/mneia' pnpm test
 ```
 
 ## The nine standing rules
