@@ -49,12 +49,20 @@ These are real as of MNE-34/35/36. Keep this section current — a stale command
 ```
 pnpm install          # deps
 pnpm build            # tsc --build across packages
-pnpm test             # vitest
+pnpm test             # build, then vitest — see below for why it builds
 pnpm typecheck        # tsc --build --force
 pnpm format           # biome format --write
 pnpm format:check     # what CI runs
-pnpm lint             # biome check — local only, dropped from CI by MNE-183
+pnpm lint             # biome check — everything, warnings included, local only
+pnpm lint:ci          # biome lint, errors only — what CI runs
+pnpm check:tests      # rejects committed .only / .skip / .todo
+pnpm check:policy     # branch, commit, and lane policy
 ```
+
+**`pnpm test` builds first, on purpose.** The `cli` and `mcp-server` tests import `@mneia/core` by
+package name, which resolves to `packages/core/dist` — so a clean checkout has nothing to import.
+This used to work in CI only by accident, because `typecheck` happened to build first. Do not remove
+the build from the `test` script without also fixing those imports.
 
 `pnpm test` runs unit tests anywhere. The Postgres integration tests under `tests/integration/`
 need a real engine and **skip themselves when `DATABASE_URL` is unset** — except in CI, where a
