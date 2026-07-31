@@ -1,34 +1,41 @@
 .eyebrow {
+  margin-block-end: var(--space-sm);
   font-family: var(--font-text);
   font-size: var(--size-caption);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-caption-strong);
   letter-spacing: var(--tracking-caption);
-  color: var(--tile-muted);
+  color: var(--tile-faint);
 }
 
 .hero {
+  margin-block-end: var(--space-lg);
   font-family: var(--font-display);
   font-size: var(--size-hero-display);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-hero-display);
   letter-spacing: var(--tracking-hero-display);
+  max-width: 18ch;
 }
 
 .displayLg {
+  margin-block-end: var(--space-lg);
   font-family: var(--font-display);
   font-size: var(--size-display-lg);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-display-lg);
   letter-spacing: var(--tracking-display-lg);
+  max-width: 22ch;
 }
 
 .displayMd {
+  margin-block-end: var(--space-md);
   font-family: var(--font-text);
   font-size: var(--size-display-md);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-display-md);
   letter-spacing: var(--tracking-body);
+  max-width: 26ch;
 }
 
 .lead {
@@ -36,17 +43,20 @@
   font-size: var(--size-lead);
   font-weight: var(--weight-regular);
   line-height: var(--leading-lead);
-  letter-spacing: var(--tracking-lead);
+  letter-spacing: var(--tracking-none);
   color: var(--tile-muted);
+  max-width: 46ch;
 }
 
 .leadAiry {
+  margin-block-end: var(--space-lg);
   font-family: var(--font-text);
   font-size: var(--size-lead-airy);
   font-weight: var(--weight-light);
   line-height: var(--leading-lead-airy);
   letter-spacing: var(--tracking-none);
   color: var(--tile-ink);
+  max-width: 44ch;
 }
 
 .tagline {
@@ -64,13 +74,16 @@
   line-height: var(--leading-body);
   letter-spacing: var(--tracking-body);
   color: var(--tile-muted);
-  max-width: 60ch;
+  max-width: 62ch;
+}
+
+.body p + p {
+  margin-block-start: var(--space-md);
 }
 
 .body strong {
   color: var(--tile-ink);
   font-weight: var(--weight-semibold);
-  line-height: var(--leading-body-strong);
 }
 
 .caption {

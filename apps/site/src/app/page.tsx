@@ -1,6 +1,7 @@
 import { ButtonPrimary, ButtonSecondaryPill } from '@/components/Button';
 import { Card, CardGrid } from '@/components/Card';
 import { HandoffArtifact } from '@/components/HandoffArtifact';
+import { Rise, RiseOnScroll } from '@/components/Reveal';
 import prose from '@/components/Prose.module.css';
 import { Tile } from '@/components/Tile';
 import { WaitlistForm } from '@/components/WaitlistForm';
@@ -32,22 +33,32 @@ export default function HomePage() {
     <>
       <Tile surface="canvas" centered>
         <div className={styles.hero}>
-          <p className={prose.eyebrow}>Project memory and handoff</p>
-          <h1 className={prose.hero}>Your agent forgets.</h1>
-          <p className={`${prose.lead} ${prose.centered}`}>
-            Your teammate never knew. Mneia captures the decisions a session produced at the moment
-            work stops, and hands them to whoever picks it up next.
-          </p>
-          <div className={`${prose.actions} ${prose.actionsCentered}`}>
-            <ButtonPrimary href="#waitlist">Request access</ButtonPrimary>
-            <ButtonSecondaryPill href="/handoff">See a real handoff</ButtonSecondaryPill>
-          </div>
+          <Rise step={0}>
+            <p className={prose.eyebrow}>Project memory and handoff</p>
+          </Rise>
+          <Rise step={1}>
+            <h1 className={prose.hero}>Your agent forgets.</h1>
+          </Rise>
+          <Rise step={2}>
+            <p className={`${prose.lead} ${prose.centered}`}>
+              Your teammate never knew. Mneia captures the decisions a session produced at the
+              moment work stops, and hands them to whoever picks it up next.
+            </p>
+          </Rise>
+          <Rise step={3}>
+            <div className={`${prose.actions} ${prose.actionsCentered}`}>
+              <ButtonPrimary href="#waitlist">Request access</ButtonPrimary>
+              <ButtonSecondaryPill href="/handoff">See a real handoff</ButtonSecondaryPill>
+            </div>
+          </Rise>
         </div>
       </Tile>
 
       <Tile surface="dark1" centered>
-        <p className={prose.eyebrow}>The problem</p>
-        <h2 className={prose.displayLg}>Three hours of context, gone by Tuesday.</h2>
+        <RiseOnScroll>
+          <p className={prose.eyebrow}>The problem</p>
+          <h2 className={prose.displayLg}>Three hours of context, gone by Tuesday.</h2>
+        </RiseOnScroll>
         <div className={styles.scenario}>
           <p>
             A developer works with Claude Code or Cursor for three hours on Monday. They establish
@@ -74,23 +85,27 @@ export default function HomePage() {
       </Tile>
 
       <Tile surface="canvas" centered>
-        <p className={prose.eyebrow}>The artifact</p>
-        <h2 className={prose.displayLg}>This is the thing we ship.</h2>
+        <RiseOnScroll>
+          <p className={prose.eyebrow}>The artifact</p>
+          <h2 className={prose.displayLg}>This is the thing we ship.</h2>
+        </RiseOnScroll>
         <p className={`${prose.lead} ${prose.centered}`}>
           Not a memory store you query. An object you receive, with every line marked by who
           asserted it.
         </p>
-        <div className={styles.artifactStage}>
+        <RiseOnScroll late className={styles.artifactStage}>
           <HandoffArtifact highlightSuperseded />
-        </div>
+        </RiseOnScroll>
         <div className={`${prose.actions} ${prose.actionsCentered}`}>
           <ButtonSecondaryPill href="/handoff">Read it annotated</ButtonSecondaryPill>
         </div>
       </Tile>
 
       <Tile surface="parchment" wide centered>
-        <p className={prose.eyebrow}>Three operations</p>
-        <h2 className={prose.displayLg}>Everything else serves these.</h2>
+        <RiseOnScroll>
+          <p className={prose.eyebrow}>Three operations</p>
+          <h2 className={prose.displayLg}>Everything else serves these.</h2>
+        </RiseOnScroll>
         <CardGrid>
           {OPERATIONS.map((operation) => (
             <Card
@@ -106,8 +121,10 @@ export default function HomePage() {
       </Tile>
 
       <Tile surface="dark1" centered>
-        <p className={prose.eyebrow}>Where it runs</p>
-        <h2 className={prose.displayLg}>In the tools you already work in.</h2>
+        <RiseOnScroll>
+          <p className={prose.eyebrow}>Where it runs</p>
+          <h2 className={prose.displayLg}>In the tools you already work in.</h2>
+        </RiseOnScroll>
         <div className={`${prose.body} ${prose.centered} ${prose.stack}`}>
           <p>
             An MCP server that works in Claude Code, Cursor, Codex, or any MCP client. A CLI. File
@@ -123,11 +140,13 @@ export default function HomePage() {
 
       <Tile surface="canvas" centered id="waitlist">
         <div className={styles.waitlist}>
-          <p className={prose.eyebrow}>Access</p>
-          <h2 className={prose.displayLg}>Mneia is in private development.</h2>
+          <RiseOnScroll>
+            <p className={prose.eyebrow}>Access</p>
+            <h2 className={prose.displayLg}>Request early access.</h2>
+          </RiseOnScroll>
           <p className={`${prose.lead} ${prose.centered}`}>
-            There is no public build yet. Leave an address and you will hear once there is something
-            worth your time.
+            We are onboarding teams in stages. Tell us where to reach you and we will get you set
+            up.
           </p>
           <WaitlistForm />
         </div>

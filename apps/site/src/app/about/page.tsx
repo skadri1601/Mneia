@@ -2,13 +2,13 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { ButtonPrimary } from '@/components/Button';
 import prose from '@/components/Prose.module.css';
+import { Rise, RiseOnScroll, SlideOnScroll } from '@/components/Reveal';
 import { Tile } from '@/components/Tile';
 import styles from './page.module.css';
 
 export const metadata: Metadata = {
   title: 'About',
-  description:
-    'Why Mneia exists, who it is built for, how it is licensed, and the things we have decided not to build.',
+  description: 'Why Mneia exists, who it is built for, and how it is licensed.',
 };
 
 const BET: ReactNode[] = [
@@ -55,32 +55,29 @@ const AUDIENCE = [
   },
 ];
 
-const NOT_BUILDING = [
-  'Agent orchestration or a runtime',
-  'Observability, tracing, or evals',
-  'Enterprise document search',
-  'A chat interface, or an agent of our own',
-  'Durable execution infrastructure',
-  'Model hosting or inference',
-  'A vector database. We use one',
-  'Every framework on day one',
-];
-
 export default function AboutPage() {
   return (
     <>
       <Tile surface="canvas">
-        <p className={prose.eyebrow}>About</p>
-        <h1 className={prose.hero}>The context layer is permanent. Nobody built it for teams.</h1>
-        <p className={prose.lead}>
-          Mneia is the shared project memory and handoff layer for teams working with AI agents.
-          Three operations: checkpoint, rehydrate, handoff. Everything else serves them.
-        </p>
+        <Rise step={0}>
+          <p className={prose.eyebrow}>About</p>
+        </Rise>
+        <Rise step={1}>
+          <h1 className={prose.hero}>The context layer is permanent. Nobody built it for teams.</h1>
+        </Rise>
+        <Rise step={2}>
+          <p className={prose.lead}>
+            Mneia is the shared project memory and handoff layer for teams working with AI agents.
+            Three operations: checkpoint, rehydrate, handoff. Everything else serves them.
+          </p>
+        </Rise>
       </Tile>
 
       <Tile surface="dark1">
-        <p className={prose.eyebrow}>The bet</p>
-        <h2 className={prose.displayLg}>In five sentences.</h2>
+        <SlideOnScroll>
+          <p className={prose.eyebrow}>The bet</p>
+          <h2 className={prose.displayLg}>In five sentences.</h2>
+        </SlideOnScroll>
         <ol className={styles.bet}>
           {BET.map((item, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: static ordered prose, never reordered
@@ -92,7 +89,9 @@ export default function AboutPage() {
       </Tile>
 
       <Tile surface="canvas">
-        <p className={prose.eyebrow}>The thesis</p>
+        <SlideOnScroll>
+          <p className={prose.eyebrow}>The thesis</p>
+        </SlideOnScroll>
         <p className={prose.leadAiry}>
           &ldquo;The unit of value is not memory. It is the handoff.&rdquo;
         </p>
@@ -113,8 +112,10 @@ export default function AboutPage() {
       </Tile>
 
       <Tile surface="parchment">
-        <p className={prose.eyebrow}>Who it is for</p>
-        <h2 className={prose.displayLg}>Built for a company, landed through engineering.</h2>
+        <SlideOnScroll>
+          <p className={prose.eyebrow}>Who it is for</p>
+          <h2 className={prose.displayLg}>Built for a company, landed through engineering.</h2>
+        </SlideOnScroll>
         <div className={prose.body}>
           <p>
             Context does not stop at a team boundary. A decision made in the payments team changes
@@ -134,8 +135,10 @@ export default function AboutPage() {
       </Tile>
 
       <Tile surface="canvas" id="licensing">
-        <p className={prose.eyebrow}>Licensing</p>
-        <h2 className={prose.displayLg}>Open clients, hosted service.</h2>
+        <RiseOnScroll>
+          <p className={prose.eyebrow}>Licensing</p>
+          <h2 className={prose.displayLg}>Open clients, hosted service.</h2>
+        </RiseOnScroll>
         <div className={`${prose.body} ${prose.stack}`}>
           <p>
             The client packages are Apache 2.0: the CLI, the MCP server, and the core, which holds
@@ -144,31 +147,24 @@ export default function AboutPage() {
           </p>
           <p>
             <strong>Being straight about what that means:</strong> Mneia runs as a hosted service.
-            The clients require an account and do not function without it. Bring-your-own-cloud is
-            on the roadmap for organisations that need it; it does not exist today, and we would
-            rather say so here than have you find out after installing.
+            The clients require an account and do not function without it. We would rather say so
+            here than have you find out after installing.
           </p>
         </div>
       </Tile>
 
-      <Tile surface="dark1" id="not-building">
-        <p className={prose.eyebrow}>Scope</p>
-        <h2 className={prose.displayLg}>What we have decided not to build.</h2>
+      <Tile surface="dark1">
+        <SlideOnScroll>
+          <p className={prose.eyebrow}>Scope</p>
+          <h2 className={prose.displayLg}>Three operations, done properly.</h2>
+        </SlideOnScroll>
         <div className={prose.body}>
           <p>
-            A short list of things that are reasonable requests and still get a no. We sit beside
-            the frameworks and the observability tools, never above them, and a product that answers
-            every adjacent request stops being good at the three operations it exists for.
+            Checkpoint, rehydrate, handoff. We sit beside the frameworks and the observability tools
+            you already run, never above them, and everything we build serves those three operations
+            rather than competing with the rest of your stack.
           </p>
         </div>
-        <ul className={styles.notList}>
-          {NOT_BUILDING.map((item) => (
-            <li key={item}>
-              <span className={styles.strike}>·</span>
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
         <div className={prose.actions}>
           <ButtonPrimary href="/#waitlist">Request access</ButtonPrimary>
         </div>

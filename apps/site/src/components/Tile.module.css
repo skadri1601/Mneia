@@ -67,3 +67,7 @@
 .centered {
   text-align: center;
 }
+
+.centered :is(h1, h2, h3, p) {
+  margin-inline: auto;
+}

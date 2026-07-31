@@ -24,8 +24,8 @@ export function WaitlistForm() {
       <ButtonSubmit disabled={!live}>Request access</ButtonSubmit>
       <p className={styles.note}>
         {live
-          ? 'One email when it opens up. Nothing else, and no sharing with anyone.'
-          : 'The list is not open yet. Mneia is in private development and there is nothing to sign into. This form turns on when there is.'}
+          ? 'One email when your access is ready. Nothing else, and no sharing with anyone.'
+          : 'Early access is opening in stages. Leave an address and we will be in touch.'}
       </p>
     </form>
   );

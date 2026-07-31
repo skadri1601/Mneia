@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { ButtonPrimary } from '@/components/Button';
 import { Card, CardGrid } from '@/components/Card';
 import { HandoffArtifact } from '@/components/HandoffArtifact';
+import { Rise, RiseOnScroll } from '@/components/Reveal';
 import prose from '@/components/Prose.module.css';
 import { Tile } from '@/components/Tile';
 import styles from './page.module.css';
@@ -49,27 +50,32 @@ export default function HandoffPage() {
   return (
     <>
       <Tile surface="canvas">
-        <p className={prose.eyebrow}>The artifact</p>
-        <h1 className={prose.hero}>What a handoff actually looks like.</h1>
-        <p className={prose.lead}>
-          Every competitor built a place to store context and a way to query it. That is a database
-          posture. The job to be done is a transfer.
-        </p>
+        <Rise step={0}>
+          <p className={prose.eyebrow}>The artifact</p>
+        </Rise>
+        <Rise step={1}>
+          <h1 className={prose.hero}>What a handoff actually looks like.</h1>
+        </Rise>
+        <Rise step={2}>
+          <p className={prose.lead}>
+            Every competitor built a place to store context and a way to query it. That is a
+            database posture. The job to be done is a transfer.
+          </p>
+        </Rise>
       </Tile>
 
       <Tile surface="parchment">
-        <div className={styles.artifactWrap}>
+        <RiseOnScroll className={styles.artifactWrap}>
           <HandoffArtifact highlightSuperseded />
-        </div>
-        <p className={styles.caption}>
-          Rendered markdown, frozen at creation, plus a live link. This example is the reference
-          artifact from our own design brief.
-        </p>
+        </RiseOnScroll>
+        <p className={styles.caption}>Rendered markdown, frozen at creation, plus a live link.</p>
       </Tile>
 
       <Tile surface="canvas" wide>
-        <p className={prose.eyebrow}>Section by section</p>
-        <h2 className={prose.displayLg}>Why each block is in there.</h2>
+        <RiseOnScroll>
+          <p className={prose.eyebrow}>Section by section</p>
+          <h2 className={prose.displayLg}>Why each block is in there.</h2>
+        </RiseOnScroll>
         <CardGrid>
           {SECTIONS.map((section) => (
             <Card key={section.index} index={section.index} title={section.title}>

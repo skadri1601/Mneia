@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { ButtonPrimary } from '@/components/Button';
 import prose from '@/components/Prose.module.css';
+import { Rise, RiseOnScroll, SlideOnScroll } from '@/components/Reveal';
 import { Tile, type TileSurface } from '@/components/Tile';
 import styles from './page.module.css';
 
@@ -64,8 +65,12 @@ export default function FeaturesPage() {
   return (
     <>
       <Tile surface="canvas">
-        <p className={prose.eyebrow}>Features</p>
-        <h1 className={prose.hero}>Five things that exist together nowhere else.</h1>
+        <Rise step={0}>
+          <p className={prose.eyebrow}>Features</p>
+        </Rise>
+        <Rise step={1}>
+          <h1 className={prose.hero}>Five things that exist together nowhere else.</h1>
+        </Rise>
         <p className={prose.lead}>
           Individually, several of these have partial answers elsewhere. The combination is what
           does not exist, and the combination is what a team actually needs.
@@ -75,13 +80,13 @@ export default function FeaturesPage() {
       {FEATURES.map((feature, i) => (
         <Tile key={feature.index} surface={SURFACES[i] ?? 'canvas'}>
           <div className={styles.feature}>
-            <div>
+            <SlideOnScroll from={i % 2 === 0 ? 'left' : 'right'}>
               <div className={styles.index}>{feature.index}</div>
               <h2 className={prose.displayMd}>{feature.title}</h2>
               <div className={prose.body}>
                 <p>{feature.body}</p>
               </div>
-            </div>
+            </SlideOnScroll>
             <div className={styles.today}>
               <div className={styles.todayLabel}>{feature.todayLabel}</div>
               <div className={styles.todayValue}>{feature.todayValue}</div>
@@ -92,22 +97,16 @@ export default function FeaturesPage() {
       ))}
 
       <Tile surface="parchment">
-        <p className={prose.eyebrow}>Kept on the wall</p>
+        <SlideOnScroll>
+          <p className={prose.eyebrow}>Why it compounds</p>
+        </SlideOnScroll>
         <div className={styles.honest}>
-          <p className={prose.leadAiry}>
-            &ldquo;Any one of these can be built by a funded team in a quarter.&rdquo;
-          </p>
+          <p className={prose.leadAiry}>The value is not the feature list. It is the record.</p>
           <div className={`${prose.body} ${prose.stack}`}>
             <p>
-              That sentence is from our own founding brief, and it stays there on purpose. Features
-              get the first thousand users. What keeps a team is that after a year of checkpointing,
-              leaving means abandoning their own institutional memory.
-            </p>
-            <p>
-              <strong>
-                If we cannot say why a team stays after eighteen months, the business does not exist
-              </strong>{' '}
-              regardless of how good the feature list looks today.
+              After a year of checkpointing, your project carries its own history: what was decided,
+              why, who confirmed it, and what was already ruled out. That record is yours, it is
+              specific to your work, and it gets more useful every month it grows.
             </p>
           </div>
         </div>
