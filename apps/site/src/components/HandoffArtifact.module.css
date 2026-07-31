@@ -2,23 +2,56 @@
   max-width: var(--width-artifact);
   min-width: 0;
   margin-inline: auto;
-  background-color: var(--surface-tile-3);
-  border-radius: var(--rounded-lg);
+  background-color: var(--editor-body);
+  border-radius: var(--rounded-md);
   box-shadow: var(--shadow-product);
   overflow: hidden;
   text-align: start;
 }
 
 .chrome {
+  position: relative;
   display: flex;
   align-items: center;
-  min-height: 36px;
-  padding-inline: var(--space-md);
-  background-color: var(--surface-black);
-  color: var(--ink-muted-48);
+  min-height: 38px;
+  padding-inline: var(--space-sm);
+  background-color: var(--editor-chrome);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.35);
+}
+
+.lights {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.light {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--rounded-full);
+}
+
+.close {
+  background-color: var(--mac-close);
+}
+
+.minimise {
+  background-color: var(--mac-minimise);
+}
+
+.zoom {
+  background-color: var(--mac-zoom);
+}
+
+.filename {
+  position: absolute;
+  inset-inline: 0;
+  text-align: center;
+  pointer-events: none;
+  color: var(--body-muted);
   font-family: var(--font-mono);
-  font-size: var(--size-fine-print);
-  letter-spacing: var(--tracking-fine-print);
+  font-size: var(--size-micro-legal);
+  letter-spacing: var(--tracking-none);
 }
 
 .scroll {
@@ -91,7 +124,7 @@
 
 .code {
   font-family: var(--font-mono);
-  background-color: var(--surface-black);
+  background-color: rgba(255, 255, 255, 0.1);
   border-radius: var(--rounded-xs);
   padding-inline: var(--space-xxs);
 }

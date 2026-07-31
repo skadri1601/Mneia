@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import { ButtonPrimary } from '@/components/Button';
 import prose from '@/components/Prose.module.css';
+import { Rise, RiseOnScroll, SlideOnScroll } from '@/components/Reveal';
 import { Tile } from '@/components/Tile';
 import styles from './page.module.css';
 
@@ -60,7 +61,7 @@ const TIERS = [
 const METERING = [
   {
     action: 'Checkpoint',
-    cost: 'The extraction call — effectively the entire marginal cost',
+    cost: 'The extraction call, effectively the entire marginal cost',
     metered: 'Metered',
   },
   {
@@ -89,8 +90,12 @@ export default function PricingPage() {
   return (
     <>
       <Tile surface="canvas" wide>
-        <p className={prose.eyebrow}>Pricing</p>
-        <h1 className={prose.hero}>Priced per seat, metered on one thing.</h1>
+        <Rise step={0}>
+          <p className={prose.eyebrow}>Pricing</p>
+        </Rise>
+        <Rise step={1}>
+          <h1 className={prose.hero}>Priced per seat, metered on one thing.</h1>
+        </Rise>
         <p className={prose.lead}>
           There is exactly one action in the product with a real marginal cost. Everything else is a
           database query, and we do not think you should be counting those.
@@ -111,7 +116,7 @@ export default function PricingPage() {
               <ul className={styles.contents}>
                 {tier.contents.map((item) => (
                   <li key={item}>
-                    <span className={styles.tick}>—</span>
+                    <span className={styles.tick}>·</span>
                     <span>{item}</span>
                   </li>
                 ))}
@@ -123,19 +128,21 @@ export default function PricingPage() {
         <div className={styles.preview}>
           <strong>Pricing is in preview.</strong> The seat price is set against what comparable
           tools charge, but the number is not final until we have measured what a real checkpoint
-          costs us to run. If it moves before general availability, it moves before anyone is billed
-          — not after.
+          costs us to run. If it moves before general availability, it moves before anyone is
+          billed, not after.
         </div>
       </Tile>
 
       <Tile surface="dark1" wide>
-        <p className={prose.eyebrow}>What gets metered</p>
-        <h2 className={prose.displayLg}>One line item, not a bill you have to parse.</h2>
+        <SlideOnScroll>
+          <p className={prose.eyebrow}>What gets metered</p>
+          <h2 className={prose.displayLg}>One line item, not a bill you have to parse.</h2>
+        </SlideOnScroll>
         <div className={prose.body}>
           <p>
             A checkpoint runs an extraction pass over your session. That call is the cost. The seat
             price includes an allowance set at several times ordinary use, so a normal month never
-            touches it — the ceiling exists so a runaway loop in CI cannot quietly invert the
+            touches it. The ceiling exists so a runaway loop in CI cannot quietly invert the
             economics.
           </p>
         </div>
@@ -162,8 +169,10 @@ export default function PricingPage() {
       </Tile>
 
       <Tile surface="canvas">
-        <p className={prose.eyebrow}>No key required</p>
-        <h2 className={prose.displayMd}>We pay for inference, not you.</h2>
+        <SlideOnScroll>
+          <p className={prose.eyebrow}>No key required</p>
+          <h2 className={prose.displayMd}>We pay for inference, not you.</h2>
+        </SlideOnScroll>
         <div className={`${prose.body} ${prose.stack}`}>
           <p>
             You will not be asked for a model provider key. Charging a seat price and then asking

@@ -13,7 +13,14 @@ export function HandoffArtifact({
 }) {
   return (
     <div className={styles.panel}>
-      <div className={styles.chrome}>{HANDOFF.path}</div>
+      <div className={styles.chrome}>
+        <span className={styles.lights} aria-hidden="true">
+          <span className={`${styles.light} ${styles.close}`} />
+          <span className={`${styles.light} ${styles.minimise}`} />
+          <span className={`${styles.light} ${styles.zoom}`} />
+        </span>
+        <span className={styles.filename}>{HANDOFF.path}</span>
+      </div>
       <div className={styles.scroll}>
         <div className={styles.body}>
           <div className={styles.title}># {HANDOFF.title}</div>

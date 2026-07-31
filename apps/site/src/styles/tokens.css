@@ -1,5 +1,5 @@
 :root {
-  --type-scale: 1.15;
+  --type-scale: 1;
 
   --primary: #0066cc;
   --primary-focus: #0071e3;
@@ -14,6 +14,13 @@
   --surface-tile-3: #252527;
   --surface-black: #000000;
   --surface-chip-translucent: #d2d2d7;
+
+  --editor-chrome: #3a3a3c;
+  --editor-body: #1e1e20;
+  --editor-gutter: #6e6e76;
+  --mac-close: #ff5f57;
+  --mac-minimise: #febc2e;
+  --mac-zoom: #28c840;
 
   --ink: #1d1d1f;
   --body-on-dark: #ffffff;
@@ -36,38 +43,39 @@
     "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, var(--font-inter), sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --size-hero-display: calc(56px * var(--type-scale));
-  --size-display-lg: calc(40px * var(--type-scale));
+  --size-hero-display: calc(64px * var(--type-scale));
+  --size-display-lg: calc(46px * var(--type-scale));
   --size-display-md: calc(34px * var(--type-scale));
-  --size-lead: calc(28px * var(--type-scale));
-  --size-lead-airy: calc(24px * var(--type-scale));
-  --size-tagline: calc(21px * var(--type-scale));
-  --size-button-large: calc(18px * var(--type-scale));
-  --size-body: calc(17px * var(--type-scale));
-  --size-caption: calc(14px * var(--type-scale));
-  --size-fine-print: calc(13px * var(--type-scale));
-  --size-nav-link: calc(13px * var(--type-scale));
-  --size-micro-legal: calc(11px * var(--type-scale));
-  --size-artifact: calc(13px * var(--type-scale));
+  --size-lead: calc(26px * var(--type-scale));
+  --size-lead-airy: calc(25px * var(--type-scale));
+  --size-tagline: calc(28px * var(--type-scale));
+  --size-button-large: calc(21px * var(--type-scale));
+  --size-body: calc(21px * var(--type-scale));
+  --size-caption: calc(18px * var(--type-scale));
+  --size-fine-print: calc(16px * var(--type-scale));
+  --size-nav-link: calc(20px * var(--type-scale));
+  --size-nav-wordmark: calc(24px * var(--type-scale));
+  --size-micro-legal: calc(13px * var(--type-scale));
+  --size-artifact: calc(15px * var(--type-scale));
 
   --weight-light: 300;
   --weight-regular: 400;
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  --leading-hero-display: 1.07;
-  --leading-display-lg: 1.1;
-  --leading-display-md: 1.47;
-  --leading-lead: 1.14;
+  --leading-hero-display: 1.08;
+  --leading-display-lg: 1.12;
+  --leading-display-md: 1.25;
+  --leading-lead: 1.42;
   --leading-lead-airy: 1.5;
-  --leading-tagline: 1.19;
-  --leading-body-strong: 1.24;
-  --leading-body: 1.47;
-  --leading-dense-link: 2.41;
-  --leading-caption: 1.43;
-  --leading-caption-strong: 1.29;
+  --leading-tagline: 1.3;
+  --leading-body-strong: 1.55;
+  --leading-body: 1.6;
+  --leading-dense-link: 2.2;
+  --leading-caption: 1.5;
+  --leading-caption-strong: 1.35;
   --leading-button: 1;
-  --leading-fine-print: 1.2;
+  --leading-fine-print: 1.4;
   --leading-micro-legal: 1.3;
   --leading-artifact: 1.65;
 
@@ -104,8 +112,8 @@
   --width-grid: 1440px;
   --width-artifact: 780px;
 
-  --global-nav-height: 44px;
-  --sub-nav-height: 52px;
+  --global-nav-height: 56px;
+  --sub-nav-height: 68px;
   --target-min: 44px;
 
   --press-scale: 0.95;
@@ -113,27 +121,39 @@
 
 @media (max-width: 1068px) {
   :root {
+    --size-hero-display: calc(50px * var(--type-scale));
+    --size-display-lg: calc(40px * var(--type-scale));
+  }
+}
+
+@media (max-width: 834px) {
+  :root {
     --size-hero-display: calc(44px * var(--type-scale));
+    --size-display-lg: calc(36px * var(--type-scale));
+    --size-lead: calc(24px * var(--type-scale));
   }
 }
 
 @media (max-width: 734px) {
   :root {
-    --space-section: 48px;
+    --space-section: 56px;
   }
 }
 
 @media (max-width: 640px) {
   :root {
-    --size-hero-display: calc(34px * var(--type-scale));
-    --size-display-lg: calc(30px * var(--type-scale));
-    --size-lead: calc(22px * var(--type-scale));
+    --size-hero-display: calc(38px * var(--type-scale));
+    --size-display-lg: calc(32px * var(--type-scale));
+    --size-display-md: calc(28px * var(--type-scale));
+    --size-lead: calc(23px * var(--type-scale));
+    --size-body: calc(19px * var(--type-scale));
+    --size-nav-link: calc(18px * var(--type-scale));
   }
 }
 
 @media (max-width: 419px) {
   :root {
-    --size-hero-display: calc(28px * var(--type-scale));
-    --size-display-lg: calc(26px * var(--type-scale));
+    --size-hero-display: calc(32px * var(--type-scale));
+    --size-display-lg: calc(28px * var(--type-scale));
   }
 }

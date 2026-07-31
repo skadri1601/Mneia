@@ -15,7 +15,6 @@ const COLUMNS = [
     links: [
       { href: '/about', label: 'About' },
       { href: '/about#licensing', label: 'Licensing' },
-      { href: '/about#not-building', label: 'What we will not build' },
     ],
   },
 ];
@@ -46,7 +45,6 @@ export function Footer() {
         ))}
       </div>
       <div className={styles.legal}>
-        <p>Mneia is in private development. Nothing here is generally available yet.</p>
         <p>© {new Date().getFullYear()} Mneia. All rights reserved.</p>
       </div>
     </footer>

@@ -22,37 +22,75 @@ licence to diverge further.
 > superseded.** The founder ruled on 2026-07-31 that the design is Apple's, on Apple's own light
 > canvas. The amber accent, the bespoke type ramp, and the black inversion are all gone.
 
-## Deviation 1 — the type scale
+## Deviation 1: the type ladder is ours, not Apple's
 
-**Every size in `apple.md`'s ladder is multiplied by `--type-scale`, currently `1.15`.**
+`apple.md`'s absolute sizes were set for Apple's viewing distances and their SF Pro rendering. On a
+developer's monitor they read small, and the founder called it twice on 2026-07-31. **The sizes here
+are a judgement call and no longer track `apple.md`.**
 
-Apple's absolute sizes were set for Apple's own viewing distances and their SF Pro rendering. On a
-developer's monitor, running the ladder at its literal values read too small — the founder called it
-on 2026-07-31 after seeing it in a browser.
+| Token | `apple.md` | Here |
+| -- | -- | -- |
+| hero-display | 56px | 64px |
+| display-lg | 40px | 46px |
+| display-md | 34px | 34px |
+| lead | 28px | 26px |
+| body | 17px | **21px** |
+| caption | 14px | 18px |
+| fine-print | 12px | 16px |
+| nav-link | 12px | 20px |
 
-This is a **scale**, not a re-ramp. Every ratio in `apple.md` is preserved exactly: body still sits
-one step above caption, hero display still sits at 4× fine print, and the relationships that make the
-hierarchy legible are untouched. Only the multiplier changed, and it is **one token in one file**:
+Line-heights were retuned with them, because Apple's were set for Apple's sizes. `display-md` moved
+from 1.47 to 1.25 and `lead` from 1.14 to 1.42 — the first was too loose for a heading, the second
+too tight for a lead that wraps to three lines.
 
-```css
---type-scale: 1.15;
---size-body: calc(17px * var(--type-scale));   /* 19.55px rendered */
-```
+Every size is still `calc(Npx * var(--type-scale))`. **`--type-scale` is the one knob**: change it to
+move the whole system without disturbing a single ratio. Never edit an individual size to fix one
+screen, which re-ramps the ladder.
 
-To retune the whole system, change that number. Do not adjust individual sizes — that re-ramps the
-ladder and is how a type system drifts.
+**Vertical rhythm is part of the type system.** The global reset zeroes every margin, so headings
+carry their own `margin-block-end` in `Prose.module.css`. A heading with no bottom margin sits flush
+against its paragraph, which is what the ladder looked like before this was fixed.
 
-**Letter-spacing is not scaled.** `apple.md` gives tracking in px and those values are used verbatim.
-At a 1.15 multiplier the optical difference is negligible, and scaling tracking alongside size would
-overshoot Apple's intent at display sizes.
-
-**Line-heights are not scaled** either — they are unitless ratios and scale themselves.
-
-## Deviation 2 — a monospace face
+## Deviation 2: a monospace face
 
 `apple.md` defines no monospace face, because Apple ships no code content. The handoff artifact is
-set in **JetBrains Mono**. The typeface switch is content, not chrome: every element surrounding the
-artifact still uses the SF Pro ramp.
+set in **JetBrains Mono**. The typeface switch is content, not chrome.
+
+## Deviation 3: the artifact is a macOS editor window
+
+**Ruled 2026-07-31, and it overrides an earlier line in this file that said "no traffic-light dots".**
+
+The artifact renders as a macOS editor window: a 38px `--editor-chrome` title bar carrying three
+traffic lights and a centred filename, over an `--editor-body` code area, at `rounded.md` with the
+system's single shadow.
+
+This is a deliberate, contained skeuomorphism. It tells a developer what the artifact *is* before
+they read a word of it, which is the whole job of the strongest asset on the site.
+
+It introduces the only colours in the system that are not Apple's: `--mac-close`, `--mac-minimise`,
+`--mac-zoom`, `--editor-chrome`, `--editor-body`. **These are a quotation of macOS, not accents.**
+They may only appear inside the artifact window. Using any of them elsewhere, or adding a fourth
+light, breaks the one-accent rule for real.
+
+## Deviation 4: motion
+
+`apple.md` documents no motion beyond the `scale(0.95)` press. The site adds one effect: content
+rises and fades in.
+
+- **Above the fold**, the hero staggers one element at a time, 90ms apart.
+- **Below it**, headings and the artifact reveal on scroll via `animation-timeline: view()`.
+
+Constraints that keep this from becoming decoration:
+
+- **It is CSS-only.** No JavaScript, so no hydration flash and nothing to go wrong on a slow client.
+- **`@supports` guards the scroll-driven rules.** Where `view()` is unsupported, content is simply
+  visible — it never depends on the animation running.
+- **The whole block sits inside `@media (prefers-reduced-motion: no-preference)`.**
+- **A print rule forces everything visible**, because an un-scrolled reveal would otherwise print blank.
+- **It is on `/` and `/handoff` only** — the two pages a visitor actually lands on. Motion everywhere
+  is noise.
+
+Hover is still never documented.
 
 ## The one thing with no Apple precedent
 

@@ -1,0 +1,93 @@
+@keyframes revealUp {
+  from {
+    opacity: 0;
+    transform: translateY(26px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes revealFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-64px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes revealFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(64px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .enter {
+    animation: revealUp 850ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .d0 {
+    animation-delay: 0ms;
+  }
+
+  .d1 {
+    animation-delay: 110ms;
+  }
+
+  .d2 {
+    animation-delay: 220ms;
+  }
+
+  .d3 {
+    animation-delay: 330ms;
+  }
+
+  .d4 {
+    animation-delay: 440ms;
+  }
+
+  .d5 {
+    animation-delay: 550ms;
+  }
+
+  @supports (animation-timeline: view()) {
+    .scrollUp {
+      animation: revealUp auto linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 30%;
+    }
+
+    .scrollLeft {
+      animation: revealFromLeft auto linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 34%;
+    }
+
+    .scrollRight {
+      animation: revealFromRight auto linear both;
+      animation-timeline: view();
+      animation-range: entry 0% cover 34%;
+    }
+  }
+}
+
+@media print {
+  .enter,
+  .scrollUp,
+  .scrollLeft,
+  .scrollRight {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
