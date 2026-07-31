@@ -37,7 +37,7 @@
 
 @media (max-width: 1023px) {
   .artifactLayout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .artifactCopy {

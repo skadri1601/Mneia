@@ -1,5 +1,6 @@
 .panel {
   max-width: var(--width-artifact);
+  min-width: 0;
   background-color: var(--surface-raised);
   border: 1px solid var(--hairline);
   border-radius: var(--rounded-md);
