@@ -20,8 +20,8 @@ const jetbrainsMono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: 'Mneia — the handoff layer for teams working with AI agents',
-    template: '%s — Mneia',
+    default: 'Mneia: the handoff layer for teams working with AI agents',
+    template: '%s | Mneia',
   },
   description:
     'Agent sessions lose the decisions you made in them. Mneia captures them at the boundary and hands them to whoever picks the work up next.',

@@ -9,7 +9,7 @@ import styles from './page.module.css';
 export const metadata: Metadata = {
   title: 'The handoff',
   description:
-    'A real handoff artifact: what is done, current state, open questions, constraints, next action — with provenance on every line.',
+    'A real handoff artifact: what is done, current state, open questions, constraints, next action, with provenance on every line.',
 };
 
 const SECTIONS = [
@@ -86,10 +86,9 @@ export default function HandoffPage() {
         </p>
         <div className={`${prose.body} ${prose.stack}`}>
           <p>
-            Work stops with one actor and resumes with another — the same human tomorrow, a
-            different human next week, a different agent on the next task. The thing that should
-            exist is an artifact produced at the moment of stopping and consumed at the moment of
-            resuming.
+            Work stops with one actor and resumes with another: the same human tomorrow, a different
+            human next week, a different agent on the next task. The thing that should exist is an
+            artifact produced at the moment of stopping and consumed at the moment of resuming.
           </p>
           <p>
             <strong>It also has to survive crossing tools.</strong> If it only works inside one

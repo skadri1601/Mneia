@@ -60,7 +60,7 @@ const TIERS = [
 const METERING = [
   {
     action: 'Checkpoint',
-    cost: 'The extraction call — effectively the entire marginal cost',
+    cost: 'The extraction call, effectively the entire marginal cost',
     metered: 'Metered',
   },
   {
@@ -111,7 +111,7 @@ export default function PricingPage() {
               <ul className={styles.contents}>
                 {tier.contents.map((item) => (
                   <li key={item}>
-                    <span className={styles.tick}>—</span>
+                    <span className={styles.tick}>·</span>
                     <span>{item}</span>
                   </li>
                 ))}
@@ -123,8 +123,8 @@ export default function PricingPage() {
         <div className={styles.preview}>
           <strong>Pricing is in preview.</strong> The seat price is set against what comparable
           tools charge, but the number is not final until we have measured what a real checkpoint
-          costs us to run. If it moves before general availability, it moves before anyone is billed
-          — not after.
+          costs us to run. If it moves before general availability, it moves before anyone is
+          billed, not after.
         </div>
       </Tile>
 
@@ -135,7 +135,7 @@ export default function PricingPage() {
           <p>
             A checkpoint runs an extraction pass over your session. That call is the cost. The seat
             price includes an allowance set at several times ordinary use, so a normal month never
-            touches it — the ceiling exists so a runaway loop in CI cannot quietly invert the
+            touches it. The ceiling exists so a runaway loop in CI cannot quietly invert the
             economics.
           </p>
         </div>

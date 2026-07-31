@@ -17,7 +17,7 @@ const BET: ReactNode[] = [
     and recall drops well before the window is full. This is measured, not anecdotal.
   </>,
   <>
-    <strong>Every provider has responded by externalising context</strong> — memory tools,
+    <strong>Every provider has responded by externalising context</strong>: memory tools,
     compaction, project instruction files. Which means the context layer is a permanent
     architectural component, not a temporary hack.
   </>,
@@ -31,7 +31,7 @@ const BET: ReactNode[] = [
   </>,
   <>
     <strong>What keeps a team is not the feature list.</strong> It is becoming the record of what
-    the team decided and why — which is not something a competitor can copy, because it is the
+    the team decided and why, which is not something a competitor can copy, because it is the
     customer&apos;s own history.
   </>,
 ];
@@ -51,7 +51,7 @@ const AUDIENCE = [
   },
   {
     who: 'The company around engineering',
-    what: 'Support, sales, and operations people build with agents too. They have a real question — is this on the roadmap, who owns it, what is the state — and no trustworthy current answer.',
+    what: 'Support, sales, and operations people build with agents too. They have a real question with no trustworthy current answer: is this on the roadmap, who owns it, what is the state?',
   },
 ];
 
@@ -62,7 +62,7 @@ const NOT_BUILDING = [
   'A chat interface, or an agent of our own',
   'Durable execution infrastructure',
   'Model hosting or inference',
-  'A vector database — we use one',
+  'A vector database. We use one',
   'Every framework on day one',
 ];
 
@@ -74,7 +74,7 @@ export default function AboutPage() {
         <h1 className={prose.hero}>The context layer is permanent. Nobody built it for teams.</h1>
         <p className={prose.lead}>
           Mneia is the shared project memory and handoff layer for teams working with AI agents.
-          Three operations — checkpoint, rehydrate, handoff — and everything else serves them.
+          Three operations: checkpoint, rehydrate, handoff. Everything else serves them.
         </p>
       </Tile>
 
@@ -104,7 +104,7 @@ export default function AboutPage() {
           </p>
           <p>
             Two things follow. <strong>Once work is transferred between people</strong>, the store
-            has to handle several writers — which forces provenance, conflict resolution, and
+            has to handle several writers, which forces provenance, conflict resolution, and
             permissions, and those cannot be bolted onto a single-user product without changing its
             thesis. <strong>And a handoff has to survive crossing tools.</strong> Model providers
             are structurally incentivised against that kind of neutrality. The gap is permanent.
@@ -119,7 +119,7 @@ export default function AboutPage() {
           <p>
             Context does not stop at a team boundary. A decision made in the payments team changes
             what sales can promise; an open question in platform blocks three feature teams. So the
-            data model assumes the company from the first migration — teams as a first-class entity,
+            data model assumes the company from the first migration: teams as a first-class entity,
             a visibility hierarchy, function on the team. The sales motion does not.
           </p>
         </div>
@@ -138,7 +138,7 @@ export default function AboutPage() {
         <h2 className={prose.displayLg}>Open clients, hosted service.</h2>
         <div className={`${prose.body} ${prose.stack}`}>
           <p>
-            The client packages are Apache 2.0: the CLI, the MCP server, and the core — which holds
+            The client packages are Apache 2.0: the CLI, the MCP server, and the core, which holds
             the schema definitions, the handoff format, the extraction prompts, and the ranking
             algorithm. The hosted API, the store, billing, and the review surfaces are proprietary.
           </p>
@@ -164,7 +164,7 @@ export default function AboutPage() {
         <ul className={styles.notList}>
           {NOT_BUILDING.map((item) => (
             <li key={item}>
-              <span className={styles.strike}>—</span>
+              <span className={styles.strike}>·</span>
               <span>{item}</span>
             </li>
           ))}

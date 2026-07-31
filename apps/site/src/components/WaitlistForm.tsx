@@ -25,7 +25,7 @@ export function WaitlistForm() {
       <p className={styles.note}>
         {live
           ? 'One email when it opens up. Nothing else, and no sharing with anyone.'
-          : 'The list is not open yet. Mneia is in private development and there is nothing to sign into — this form turns on when there is.'}
+          : 'The list is not open yet. Mneia is in private development and there is nothing to sign into. This form turns on when there is.'}
       </p>
     </form>
   );

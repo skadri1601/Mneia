@@ -14,7 +14,7 @@ const FEATURES = [
   {
     index: '01',
     title: 'The handoff is a first-class object',
-    body: 'A receivable artifact produced when work stops and consumed when it resumes. Not a record you have to know how to search for — a thing that arrives.',
+    body: 'A receivable artifact produced when work stops and consumed when it resumes. Not a record you have to know how to search for. A thing that arrives.',
     todayLabel: 'Today',
     todayValue: 'Nobody ships this',
     todayBody:
@@ -27,7 +27,7 @@ const FEATURES = [
     todayLabel: 'Today',
     todayValue: 'Announced, not shipped',
     todayBody:
-      'Single-user products have no conflicts by construction. Products that do detect contradictions tend to invalidate the older fact automatically — which is exactly wrong for a decision, where a human has to arbitrate.',
+      'Single-user products have no conflicts by construction. Products that do detect contradictions tend to invalidate the older fact automatically, which is exactly wrong for a decision, where a human has to arbitrate.',
   },
   {
     index: '03',
@@ -45,7 +45,7 @@ const FEATURES = [
     todayLabel: 'Today',
     todayValue: 'Compaction, which is not selection',
     todayBody:
-      'Compaction and context editing shrink the window. They do not select for the task at hand — compaction is lossy by design and task-blind, and semantic search returns what is similar rather than what is load-bearing.',
+      'Compaction and context editing shrink the window. They do not select for the task at hand. Compaction is lossy by design and task-blind, and semantic search returns what is similar rather than what is load-bearing.',
   },
   {
     index: '05',

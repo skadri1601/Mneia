@@ -16,7 +16,7 @@ const OPERATIONS = [
   {
     index: '02',
     title: 'Rehydrate',
-    body: 'Given the next task and a token budget, assemble the minimal high-signal slice. Not replay-everything, and not raw semantic search — semantic search returns what is similar, not what is load-bearing.',
+    body: 'Given the next task and a token budget, assemble the minimal high-signal slice. Not replay-everything, and not raw semantic search. Semantic search returns what is similar, not what is load-bearing.',
     aside: 'Active constraints are always included, whatever the budget pressure.',
   },
   {
