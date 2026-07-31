@@ -6,6 +6,8 @@ coverage/
 *.tsbuildinfo
 
 .next/
+.next-dev/
+.next-verify/
 next-env.d.ts
 
 .env

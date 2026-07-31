@@ -6,19 +6,19 @@
 }
 
 .index {
-  color: var(--ink-muted-48);
+  color: var(--tile-faint);
   font-family: var(--font-mono);
   font-size: var(--size-fine-print);
   letter-spacing: var(--tracking-none);
 }
 
 .today {
-  border-inline-start: 1px solid var(--hairline);
+  border-inline-start: 1px solid var(--tile-hairline);
   padding-inline-start: var(--space-lg);
 }
 
 .todayLabel {
-  color: var(--ink-muted-48);
+  color: var(--tile-faint);
   font-size: var(--size-caption);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-none);
@@ -27,7 +27,7 @@
 
 .todayValue {
   margin-block-start: var(--space-xxs);
-  color: var(--ink);
+  color: var(--tile-ink);
   font-size: var(--size-tagline);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tagline);
@@ -36,7 +36,7 @@
 
 .todayBody {
   margin-block-start: var(--space-sm);
-  color: var(--body-muted);
+  color: var(--tile-muted);
   font-size: var(--size-caption);
   line-height: var(--leading-caption);
   letter-spacing: var(--tracking-none);
@@ -54,7 +54,7 @@
 
   .today {
     border-inline-start: 0;
-    border-top: 1px solid var(--hairline);
+    border-top: 1px solid var(--tile-hairline);
     padding-inline-start: 0;
     padding-block-start: var(--space-lg);
   }

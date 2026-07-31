@@ -11,32 +11,39 @@ paths:
 
 ## The governing spec
 
-> **Ruled 2026-07-29 (MNE-168), revised 2026-07-31.** The first ruling chose a synthesis — a dark canvas
-> with an amber accent and Apple's rules applied selectively. **The founder overruled that.** The design
-> is Apple's, exactly, on a black canvas. No blending.
+> **Ruled 2026-07-29 (MNE-168), revised twice.** The first ruling chose a synthesis (dark canvas, amber
+> accent); the second inverted Apple to black. **Both are superseded.** As of 2026-07-31 the design is
+> Apple's, on Apple's own light canvas, with two single-token deviations. No blending, no inversion.
 
 | File | Status |
 |---|---|
-| **`docs/design/apple.md`** | **The specification. Read it in full before writing UI.** Its typography ladder, spacing, radii, components, do/don'ts and breakpoints apply verbatim. |
-| **`docs/design/mneia.md`** | **Read second, and it is short.** Records only the surface inversion needed to run Apple dark, and the handful of light-surface tokens that have no meaning on black. |
-| `docs/design/bmw-m.md` | Dead. Not a live option, kept only so the MNE-168 reasoning stays legible. |
+| **`docs/design/apple.md`** | **The specification. Read it in full before writing UI.** Colours, typography ladder, spacing, radii, components, do/don'ts and breakpoints apply verbatim. |
+| **`docs/design/mneia.md`** | **Read second, and it is short.** Records the two deviations and nothing else. |
+| `docs/design/bmw-m.md` | Dead. Kept only so the MNE-168 reasoning stays legible. |
 
 These are token specs, not mood boards, and they carry do/don't rules that are easy to violate by
-accident.
+accident. **If you find yourself picking a colour, you have gone wrong** — check `apple.md` first,
+because it almost certainly already has one.
 
-**The thing to understand before you start:** Apple's palette already contains a full dark set, because
-Apple's own tiles alternate light and dark. Going dark-only means **promoting tokens Apple already
-defines**, not inventing values. If you find yourself picking a new colour, you have gone wrong —
-check `apple.md` first, because it almost certainly already has one.
+The two deviations, both one token:
 
-Two consequences worth knowing:
+- **Type is scaled by `--type-scale` (1.15).** Apple's absolute sizes read too small on a developer's
+  monitor. Every size is `calc(Npx * var(--type-scale))`, so **every ratio in the ladder is preserved
+  exactly**. To retune, change the multiplier — never an individual size, which re-ramps the ladder.
+- **The artifact is set in JetBrains Mono.** `apple.md` defines no monospace face because Apple ships
+  no code content.
 
-- **Which blue, where.** Filled pill CTAs stay Action Blue `#0066cc`; inline links use Sky Link Blue
-  `#2997ff`, because `apple.md` says Action Blue disappears on a dark tile. That is one accent at two
-  lightnesses, exactly as Apple ships it — **not** licence for a second accent.
-- **We have no product photography.** The handoff artifact panel takes the structural position Apple
-  gives the product render, including being the **sole** carrier of the system's one drop-shadow.
-  Nothing else gets a shadow, ever.
+Three things that trip people up:
+
+- **Which blue, where.** Action Blue `#0066cc` on light surfaces and on every filled pill; Sky Link
+  Blue `#2997ff` for inline links **on dark tiles only**, because Action Blue disappears there. That
+  pair is Apple's own — **not** licence for a second accent.
+- **Text follows its tile.** Each `Tile` sets `--tile-ink`, `--tile-muted`, `--tile-faint`,
+  `--tile-link`, `--tile-hairline`, `--tile-card`. Components read those. **A component that hardcodes
+  a text colour is wrong inside half the tiles**, because Apple's sections alternate light and dark.
+- **We have no product photography.** The handoff artifact panel takes the product render's structural
+  position: it rests on a **light** tile and is the **sole** carrier of the system's one drop-shadow.
+  On a dark tile it vanishes and takes the shadow with it. Nothing else gets a shadow, ever.
 
 ## When this matters
 
@@ -64,8 +71,10 @@ iteration.
 - **Tokens, never inline hex.** The specs use `{token.refs}` throughout. Match it — a hardcoded
   `#0066cc` is a bug even when the value is right. `apps/site` enforces this: every value lives in
   `tokens.css` and a literal hex anywhere else fails review.
-- **One accent colour.** Action Blue `#0066cc` on fills, Sky Link Blue `#2997ff` on inline links —
-  one accent at two lightnesses, per `apple.md`. No third blue, and no second accent.
+- **One accent colour.** Action Blue `#0066cc` on light surfaces and every filled pill; Sky Link Blue
+  `#2997ff` for inline links **on dark tiles only**. One accent at two lightnesses, per `apple.md`.
+  No third blue, and no second accent.
+- **Type sizes are `calc(Npx * var(--type-scale))`.** Never a bare px size — that re-ramps the ladder.
 - **One shadow in the system**, on the handoff artifact panel. Never on cards, buttons, nav, or text.
 - **Surface-colour change is the section divider.** No borders between sections, no gradients anywhere.
 - **Default and active/pressed states only.** Never document hover.

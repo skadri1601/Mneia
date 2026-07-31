@@ -16,7 +16,7 @@ html {
 
 body {
   background-color: var(--canvas);
-  color: var(--ink);
+  color: var(--tile-ink);
   font-family: var(--font-text);
   font-size: var(--size-body);
   font-weight: var(--weight-regular);
@@ -40,7 +40,7 @@ p {
 }
 
 a {
-  color: var(--primary-on-dark);
+  color: var(--tile-link);
   text-decoration: none;
 }
 

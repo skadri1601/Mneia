@@ -32,17 +32,17 @@
 
 .primary:disabled {
   background-color: var(--surface-tile-1);
-  color: var(--ink-muted-48);
+  color: var(--tile-faint);
   cursor: not-allowed;
   transform: none;
 }
 
 .secondaryPill {
   padding: 11px 22px;
-  border: 1px solid var(--primary-on-dark);
+  border: 1px solid var(--tile-link);
   border-radius: var(--rounded-pill);
   background-color: transparent;
-  color: var(--primary-on-dark);
+  color: var(--tile-link);
 }
 
 .storeHero {

@@ -57,7 +57,7 @@ export default function HandoffPage() {
         </p>
       </Tile>
 
-      <Tile surface="dark1">
+      <Tile surface="parchment">
         <div className={styles.artifactWrap}>
           <HandoffArtifact highlightSuperseded />
         </div>
@@ -79,7 +79,7 @@ export default function HandoffPage() {
         </CardGrid>
       </Tile>
 
-      <Tile surface="parchment">
+      <Tile surface="dark1">
         <p className={prose.eyebrow}>The thesis</p>
         <p className={prose.leadAiry}>
           &ldquo;The unit of value is not memory. It is the handoff.&rdquo;

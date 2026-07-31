@@ -10,18 +10,18 @@
   counter-increment: bet;
   display: flex;
   gap: var(--space-md);
-  color: var(--body-muted);
+  color: var(--tile-muted);
 }
 
 .bet li + li {
   margin-block-start: var(--space-lg);
   padding-block-start: var(--space-lg);
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--tile-hairline);
 }
 
 .bet li::before {
   content: counter(bet, decimal-leading-zero);
-  color: var(--ink-muted-48);
+  color: var(--tile-faint);
   font-family: var(--font-mono);
   font-size: var(--size-fine-print);
   flex: none;
@@ -29,7 +29,7 @@
 }
 
 .bet strong {
-  color: var(--ink);
+  color: var(--tile-ink);
   font-weight: var(--weight-semibold);
 }
 
@@ -43,16 +43,16 @@
   grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
   gap: var(--space-lg);
   padding-block: var(--space-lg);
-  border-top: 1px solid var(--hairline);
+  border-top: 1px solid var(--tile-hairline);
 }
 
 .audienceWho {
-  color: var(--ink);
+  color: var(--tile-ink);
   font-weight: var(--weight-semibold);
 }
 
 .audienceWhat {
-  color: var(--body-muted);
+  color: var(--tile-muted);
   font-size: var(--size-caption);
   line-height: var(--leading-caption);
   letter-spacing: var(--tracking-none);
@@ -71,14 +71,14 @@
 .notList li {
   display: flex;
   gap: var(--space-xs);
-  color: var(--body-muted);
+  color: var(--tile-muted);
   font-size: var(--size-caption);
   line-height: var(--leading-caption);
   letter-spacing: var(--tracking-none);
 }
 
 .strike {
-  color: var(--ink-muted-48);
+  color: var(--tile-faint);
   flex: none;
 }
 

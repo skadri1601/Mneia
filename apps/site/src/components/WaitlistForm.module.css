@@ -19,17 +19,17 @@
   flex: 0 1 320px;
   height: var(--target-min);
   padding: 12px 20px;
-  background-color: var(--surface-tile-1);
-  border: 1px solid var(--hairline);
+  background-color: var(--canvas);
+  border: 1px solid var(--tile-hairline);
   border-radius: var(--rounded-pill);
-  color: var(--ink);
+  color: var(--tile-ink);
   font-family: var(--font-text);
   font-size: var(--size-body);
   letter-spacing: var(--tracking-body);
 }
 
 .input::placeholder {
-  color: var(--ink-muted-48);
+  color: var(--tile-faint);
 }
 
 .input:focus-visible {
@@ -45,5 +45,5 @@
   font-size: var(--size-caption);
   line-height: var(--leading-caption);
   letter-spacing: var(--tracking-caption);
-  color: var(--ink-muted-48);
+  color: var(--tile-faint);
 }
