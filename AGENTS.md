@@ -48,25 +48,29 @@ These are real as of MNE-34/35/36. Keep this section current — a stale command
 
 ```
 pnpm install          # deps
-pnpm build            # tsc --build across packages
-pnpm test             # build, then vitest — see below for why it builds
-pnpm typecheck        # tsc --build --force
+pnpm build            # tsc --build across packages — CI runs this
+pnpm format:check     # CI runs this
+pnpm lint:ci          # biome lint, errors only — CI runs this
+pnpm check:policy     # branch, commit, and lane policy — CI runs this
+
+pnpm test             # build, then vitest — local only, see below
+pnpm typecheck        # tsc --build --force — local only
+pnpm check:tests      # rejects committed .only / .skip / .todo — local only
 pnpm format           # biome format --write
-pnpm format:check     # what CI runs
-pnpm lint             # biome check — everything, warnings included, local only
-pnpm lint:ci          # biome lint, errors only — what CI runs
-pnpm check:tests      # rejects committed .only / .skip / .todo
-pnpm check:policy     # branch, commit, and lane policy
+pnpm lint             # biome check — everything, warnings included
 ```
+
+**CI does not run tests or typecheck.** Ruled by the founder 2026-07-30: both were judged noise.
+CI is format, lint errors, build, and git policy. `pnpm build` is `tsc --build`, so a type error
+still fails CI as a build failure — but nothing runs the test suite automatically. **Run `pnpm test`
+yourself before opening a PR**, especially on anything touching `packages/core/src/store/`.
 
 **`pnpm test` builds first, on purpose.** The `cli` and `mcp-server` tests import `@mneia/core` by
 package name, which resolves to `packages/core/dist` — so a clean checkout has nothing to import.
-This used to work in CI only by accident, because `typecheck` happened to build first. Do not remove
-the build from the `test` script without also fixing those imports.
+Do not remove the build from the `test` script without also fixing those imports.
 
-`pnpm test` runs unit tests anywhere. The Postgres integration tests under `tests/integration/`
-need a real engine and **skip themselves when `DATABASE_URL` is unset** — except in CI, where a
-missing `DATABASE_URL` is a hard error rather than a silent skip. To run them locally:
+The Postgres integration tests under `tests/integration/` need a real engine and **skip themselves
+when `DATABASE_URL` is unset**. To run them locally:
 
 ```
 docker run -d --name mneia-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=mneia \

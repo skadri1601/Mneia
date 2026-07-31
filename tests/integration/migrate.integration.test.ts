@@ -12,12 +12,6 @@ import { PgDriver } from './pg-driver.js';
 
 const connectionString = process.env.DATABASE_URL;
 
-if (connectionString === undefined && process.env.CI === 'true') {
-  throw new Error(
-    'DATABASE_URL is not set but CI is; the Postgres migration tests are the only proof MNE-40 works against a real engine and must not be skipped in CI',
-  );
-}
-
 const connect = async (): Promise<Client> => {
   const client = new Client({ connectionString });
   await client.connect();
