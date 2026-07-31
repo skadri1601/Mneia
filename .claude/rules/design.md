@@ -9,19 +9,26 @@ paths:
 
 # Design rules
 
-## The reference specs
+## The governing spec
 
-Two complete design languages live in `docs/design/`. Read the relevant one **in full** before
-writing UI — they are token specs, not mood boards, and they carry do/don't rules that are easy to
-violate by accident.
+> **Ruled 2026-07-29 (MNE-168).** This section previously said the language was undecided and told you
+> to ask before building UI. **It is decided.** `docs/design/mneia.md` is the design language.
 
-| File | Language |
+| File | Status |
 |---|---|
-| `docs/design/apple.md` | Light-dominant, photography-first. Single Action Blue accent, SF Pro, pill CTAs, alternating light/dark full-bleed tiles, exactly one drop-shadow in the whole system. |
-| `docs/design/bmw-m.md` | Near-black canvas, uppercase BMW Type Next display, M tricolor as sparing signature, sharp 2–6px radii, engineered rather than bombastic. |
+| **`docs/design/mneia.md`** | **The governing spec. Read it in full before writing UI.** Near-black canvas, single amber accent, exactly one drop-shadow — on the handoff artifact. Apple's restraint rules on a dark canvas. |
+| `docs/design/apple.md` | Reference only. Where the restraint rules come from, and the source of the Inter substitution guidance. **Do not build against it.** |
+| `docs/design/bmw-m.md` | Reference only. Where the dark canvas comes from. **Do not build against it.** |
 
-**Which one is not yet decided** — MNE-168. Until it closes, do not pick one implicitly by building
-UI. Ask.
+These are token specs, not mood boards, and they carry do/don't rules that are easy to violate by
+accident. The two references remain in the repo because `mneia.md` cites them and because the reasoning
+behind the ruling is worth keeping legible — not because either is still a live option.
+
+**The structural inversion worth knowing before you start:** Apple's system is built around product
+photography, which we do not have and cannot produce. In `mneia.md` the **handoff artifact** takes that
+role. It is the only element carrying the system's one shadow, and it is what the tiles exist to frame.
+If you are building a surface with no artifact on it, you are building the quiet part of the system —
+keep it quiet.
 
 ## When this matters
 
@@ -30,26 +37,32 @@ UI. Ask.
 > both false. **M1 renders pixels.** If you are building M1 and reached this file expecting permission to
 > defer design decisions, you do not have it.
 
-M0 renders nothing. Everything after does. The surfaces that consume these specs:
+M0 renders nothing — **except that it now does.** MNE-184 built the marketing site during M0 on founder
+direction, ahead of MNE-120's M3 slot. The surfaces that consume the spec:
 
+- **MNE-184** — marketing site: home, features, pricing, about, handoff (**built, M0, out of order**)
 - **MNE-181** — web account plane: signup, device-flow approval, workspace and project management (**M1**)
 - **MNE-25** — web review app: decision browser, review queue, timeline (**M1**)
-- **MNE-120** — landing page and docs site (M3)
+- **MNE-120** — docs site; the landing-page half was absorbed by MNE-184 (M3)
 - **MNE-133** — conflict resolution UI (M4, with the conflict engine it renders)
 
-**So pick the design language before MNE-181 starts, not after.** Read `docs/design/apple.md` and
-`docs/design/bmw-m.md` and get a ruling. The first screen built without one sets the defaults for every
-screen after it, and the account plane is now the first screen.
+**`apps/site` is now the reference implementation of the spec.** It set the defaults, which is exactly
+what this section warned the first screen would do. When you build MNE-181, read `apps/site/src/styles/
+tokens.css` and the components beside it before inventing anything — divergence there is drift, not
+iteration.
 
-## Rules that hold whichever language wins
+## Rules that hold regardless of surface
 
-- **Tokens, never inline hex.** Both specs use `{token.refs}` throughout. Match that — a hardcoded
-  `#0066cc` is a bug even when the value is right.
-- **One accent colour.** Apple enforces this explicitly; BMW M's tricolor is a brand signature, not a
-  UI palette. Neither has a second "click me" colour.
-- **Default and active/pressed states only.** Both specs say never document hover. Follow it.
+- **Tokens, never inline hex.** The spec uses `{token.refs}` throughout. Match it — a hardcoded
+  `#ffb340` is a bug even when the value is right. `apps/site` enforces this: every value lives in
+  `tokens.css` and a literal hex anywhere else fails review.
+- **One accent colour.** Amber, and nothing else. The `human`/`agent` provenance pair is the accent
+  reused plus a muted grey, not a second signal colour.
+- **One shadow in the system**, on the handoff artifact panel. Never on cards, buttons, nav, or text.
+- **Surface-colour change is the section divider.** No borders between sections, no gradients anywhere.
+- **Default and active/pressed states only.** Never document hover.
 - **Minimum 44 × 44px touch targets.**
-- **Variants are separate component entries** (`-active`, `-focus`, `-dark-2`), not conditional props
+- **Variants are separate component entries** (`-press`, `-focus`, `-featured`), not conditional props
   buried in one component.
 
 ## The web app stays thin

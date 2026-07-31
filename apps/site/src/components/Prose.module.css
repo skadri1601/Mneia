@@ -1,0 +1,74 @@
+.eyebrow {
+  color: var(--ink-faint);
+  font-size: var(--size-caption);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-none);
+  text-transform: uppercase;
+}
+
+.hero {
+  font-size: var(--size-hero-display);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-hero);
+  letter-spacing: var(--tracking-tight);
+  max-width: 20ch;
+}
+
+.displayLg {
+  font-size: var(--size-display-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-display-lg);
+  letter-spacing: var(--tracking-tight);
+  max-width: 24ch;
+}
+
+.displayMd {
+  font-size: var(--size-display-md);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-display-md);
+  letter-spacing: var(--tracking-tight);
+  max-width: 28ch;
+}
+
+.lead {
+  font-size: var(--size-lead);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-lead);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink-muted);
+  max-width: 46ch;
+}
+
+.quote {
+  font-size: var(--size-lead-airy);
+  font-weight: var(--weight-light);
+  line-height: var(--leading-airy);
+  letter-spacing: var(--tracking-none);
+  color: var(--ink);
+  max-width: 40ch;
+}
+
+.body {
+  max-width: 66ch;
+  color: var(--ink-muted);
+}
+
+.body strong {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.stack > * + * {
+  margin-block-start: var(--space-lg);
+}
+
+.stackTight > * + * {
+  margin-block-start: var(--space-sm);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-xl);
+}

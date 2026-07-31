@@ -1,0 +1,101 @@
+:root {
+  --accent: #ffb340;
+  --accent-press: #e89a2e;
+  --accent-focus: #ffc466;
+  --on-accent: #0a0a0b;
+
+  --canvas: #0a0a0b;
+  --surface-tile-1: #141416;
+  --surface-tile-2: #0f0f11;
+  --surface-raised: #17171a;
+  --surface-sunken: #050506;
+
+  --ink: #f5f5f7;
+  --ink-muted: #a1a1a8;
+  --ink-faint: #6e6e76;
+  --ink-disabled: #4a4a52;
+
+  --hairline: #26262b;
+  --hairline-strong: #33333a;
+
+  --human: #ffb340;
+  --agent: #a1a1a8;
+
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --size-hero-display: 56px;
+  --size-display-lg: 40px;
+  --size-display-md: 34px;
+  --size-lead: 28px;
+  --size-lead-airy: 24px;
+  --size-tagline: 21px;
+  --size-body: 17px;
+  --size-caption: 14px;
+  --size-fine-print: 12px;
+  --size-artifact: 13px;
+  --size-provenance: 11px;
+
+  --weight-light: 300;
+  --weight-regular: 400;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --leading-hero: 1.07;
+  --leading-display-lg: 1.1;
+  --leading-display-md: 1.2;
+  --leading-lead: 1.25;
+  --leading-airy: 1.5;
+  --leading-tagline: 1.19;
+  --leading-body: 1.44;
+  --leading-dense-link: 2.2;
+  --leading-caption: 1.43;
+  --leading-fine-print: 1.4;
+  --leading-artifact: 1.65;
+
+  --tracking-tight: -0.01em;
+  --tracking-none: 0;
+
+  --rounded-none: 0px;
+  --rounded-xs: 4px;
+  --rounded-sm: 8px;
+  --rounded-md: 12px;
+  --rounded-pill: 9999px;
+
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-xxl: 48px;
+  --space-section: 80px;
+  --space-section-tight: 48px;
+
+  --elevation-artifact: rgba(0, 0, 0, 0.55) 0 12px 40px;
+
+  --width-content: 1120px;
+  --width-grid: 1280px;
+  --width-artifact: 780px;
+
+  --nav-height: 56px;
+  --target-min: 44px;
+
+  --press-scale: 0.95;
+}
+
+@media (max-width: 640px) {
+  :root {
+    --size-hero-display: 34px;
+    --size-display-lg: 28px;
+    --size-display-md: 24px;
+    --size-lead: 21px;
+    --space-section: var(--space-section-tight);
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --size-hero-display: 28px;
+  }
+}

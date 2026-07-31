@@ -1,0 +1,40 @@
+.form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-block-start: var(--space-lg);
+}
+
+.label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.input {
+  flex: 1 1 280px;
+  min-height: var(--target-min);
+  padding: 12px 20px;
+  background-color: var(--surface-raised);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--rounded-pill);
+  color: var(--ink);
+  font-size: var(--size-body);
+  letter-spacing: var(--tracking-tight);
+}
+
+.input::placeholder {
+  color: var(--ink-faint);
+}
+
+.note {
+  flex: 1 1 100%;
+  margin-block-start: var(--space-xs);
+  color: var(--ink-faint);
+  font-size: var(--size-caption);
+  letter-spacing: var(--tracking-none);
+  max-width: 52ch;
+}
