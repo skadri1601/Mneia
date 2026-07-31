@@ -34,10 +34,10 @@ OPTIONS
   --debug             Verbose logging, and echo every command the script runs
   --health-timeout <n>  Seconds to wait for a service to answer  (default 90)
   --skip-install      Do not run "pnpm install" during preflight
-  --fresh             Delete apps/site/.next before starting. Use this after running a
-                      production build ("pnpm --filter @mneia/site build"), which overwrites
-                      the same directory the dev server reads and leaves it desynced —
-                      the symptom is "Cannot find module './NNN.js'" from webpack-runtime.
+  --fresh             Delete the dev build cache (apps/site/.next-dev) before starting.
+                      Rarely needed: the dev server runs with NEXT_DIST_DIR=.next-dev while
+                      "next build" writes .next, so a production build can no longer clobber
+                      a running dev server. Use this only if the dev cache itself goes bad.
   --quiet             Write logs to disk but do not mirror service output to the console
   --no-color          Disable ANSI colour
   --clean             Delete previous run directories under logs/ and exit
@@ -201,13 +201,10 @@ preflight() {
   debug preflight "Port $SITE_PORT is free."
 
   if [[ "$FRESH" == "1" ]]; then
-    log INFO preflight "Removing apps/site/.next (--fresh)."
-    rm -rf "$REPO_ROOT/apps/site/.next"
-  elif [[ -f "$REPO_ROOT/apps/site/.next/BUILD_ID" ]]; then
-    log WARN preflight "apps/site/.next holds a production build; the dev server will not read it"
-    log WARN preflight "cleanly. Removing it — this is what --fresh does explicitly."
-    rm -rf "$REPO_ROOT/apps/site/.next"
+    log INFO preflight "Removing apps/site/.next-dev (--fresh)."
+    rm -rf "$REPO_ROOT/apps/site/.next-dev"
   fi
+  debug preflight "Dev server uses .next-dev; 'next build' uses .next. They cannot collide."
 
   if [[ "$SKIP_INSTALL" == "1" ]]; then
     log INFO preflight "Skipping install (--skip-install)."
@@ -296,7 +293,7 @@ main() {
   record_environment
   preflight
 
-  start_service "site" "pnpm --filter @mneia/site dev --port $SITE_PORT"
+  start_service "site" "NEXT_DIST_DIR=.next-dev pnpm --filter @mneia/site dev --port $SITE_PORT"
   await_health "site" "http://localhost:$SITE_PORT/" "${SERVICE_PIDS[0]}"
 
   supervise
