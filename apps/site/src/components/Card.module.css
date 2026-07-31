@@ -1,0 +1,64 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-lg);
+  margin-block-start: var(--space-xxl);
+}
+
+.gridTwo {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.card {
+  background-color: var(--surface-tile-1);
+  border: 1px solid var(--hairline);
+  border-radius: var(--rounded-md);
+  padding: var(--space-lg);
+}
+
+.cardOnRaised {
+  background-color: var(--surface-raised);
+}
+
+.index {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--size-provenance);
+  letter-spacing: var(--tracking-none);
+}
+
+.title {
+  margin-block-start: var(--space-xs);
+  font-size: var(--size-tagline);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tagline);
+  letter-spacing: var(--tracking-tight);
+  color: var(--ink);
+}
+
+.body {
+  margin-block-start: var(--space-sm);
+  color: var(--ink-muted);
+}
+
+.aside {
+  margin-block-start: var(--space-sm);
+  padding-block-start: var(--space-sm);
+  border-top: 1px solid var(--hairline);
+  color: var(--ink-faint);
+  font-size: var(--size-caption);
+  letter-spacing: var(--tracking-none);
+}
+
+@media (max-width: 1023px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .grid,
+  .gridTwo {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,0 +1,13 @@
+.artifactWrap {
+  margin-inline: auto;
+  max-width: var(--width-artifact);
+}
+
+.caption {
+  margin-inline: auto;
+  margin-block-start: var(--space-lg);
+  max-width: var(--width-artifact);
+  color: var(--ink-faint);
+  font-size: var(--size-caption);
+  letter-spacing: var(--tracking-none);
+}

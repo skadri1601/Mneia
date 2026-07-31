@@ -1,0 +1,26 @@
+.tile {
+  padding-block: var(--space-section);
+  padding-inline: var(--space-lg);
+  border: 0;
+}
+
+.canvas {
+  background-color: var(--canvas);
+}
+
+.raised {
+  background-color: var(--surface-tile-1);
+}
+
+.recessed {
+  background-color: var(--surface-tile-2);
+}
+
+.inner {
+  max-width: var(--width-content);
+  margin-inline: auto;
+}
+
+.wide {
+  max-width: var(--width-grid);
+}
