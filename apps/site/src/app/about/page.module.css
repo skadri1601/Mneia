@@ -10,7 +10,7 @@
   counter-increment: bet;
   display: flex;
   gap: var(--space-md);
-  color: var(--ink-muted);
+  color: var(--body-muted);
 }
 
 .bet li + li {
@@ -21,9 +21,9 @@
 
 .bet li::before {
   content: counter(bet, decimal-leading-zero);
-  color: var(--ink-faint);
+  color: var(--ink-muted-48);
   font-family: var(--font-mono);
-  font-size: var(--size-provenance);
+  font-size: var(--size-fine-print);
   flex: none;
   padding-block-start: var(--space-xxs);
 }
@@ -52,7 +52,7 @@
 }
 
 .audienceWhat {
-  color: var(--ink-muted);
+  color: var(--body-muted);
   font-size: var(--size-caption);
   line-height: var(--leading-caption);
   letter-spacing: var(--tracking-none);
@@ -71,14 +71,14 @@
 .notList li {
   display: flex;
   gap: var(--space-xs);
-  color: var(--ink-muted);
+  color: var(--body-muted);
   font-size: var(--size-caption);
   line-height: var(--leading-caption);
   letter-spacing: var(--tracking-none);
 }
 
 .strike {
-  color: var(--ink-faint);
+  color: var(--ink-muted-48);
   flex: none;
 }
 

@@ -1,33 +1,21 @@
 .hero {
-  padding-block: calc(var(--space-section) + var(--space-xl));
+  padding-block: var(--space-xxl);
 }
 
-.artifactLayout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 420px);
-  gap: var(--space-xxl);
-  align-items: start;
-}
-
-.artifactCopy {
-  position: sticky;
-  top: calc(var(--nav-height) + var(--space-xl));
-}
-
-.waitlist {
-  max-width: 640px;
+.artifactStage {
+  margin-block-start: var(--space-xxl);
 }
 
 .scenario {
-  border-inline-start: 2px solid var(--hairline-strong);
-  padding-inline-start: var(--space-lg);
-  margin-block-start: var(--space-xl);
   max-width: 62ch;
-  color: var(--ink-muted);
+  margin-inline: auto;
+  margin-block-start: var(--space-xl);
+  color: var(--body-muted);
+  text-align: start;
 }
 
 .scenario > * + * {
-  margin-block-start: var(--space-sm);
+  margin-block-start: var(--space-md);
 }
 
 .scenario strong {
@@ -35,12 +23,7 @@
   font-weight: var(--weight-semibold);
 }
 
-@media (max-width: 1023px) {
-  .artifactLayout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .artifactCopy {
-    position: static;
-  }
+.waitlist {
+  max-width: 640px;
+  margin-inline: auto;
 }

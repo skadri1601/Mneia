@@ -128,7 +128,7 @@ export default function PricingPage() {
         </div>
       </Tile>
 
-      <Tile surface="raised" wide>
+      <Tile surface="dark1" wide>
         <p className={prose.eyebrow}>What gets metered</p>
         <h2 className={prose.displayLg}>One line item, not a bill you have to parse.</h2>
         <div className={prose.body}>

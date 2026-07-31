@@ -1,9 +1,8 @@
 .footer {
-  background-color: var(--surface-tile-2);
-  border-top: 1px solid var(--hairline);
-  padding-block: var(--space-xxl);
+  background-color: var(--canvas-parchment);
+  color: var(--ink-muted-80);
+  padding-block: 64px;
   padding-inline: var(--space-lg);
-  color: var(--ink-muted);
 }
 
 .inner {
@@ -15,49 +14,56 @@
 }
 
 .brand {
-  flex: 1 1 240px;
+  flex: 1 1 260px;
 }
 
 .wordmark {
   color: var(--ink);
+  font-family: var(--font-display);
   font-size: var(--size-tagline);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-tagline);
+  letter-spacing: var(--tracking-tagline);
 }
 
 .tagline {
   margin-block-start: var(--space-xs);
-  color: var(--ink-faint);
-  font-size: var(--size-caption);
-  letter-spacing: var(--tracking-none);
   max-width: 34ch;
+  font-size: var(--size-fine-print);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-fine-print);
+  color: var(--ink-muted-48);
 }
 
 .column {
-  flex: 0 1 180px;
+  flex: 0 1 200px;
 }
 
 .heading {
-  color: var(--ink);
+  font-family: var(--font-text);
   font-size: var(--size-caption);
   font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-none);
+  line-height: var(--leading-caption-strong);
+  letter-spacing: var(--tracking-caption);
+  color: var(--ink);
 }
 
 .list {
   list-style: none;
   padding: 0;
-  margin-block-start: var(--space-xs);
+  margin-block-start: var(--space-xxs);
 }
 
 .link {
   display: inline-flex;
   align-items: center;
   min-height: var(--target-min);
-  color: var(--ink-muted);
+  font-family: var(--font-text);
   font-size: var(--size-body);
+  font-weight: var(--weight-regular);
   line-height: var(--leading-dense-link);
   letter-spacing: var(--tracking-none);
+  color: var(--ink-muted-80);
 }
 
 .link:active {
@@ -69,11 +75,11 @@
   margin-inline: auto;
   margin-block-start: var(--space-xxl);
   padding-block-start: var(--space-lg);
-  border-top: 1px solid var(--hairline);
-  color: var(--ink-faint);
+  border-top: 1px solid var(--divider-soft);
   font-size: var(--size-fine-print);
-  line-height: var(--leading-fine-print);
-  letter-spacing: var(--tracking-none);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-fine-print);
+  color: var(--ink-muted-48);
 }
 
 .legal p + p {

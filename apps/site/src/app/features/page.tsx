@@ -58,7 +58,7 @@ const FEATURES = [
   },
 ];
 
-const SURFACES: readonly TileSurface[] = ['raised', 'canvas', 'recessed', 'canvas', 'raised'];
+const SURFACES: readonly TileSurface[] = ['dark1', 'canvas', 'parchment', 'canvas', 'dark1'];
 
 export default function FeaturesPage() {
   return (
@@ -91,10 +91,10 @@ export default function FeaturesPage() {
         </Tile>
       ))}
 
-      <Tile surface="recessed">
+      <Tile surface="parchment">
         <p className={prose.eyebrow}>Kept on the wall</p>
         <div className={styles.honest}>
-          <p className={prose.quote}>
+          <p className={prose.leadAiry}>
             &ldquo;Any one of these can be built by a funded team in a quarter.&rdquo;
           </p>
           <div className={`${prose.body} ${prose.stack}`}>

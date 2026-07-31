@@ -8,19 +8,31 @@
   background-color: var(--canvas);
 }
 
-.raised {
+.parchment {
+  background-color: var(--canvas-parchment);
+}
+
+.dark1 {
   background-color: var(--surface-tile-1);
 }
 
-.recessed {
+.dark2 {
   background-color: var(--surface-tile-2);
 }
 
+.dark3 {
+  background-color: var(--surface-tile-3);
+}
+
 .inner {
-  max-width: var(--width-content);
+  max-width: var(--width-text);
   margin-inline: auto;
 }
 
 .wide {
   max-width: var(--width-grid);
+}
+
+.centered {
+  text-align: center;
 }
