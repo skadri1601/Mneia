@@ -15,9 +15,17 @@ export function ButtonPrimary({ href, children }: LinkButtonProps) {
   );
 }
 
-export function ButtonGhost({ href, children }: LinkButtonProps) {
+export function ButtonSecondaryPill({ href, children }: LinkButtonProps) {
   return (
-    <Link className={`${styles.base} ${styles.ghost}`} href={href}>
+    <Link className={`${styles.base} ${styles.secondaryPill}`} href={href}>
+      {children}
+    </Link>
+  );
+}
+
+export function ButtonStoreHero({ href, children }: LinkButtonProps) {
+  return (
+    <Link className={`${styles.base} ${styles.storeHero}`} href={href}>
       {children}
     </Link>
   );

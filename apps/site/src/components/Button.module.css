@@ -3,13 +3,11 @@
   align-items: center;
   justify-content: center;
   min-height: var(--target-min);
-  min-width: var(--target-min);
-  padding: 11px 22px;
-  border-radius: var(--rounded-pill);
+  font-family: var(--font-text);
   font-size: var(--size-body);
   font-weight: var(--weight-regular);
-  line-height: 1;
-  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-button);
+  letter-spacing: var(--tracking-body);
   text-decoration: none;
   cursor: pointer;
   transition: transform 120ms ease-out;
@@ -19,31 +17,59 @@
   transform: scale(var(--press-scale));
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .base {
-    transition: none;
-  }
+.base:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
 }
 
 .primary {
-  background-color: var(--accent);
-  color: var(--on-accent);
+  padding: 11px 22px;
   border: 0;
-}
-
-.primary:active {
-  background-color: var(--accent-press);
+  border-radius: var(--rounded-pill);
+  background-color: var(--primary);
+  color: var(--on-primary);
 }
 
 .primary:disabled {
-  background-color: var(--surface-raised);
-  color: var(--ink-disabled);
+  background-color: var(--surface-tile-1);
+  color: var(--ink-muted-48);
   cursor: not-allowed;
   transform: none;
 }
 
-.ghost {
+.secondaryPill {
+  padding: 11px 22px;
+  border: 1px solid var(--primary-on-dark);
+  border-radius: var(--rounded-pill);
   background-color: transparent;
-  color: var(--ink);
-  border: 1px solid var(--hairline-strong);
+  color: var(--primary-on-dark);
+}
+
+.storeHero {
+  padding: 14px 28px;
+  border: 0;
+  border-radius: var(--rounded-pill);
+  background-color: var(--primary);
+  color: var(--on-primary);
+  font-size: var(--size-button-large);
+  font-weight: var(--weight-light);
+  letter-spacing: var(--tracking-none);
+}
+
+.darkUtility {
+  padding: 8px 15px;
+  min-height: 0;
+  border: 0;
+  border-radius: var(--rounded-sm);
+  background-color: var(--surface-tile-1);
+  color: var(--body-on-dark);
+  font-size: var(--size-caption);
+  line-height: var(--leading-caption-strong);
+  letter-spacing: var(--tracking-caption);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .base {
+    transition: none;
+  }
 }

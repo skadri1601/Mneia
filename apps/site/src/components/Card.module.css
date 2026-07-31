@@ -1,64 +1,69 @@
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--space-lg);
   margin-block-start: var(--space-xxl);
+  text-align: start;
 }
 
 .gridTwo {
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .card {
-  background-color: var(--surface-tile-1);
+  background-color: var(--canvas-parchment);
   border: 1px solid var(--hairline);
-  border-radius: var(--rounded-md);
+  border-radius: var(--rounded-lg);
   padding: var(--space-lg);
 }
 
 .cardOnRaised {
-  background-color: var(--surface-raised);
+  background-color: var(--surface-tile-1);
 }
 
 .index {
-  color: var(--ink-faint);
-  font-family: var(--font-mono);
-  font-size: var(--size-provenance);
-  letter-spacing: var(--tracking-none);
+  font-family: var(--font-text);
+  font-size: var(--size-caption);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-caption-strong);
+  letter-spacing: var(--tracking-caption);
+  color: var(--ink-muted-48);
 }
 
 .title {
   margin-block-start: var(--space-xs);
-  font-size: var(--size-tagline);
+  font-family: var(--font-text);
+  font-size: var(--size-body);
   font-weight: var(--weight-semibold);
-  line-height: var(--leading-tagline);
-  letter-spacing: var(--tracking-tight);
+  line-height: var(--leading-body-strong);
+  letter-spacing: var(--tracking-body);
   color: var(--ink);
 }
 
 .body {
   margin-block-start: var(--space-sm);
-  color: var(--ink-muted);
+  color: var(--body-muted);
 }
 
 .aside {
   margin-block-start: var(--space-sm);
   padding-block-start: var(--space-sm);
-  border-top: 1px solid var(--hairline);
-  color: var(--ink-faint);
+  border-top: 1px solid var(--divider-soft);
   font-size: var(--size-caption);
-  letter-spacing: var(--tracking-none);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+  color: var(--ink-muted-48);
 }
 
-@media (max-width: 1023px) {
+@media (max-width: 1068px) {
   .grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 640px) {
   .grid,
   .gridTwo {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }

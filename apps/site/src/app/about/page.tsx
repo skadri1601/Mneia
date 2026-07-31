@@ -78,7 +78,7 @@ export default function AboutPage() {
         </p>
       </Tile>
 
-      <Tile surface="raised">
+      <Tile surface="dark1">
         <p className={prose.eyebrow}>The bet</p>
         <h2 className={prose.displayLg}>In five sentences.</h2>
         <ol className={styles.bet}>
@@ -93,7 +93,7 @@ export default function AboutPage() {
 
       <Tile surface="canvas">
         <p className={prose.eyebrow}>The thesis</p>
-        <p className={prose.quote}>
+        <p className={prose.leadAiry}>
           &ldquo;The unit of value is not memory. It is the handoff.&rdquo;
         </p>
         <div className={`${prose.body} ${prose.stack}`}>
@@ -112,7 +112,7 @@ export default function AboutPage() {
         </div>
       </Tile>
 
-      <Tile surface="recessed">
+      <Tile surface="parchment">
         <p className={prose.eyebrow}>Who it is for</p>
         <h2 className={prose.displayLg}>Built for a company, landed through engineering.</h2>
         <div className={prose.body}>
@@ -151,7 +151,7 @@ export default function AboutPage() {
         </div>
       </Tile>
 
-      <Tile surface="raised" id="not-building">
+      <Tile surface="dark1" id="not-building">
         <p className={prose.eyebrow}>Scope</p>
         <h2 className={prose.displayLg}>What we have decided not to build.</h2>
         <div className={prose.body}>

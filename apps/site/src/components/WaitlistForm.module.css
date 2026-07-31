@@ -1,8 +1,9 @@
 .form {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   gap: var(--space-sm);
-  margin-block-start: var(--space-lg);
+  margin-block-start: var(--space-xl);
 }
 
 .label {
@@ -15,26 +16,34 @@
 }
 
 .input {
-  flex: 1 1 280px;
-  min-height: var(--target-min);
+  flex: 0 1 320px;
+  height: var(--target-min);
   padding: 12px 20px;
-  background-color: var(--surface-raised);
-  border: 1px solid var(--hairline-strong);
+  background-color: var(--surface-tile-1);
+  border: 1px solid var(--hairline);
   border-radius: var(--rounded-pill);
   color: var(--ink);
+  font-family: var(--font-text);
   font-size: var(--size-body);
-  letter-spacing: var(--tracking-tight);
+  letter-spacing: var(--tracking-body);
 }
 
 .input::placeholder {
-  color: var(--ink-faint);
+  color: var(--ink-muted-48);
+}
+
+.input:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
 }
 
 .note {
   flex: 1 1 100%;
-  margin-block-start: var(--space-xs);
-  color: var(--ink-faint);
-  font-size: var(--size-caption);
-  letter-spacing: var(--tracking-none);
+  margin-block-start: var(--space-sm);
   max-width: 52ch;
+  margin-inline: auto;
+  font-size: var(--size-caption);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+  color: var(--ink-muted-48);
 }

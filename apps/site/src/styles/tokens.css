@@ -1,27 +1,31 @@
 :root {
-  --accent: #ffb340;
-  --accent-press: #e89a2e;
-  --accent-focus: #ffc466;
-  --on-accent: #0a0a0b;
+  --primary: #0066cc;
+  --primary-focus: #0071e3;
+  --primary-on-dark: #2997ff;
+  --on-primary: #ffffff;
 
-  --canvas: #0a0a0b;
-  --surface-tile-1: #141416;
-  --surface-tile-2: #0f0f11;
-  --surface-raised: #17171a;
-  --surface-sunken: #050506;
+  --canvas: #000000;
+  --canvas-parchment: #1d1d1f;
+  --surface-pearl: #1d1d1f;
+  --surface-tile-1: #272729;
+  --surface-tile-2: #2a2a2c;
+  --surface-tile-3: #252527;
+  --surface-black: #000000;
+  --surface-chip-translucent: #d2d2d7;
 
-  --ink: #f5f5f7;
-  --ink-muted: #a1a1a8;
-  --ink-faint: #6e6e76;
-  --ink-disabled: #4a4a52;
+  --ink: #ffffff;
+  --body-on-dark: #ffffff;
+  --body-muted: #cccccc;
+  --ink-muted-80: #cccccc;
+  --ink-muted-48: #7a7a7a;
 
-  --hairline: #26262b;
-  --hairline-strong: #33333a;
+  --divider-soft: #2a2a2c;
+  --hairline: #3d3d41;
 
-  --human: #ffb340;
-  --agent: #a1a1a8;
-
-  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-display:
+    "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, var(--font-inter), sans-serif;
+  --font-text:
+    "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, var(--font-inter), sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
 
   --size-hero-display: 56px;
@@ -30,72 +34,98 @@
   --size-lead: 28px;
   --size-lead-airy: 24px;
   --size-tagline: 21px;
+  --size-button-large: 18px;
   --size-body: 17px;
   --size-caption: 14px;
   --size-fine-print: 12px;
+  --size-nav-link: 12px;
+  --size-micro-legal: 10px;
   --size-artifact: 13px;
-  --size-provenance: 11px;
 
   --weight-light: 300;
   --weight-regular: 400;
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  --leading-hero: 1.07;
+  --leading-hero-display: 1.07;
   --leading-display-lg: 1.1;
-  --leading-display-md: 1.2;
-  --leading-lead: 1.25;
-  --leading-airy: 1.5;
+  --leading-display-md: 1.47;
+  --leading-lead: 1.14;
+  --leading-lead-airy: 1.5;
   --leading-tagline: 1.19;
-  --leading-body: 1.44;
-  --leading-dense-link: 2.2;
+  --leading-body-strong: 1.24;
+  --leading-body: 1.47;
+  --leading-dense-link: 2.41;
   --leading-caption: 1.43;
-  --leading-fine-print: 1.4;
+  --leading-caption-strong: 1.29;
+  --leading-button: 1;
+  --leading-fine-print: 1;
+  --leading-micro-legal: 1.3;
   --leading-artifact: 1.65;
 
-  --tracking-tight: -0.01em;
+  --tracking-hero-display: -0.28px;
+  --tracking-display-lg: 0;
+  --tracking-body: -0.374px;
+  --tracking-lead: 0.196px;
+  --tracking-tagline: 0.231px;
+  --tracking-caption: -0.224px;
+  --tracking-fine-print: -0.12px;
+  --tracking-micro-legal: -0.08px;
   --tracking-none: 0;
 
   --rounded-none: 0px;
-  --rounded-xs: 4px;
+  --rounded-xs: 5px;
   --rounded-sm: 8px;
-  --rounded-md: 12px;
+  --rounded-md: 11px;
+  --rounded-lg: 18px;
   --rounded-pill: 9999px;
+  --rounded-full: 9999px;
 
   --space-xxs: 4px;
   --space-xs: 8px;
   --space-sm: 12px;
-  --space-md: 16px;
+  --space-md: 17px;
   --space-lg: 24px;
   --space-xl: 32px;
   --space-xxl: 48px;
   --space-section: 80px;
-  --space-section-tight: 48px;
 
-  --elevation-artifact: rgba(0, 0, 0, 0.55) 0 12px 40px;
+  --shadow-product: rgba(0, 0, 0, 0.22) 3px 5px 30px 0;
 
-  --width-content: 1120px;
-  --width-grid: 1280px;
+  --width-text: 980px;
+  --width-grid: 1440px;
   --width-artifact: 780px;
 
-  --nav-height: 56px;
+  --global-nav-height: 44px;
+  --sub-nav-height: 52px;
   --target-min: 44px;
 
   --press-scale: 0.95;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 1068px) {
   :root {
-    --size-hero-display: 34px;
-    --size-display-lg: 28px;
-    --size-display-md: 24px;
-    --size-lead: 21px;
-    --space-section: var(--space-section-tight);
+    --size-hero-display: 40px;
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 734px) {
+  :root {
+    --space-section: 48px;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --size-hero-display: 34px;
+    --size-display-lg: 34px;
+    --size-lead: 24px;
+  }
+}
+
+@media (max-width: 419px) {
   :root {
     --size-hero-display: 28px;
+    --size-display-lg: 28px;
   }
 }

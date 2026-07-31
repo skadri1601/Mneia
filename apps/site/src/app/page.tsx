@@ -1,4 +1,4 @@
-import { ButtonGhost, ButtonPrimary } from '@/components/Button';
+import { ButtonPrimary, ButtonSecondaryPill } from '@/components/Button';
 import { Card, CardGrid } from '@/components/Card';
 import { HandoffArtifact } from '@/components/HandoffArtifact';
 import prose from '@/components/Prose.module.css';
@@ -30,23 +30,22 @@ const OPERATIONS = [
 export default function HomePage() {
   return (
     <>
-      <Tile surface="canvas">
+      <Tile surface="canvas" centered>
         <div className={styles.hero}>
           <p className={prose.eyebrow}>Project memory and handoff</p>
-          <h1 className={prose.hero}>Your agent forgets. Your teammate never knew.</h1>
-          <p className={prose.lead}>
-            Mneia captures the decisions a session produced at the moment work stops, and hands them
-            to whoever picks it up next — the same person tomorrow, a teammate next week, or a
-            different agent on the next task.
+          <h1 className={prose.hero}>Your agent forgets.</h1>
+          <p className={`${prose.lead} ${prose.centered}`}>
+            Your teammate never knew. Mneia captures the decisions a session produced at the moment
+            work stops, and hands them to whoever picks it up next.
           </p>
-          <div className={prose.actions}>
+          <div className={`${prose.actions} ${prose.actionsCentered}`}>
             <ButtonPrimary href="#waitlist">Request access</ButtonPrimary>
-            <ButtonGhost href="/handoff">See a real handoff</ButtonGhost>
+            <ButtonSecondaryPill href="/handoff">See a real handoff</ButtonSecondaryPill>
           </div>
         </div>
       </Tile>
 
-      <Tile surface="raised">
+      <Tile surface="dark1" centered>
         <p className={prose.eyebrow}>The problem</p>
         <h2 className={prose.displayLg}>Three hours of context, gone by Tuesday.</h2>
         <div className={styles.scenario}>
@@ -65,7 +64,7 @@ export default function HomePage() {
             rejected.
           </p>
           <p>
-            Worse still: a teammate picks up the work. They have no access to any of it.{' '}
+            Worse still: a teammate picks up the work.{' '}
             <strong>
               The decisions live in a chat transcript that was compacted away, or in one
               person&apos;s head.
@@ -74,33 +73,22 @@ export default function HomePage() {
         </div>
       </Tile>
 
-      <Tile surface="canvas">
-        <div className={styles.artifactLayout}>
-          <div>
-            <HandoffArtifact highlightSuperseded />
-          </div>
-          <div className={styles.artifactCopy}>
-            <p className={prose.eyebrow}>The artifact</p>
-            <h2 className={prose.displayMd}>This is the thing we ship.</h2>
-            <div className={`${prose.body} ${prose.stack}`}>
-              <p>
-                Not a memory store you query. An object you receive, frozen at the moment work
-                stopped, with every line marked by who asserted it and whether a human confirmed it.
-              </p>
-              <p>
-                <strong>The marked section is the one nobody else produces.</strong> Superseded
-                recently is what stops an agent from confidently re-proposing the thing the team
-                already rejected and already explained.
-              </p>
-            </div>
-            <div className={prose.actions}>
-              <ButtonGhost href="/handoff">Read it annotated</ButtonGhost>
-            </div>
-          </div>
+      <Tile surface="canvas" centered>
+        <p className={prose.eyebrow}>The artifact</p>
+        <h2 className={prose.displayLg}>This is the thing we ship.</h2>
+        <p className={`${prose.lead} ${prose.centered}`}>
+          Not a memory store you query. An object you receive, with every line marked by who
+          asserted it.
+        </p>
+        <div className={styles.artifactStage}>
+          <HandoffArtifact highlightSuperseded />
+        </div>
+        <div className={`${prose.actions} ${prose.actionsCentered}`}>
+          <ButtonSecondaryPill href="/handoff">Read it annotated</ButtonSecondaryPill>
         </div>
       </Tile>
 
-      <Tile surface="recessed" wide>
+      <Tile surface="parchment" wide centered>
         <p className={prose.eyebrow}>Three operations</p>
         <h2 className={prose.displayLg}>Everything else serves these.</h2>
         <CardGrid>
@@ -110,7 +98,6 @@ export default function HomePage() {
               index={operation.index}
               title={operation.title}
               aside={operation.aside}
-              onRaised
             >
               <p>{operation.body}</p>
             </Card>
@@ -118,15 +105,14 @@ export default function HomePage() {
         </CardGrid>
       </Tile>
 
-      <Tile surface="canvas">
+      <Tile surface="dark1" centered>
         <p className={prose.eyebrow}>Where it runs</p>
         <h2 className={prose.displayLg}>In the tools you already work in.</h2>
-        <div className={`${prose.body} ${prose.stack}`}>
+        <div className={`${prose.body} ${prose.centered} ${prose.stack}`}>
           <p>
             An MCP server that works in Claude Code, Cursor, Codex, or any MCP client. A CLI. File
-            interop with the <code>AGENTS.md</code> and <code>CLAUDE.md</code> you already keep.
-            Plus a deliberately thin web app for the things a terminal is bad at — reviewing a
-            queue, comparing two conflicting items, browsing a decision timeline.
+            interop with the AGENTS.md and CLAUDE.md you already keep. Plus a deliberately thin web
+            app for the things a terminal is bad at.
           </p>
           <p>
             <strong>The inner loop stays in your terminal.</strong> A handoff that only works inside
@@ -135,16 +121,14 @@ export default function HomePage() {
         </div>
       </Tile>
 
-      <Tile surface="raised" id="waitlist">
+      <Tile surface="canvas" centered id="waitlist">
         <div className={styles.waitlist}>
           <p className={prose.eyebrow}>Access</p>
-          <h2 className={prose.displayMd}>Mneia is in private development.</h2>
-          <div className={prose.body}>
-            <p>
-              There is no public build yet. Leave an address and you will hear once there is
-              something worth your time.
-            </p>
-          </div>
+          <h2 className={prose.displayLg}>Mneia is in private development.</h2>
+          <p className={`${prose.lead} ${prose.centered}`}>
+            There is no public build yet. Leave an address and you will hear once there is something
+            worth your time.
+          </p>
           <WaitlistForm />
         </div>
       </Tile>
