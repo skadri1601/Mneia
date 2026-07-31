@@ -2,26 +2,57 @@
   padding-block: var(--space-section);
   padding-inline: var(--space-lg);
   border: 0;
+  color: var(--tile-ink);
 }
 
 .canvas {
   background-color: var(--canvas);
+  --tile-ink: var(--ink);
+  --tile-muted: var(--ink-muted-80);
+  --tile-faint: var(--ink-muted-48);
+  --tile-link: var(--primary);
+  --tile-hairline: var(--hairline);
+  --tile-card: var(--canvas);
 }
 
 .parchment {
   background-color: var(--canvas-parchment);
+  --tile-ink: var(--ink);
+  --tile-muted: var(--ink-muted-80);
+  --tile-faint: var(--ink-muted-48);
+  --tile-link: var(--primary);
+  --tile-hairline: var(--hairline);
+  --tile-card: var(--canvas);
 }
 
 .dark1 {
   background-color: var(--surface-tile-1);
+  --tile-ink: var(--body-on-dark);
+  --tile-muted: var(--body-muted);
+  --tile-faint: var(--body-muted);
+  --tile-link: var(--primary-on-dark);
+  --tile-hairline: var(--surface-tile-2);
+  --tile-card: var(--surface-tile-2);
 }
 
 .dark2 {
   background-color: var(--surface-tile-2);
+  --tile-ink: var(--body-on-dark);
+  --tile-muted: var(--body-muted);
+  --tile-faint: var(--body-muted);
+  --tile-link: var(--primary-on-dark);
+  --tile-hairline: var(--surface-tile-3);
+  --tile-card: var(--surface-tile-3);
 }
 
 .dark3 {
   background-color: var(--surface-tile-3);
+  --tile-ink: var(--body-on-dark);
+  --tile-muted: var(--body-muted);
+  --tile-faint: var(--body-muted);
+  --tile-link: var(--primary-on-dark);
+  --tile-hairline: var(--surface-tile-1);
+  --tile-card: var(--surface-tile-1);
 }
 
 .inner {

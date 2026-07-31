@@ -10,7 +10,7 @@
   max-width: 62ch;
   margin-inline: auto;
   margin-block-start: var(--space-xl);
-  color: var(--body-muted);
+  color: var(--tile-muted);
   text-align: start;
 }
 
@@ -19,7 +19,7 @@
 }
 
 .scenario strong {
-  color: var(--ink);
+  color: var(--tile-ink);
   font-weight: var(--weight-semibold);
 }
 
