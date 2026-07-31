@@ -15,6 +15,7 @@ HEALTH_TIMEOUT="${MNEIA_HEALTH_TIMEOUT:-90}"
 NO_COLOR="${NO_COLOR:-0}"
 SKIP_INSTALL=0
 QUIET=0
+FRESH=0
 
 SERVICE_NAMES=()
 SERVICE_PIDS=()
@@ -33,6 +34,10 @@ OPTIONS
   --debug             Verbose logging, and echo every command the script runs
   --health-timeout <n>  Seconds to wait for a service to answer  (default 90)
   --skip-install      Do not run "pnpm install" during preflight
+  --fresh             Delete apps/site/.next before starting. Use this after running a
+                      production build ("pnpm --filter @mneia/site build"), which overwrites
+                      the same directory the dev server reads and leaves it desynced —
+                      the symptom is "Cannot find module './NNN.js'" from webpack-runtime.
   --quiet             Write logs to disk but do not mirror service output to the console
   --no-color          Disable ANSI colour
   --clean             Delete previous run directories under logs/ and exit
@@ -61,6 +66,7 @@ while [[ $# -gt 0 ]]; do
     --debug) DEBUG=1; shift ;;
     --health-timeout) HEALTH_TIMEOUT="${2:?--health-timeout needs a value}"; shift 2 ;;
     --skip-install) SKIP_INSTALL=1; shift ;;
+    --fresh) FRESH=1; shift ;;
     --quiet) QUIET=1; shift ;;
     --no-color) NO_COLOR=1; shift ;;
     --clean)
@@ -193,6 +199,15 @@ preflight() {
     fail preflight "Something is already answering on port $SITE_PORT. Stop it, or pass --port."
   fi
   debug preflight "Port $SITE_PORT is free."
+
+  if [[ "$FRESH" == "1" ]]; then
+    log INFO preflight "Removing apps/site/.next (--fresh)."
+    rm -rf "$REPO_ROOT/apps/site/.next"
+  elif [[ -f "$REPO_ROOT/apps/site/.next/BUILD_ID" ]]; then
+    log WARN preflight "apps/site/.next holds a production build; the dev server will not read it"
+    log WARN preflight "cleanly. Removing it — this is what --fresh does explicitly."
+    rm -rf "$REPO_ROOT/apps/site/.next"
+  fi
 
   if [[ "$SKIP_INSTALL" == "1" ]]; then
     log INFO preflight "Skipping install (--skip-install)."
