@@ -53,8 +53,13 @@
   --size-body: calc(21px * var(--type-scale));
   --size-caption: calc(18px * var(--type-scale));
   --size-fine-print: calc(16px * var(--type-scale));
-  --size-nav-link: calc(20px * var(--type-scale));
-  --size-nav-wordmark: calc(24px * var(--type-scale));
+  --size-nav-link: calc(17px * var(--type-scale));
+  --size-nav-wordmark: calc(21px * var(--type-scale));
+  --size-subnav-name: calc(24px * var(--type-scale));
+  --size-footer-wordmark: calc(24px * var(--type-scale));
+  --size-footer-link: calc(18px * var(--type-scale));
+  --size-footer-heading: calc(16px * var(--type-scale));
+  --size-footer-fine: calc(14px * var(--type-scale));
   --size-micro-legal: calc(13px * var(--type-scale));
   --size-artifact: calc(15px * var(--type-scale));
 
@@ -112,8 +117,8 @@
   --width-grid: 1440px;
   --width-artifact: 780px;
 
-  --global-nav-height: 56px;
-  --sub-nav-height: 68px;
+  --global-nav-height: 48px;
+  --sub-nav-height: 60px;
   --target-min: 44px;
 
   --press-scale: 0.95;
@@ -147,7 +152,9 @@
     --size-display-md: calc(28px * var(--type-scale));
     --size-lead: calc(23px * var(--type-scale));
     --size-body: calc(19px * var(--type-scale));
-    --size-nav-link: calc(18px * var(--type-scale));
+    --size-nav-link: calc(16px * var(--type-scale));
+    --size-subnav-name: calc(21px * var(--type-scale));
+    --size-footer-wordmark: calc(21px * var(--type-scale));
   }
 }
 
