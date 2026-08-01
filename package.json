@@ -33,7 +33,9 @@
     "onlyBuiltDependencies": [
       "@biomejs/biome",
       "@sentry/cli",
-      "esbuild"
+      "esbuild",
+      "sharp",
+      "workerd"
     ]
   }
 }
