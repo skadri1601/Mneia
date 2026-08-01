@@ -1,4 +1,5 @@
 import { ImageResponse } from 'next/og';
+import { PRIVACY, TERMS } from '@/content/legal';
 import {
   ABOUT_INTRO,
   FEATURES_INTRO,
@@ -19,6 +20,8 @@ const HEADINGS: Record<RoutePath, string> = {
   '/features': FEATURES_INTRO.heading,
   '/pricing': PRICING_INTRO.heading,
   '/about': ABOUT_INTRO.heading,
+  '/terms': TERMS.title,
+  '/privacy': PRIVACY.title,
 };
 
 function truncate(text: string, limit: number): string {
