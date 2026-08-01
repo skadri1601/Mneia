@@ -144,9 +144,9 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 - [ ] MNE-39 — Repo AGENTS.md / CLAUDE.md for agent contributors
 
 **MNE-6 · Data model & storage adapters**
-- [ ] MNE-40 — Migration runner and schema versioning
-- [ ] MNE-41 — Schema: workspace, actor, project, session
-- [ ] MNE-42 — Schema: `context_item` — provenance, trust, bi-temporal validity
+- [x] ~~MNE-40 — Migration runner and schema versioning~~ — landed, `packages/core/src/store/`
+- [x] ~~MNE-41 — Schema: workspace, actor, project, session~~ — landed in migration `0002`, with `team`/`team_member` and RLS
+- [ ] MNE-42 — Schema: `context_item` — provenance, trust, bi-temporal validity — **table landed in `0003`**; hardening open (MNE-189 embedding provenance, `confirmed_by`, HNSW vs the empty-table ivfflat index)
 - [ ] MNE-43 — Schema: checkpoint, checkpoint_item, handoff, conflict
 - [ ] MNE-44 — Storage adapter interface (Postgres only — SQLite dropped, §11.1)
 - [ ] MNE-45 — Postgres + pgvector
@@ -183,7 +183,7 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 
 **MNE-171 · Hosted API — the prerequisite hosted-only created**
 - [ ] MNE-101 — Hosted API service scaffold and auth — **blocks MNE-74, MNE-81, MNE-86**
-- [ ] MNE-172 — Multi-tenancy: shared schema + RLS, or schema-per-tenant (§11.2 Q3) — **decide before MNE-42**
+- [x] ~~MNE-172 — Multi-tenancy: shared schema + RLS, or schema-per-tenant (§11.2 Q3)~~ — **RULED 2026-07-31: shared schema, `workspace_id` on every row, RLS mandatory** (§11.3). Implemented in migrations `0002`/`0003`
 - [ ] MNE-173 — Rate limiting and abuse controls — **hard gate on MNE-105.** Urgent since the MNE-174 ruling: we pay for inference, so this is the whole margin guard
 - [ ] MNE-180 — Measure real checkpoint cost and size the §14.1 allowance — **blocks MNE-141**
 - [ ] MNE-181 — Web account plane: signup, device-flow approval, workspace and project management — **blocked by MNE-166**
@@ -426,7 +426,7 @@ These come from `vision.md` and outrank any ticket that contradicts them.
 3. **Human vs human conflicts are never auto-resolved.** §10.4 — *"silence here is how teams get burned."*
 4. **`mneia_rehydrate` p95 stays under 300ms.** §12.1 — *"if it is slow, nobody uses it and the whole product fails."*
 5. **Every write path emits its §17 event.** Enforced by MNE-51.
-6. **No code or conversation content leaves the machine by default.** MNE-50.
+6. **Privacy is enforced by controls, not by locality** — scope enforcement, retention, residency. §11.1 revoked MNE-50's "no content leaves the machine by default" on 2026-07-28; hosted-only makes it untrue. MNE-50's live obligations are telemetry-scoped: opt-out, redaction, no content in events by default.
 7. **Do not charge for the individual tier.** §14.
 8. **Do not publish the handoff spec** until we own the reference implementation and the early adopters. §16 item 5.
 9. **Do not build anything in §19.** Log the request under MNE-164 and rule on it — `scope-check` skill.

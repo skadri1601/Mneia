@@ -26,9 +26,15 @@ migration runner and schema versioning landed with MNE-40, so `packages/core/src
 Almost everything else is still ahead — if you are looking for an implementation and cannot find it,
 that is expected. Check `ROADMAP.md` for which milestone it belongs to before assuming it is missing.
 
-**The schema itself is not written yet, and is blocked.** MNE-41/42/43 create the §9 tables, and
-§11.2 Q3 (multi-tenancy: shared tables filtered by `workspace_id`, schema-per-tenant, or RLS —
-MNE-172) has to be ruled on first. Do not start those tables before that closes.
+**The core tables exist. Multi-tenancy is ruled.** §11.2 Q3 closed on 2026-07-31 (MNE-172): shared
+schema, `workspace_id` on every row, Postgres RLS mandatory — see `vision.md` §11.3. Migrations
+`0002` and `0003` implement it, so `workspace`, `actor`, `team`, `team_member`, `project`, `session`
+and `context_item` are real, each with `ENABLE`/`FORCE ROW LEVEL SECURITY` and a workspace-isolation
+policy keyed on a `mneia.workspace_id` session GUC.
+
+What is genuinely still ahead: MNE-43 (`checkpoint`, `checkpoint_item`, `handoff`, `conflict`),
+MNE-44 (the store adapter) and MNE-169 (scope enforcement). **RLS is currently inert in production**
+— the role in `DATABASE_URL` holds `BYPASSRLS`, so MNE-186 has to land before any tenant data does.
 
 ## Repo map
 
@@ -110,7 +116,11 @@ Full text and rationale: `ROADMAP.md` §3.
 3. **Human vs human conflicts are never auto-resolved.** §10.4 — *"silence here is how teams get burned."*
 4. **`mneia_rehydrate` p95 stays under 300ms.** §12.1 — if it is slow, nobody calls it and the product fails.
 5. **Every write path emits its §17 event.** Enforced by a test (MNE-51), not by convention.
-6. **No code or conversation content leaves the machine by default.** MNE-50.
+6. **Privacy is enforced by controls, not by locality** — scope enforcement, retention, residency.
+   §11.1 revoked MNE-50's "no content leaves the machine by default" on 2026-07-28, because
+   hosted-only makes it untrue: see `vision.md` §11.1. **Do not restate the old promise** in a README,
+   a package description, or anything public. MNE-50's live obligations are telemetry-scoped —
+   opt-out, redaction, no content in events by default.
 7. **Do not charge for the individual tier.** §14.
 8. **Do not publish the handoff spec** until we own the reference implementation and the early adopters. §16.
 9. **Do not build anything in §19.** Log the request and rule on it — see the `scope-check` skill.
