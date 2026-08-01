@@ -110,8 +110,8 @@ Generated, never hand-edited. All of them derive from `ROUTES` in `src/lib/site.
 | `/robots.txt` | `app/robots.txt/route.ts` | Crawl policy, including an explicit ruling per AI crawler |
 | `/llms.txt` | `lib/corpus.ts` | Short summary plus a page index, per the llms.txt convention |
 | `/llms-full.txt` | `lib/corpus.ts` | The whole site as plain text in one request |
-| `/opengraph-image` | `lib/og.tsx` | Social card, one per route |
-| `/icon` | `app/icon.tsx` | Favicon, and the `Organization.logo` target |
+| `opengraph-image.png` | committed PNG, one per route | Social card |
+| `icon.png` | committed PNG | Favicon, and the `Organization.logo` target |
 
 JSON-LD is assembled in `src/lib/schema.ts` and rendered by `<JsonLd>`. `Organization`, `WebSite`, and
 `SoftwareApplication` are emitted once sitewide from the layout; pages add only `WebPage`,
@@ -128,7 +128,35 @@ offence rather than a technicality.
    characters, and a priority
 2. Add its copy to `src/content/pages.ts`, and add it to `src/lib/corpus.ts`
 3. Add `app/<route>/page.tsx` with `export const metadata = pageMetadata('/<route>')`
-4. Add `app/<route>/opengraph-image.tsx`, four lines, copy an existing one
-5. Add the heading to `HEADINGS` in `src/lib/og.tsx`
+4. Add `app/<route>/opengraph-image.png` and `app/<route>/opengraph-image.alt.txt` — see
+   *Social images are committed PNGs* below, which explains where the PNG comes from
 
 The sitemap and robots pick it up automatically from step 1.
+
+## Social images are committed PNGs — do not move them back to `next/og`
+
+`opengraph-image.png`, `icon.png` and their `.alt.txt` siblings are **committed build artifacts**, and
+that is deliberate. Generating them at request time with `ImageResponse` is the obvious, idiomatic
+Next.js approach. It also makes the site undeployable.
+
+`next/og` links a raster engine into the **server** bundle — `resvg.wasm` at 516 KiB gzipped, plus
+`yoga.wasm` and a Noto subset, ~558 KiB gzipped in total. A Cloudflare Worker on the free plan may not
+exceed **3 MiB gzipped**. With `next/og` the Worker measured **3308 KiB — 236 KiB over**, and every
+deploy failed validation with `code: 10027` while the build itself passed. MNE-196 has the numbers.
+
+The engine bought us nothing at runtime: all six routes were already `○ (Static)`, so Next prerendered
+the PNGs at build time and the Worker shipped a renderer it never called. As committed files they are
+**static assets**, which do not count against the Worker limit at all.
+
+**To change a card's design or add one, restore the generator, render, and re-commit the output:**
+
+```
+git show e1a894c:apps/site/src/lib/og.tsx > src/lib/og.tsx      # the JSX that drew them
+git show e1a894c:apps/site/src/app/opengraph-image.tsx > src/app/opengraph-image.tsx
+pnpm build                                                       # Next prerenders every card
+cp .next/server/app/opengraph-image.body src/app/opengraph-image.png
+rm src/lib/og.tsx src/app/opengraph-image.tsx                    # then delete them again
+```
+
+The last line is the one that matters. `OG_PALETTE` in `src/styles/theme.ts` is kept for exactly this
+reason — it is the record of the colours the committed PNGs were drawn with.
