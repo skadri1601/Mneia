@@ -8,6 +8,35 @@ pnpm --filter @mneia/site build      # next build
 pnpm --filter @mneia/site typecheck  # tsc --noEmit
 ```
 
+## Deployment — do not "modernise" `vercel.json`
+
+The root `vercel.json` uses a **legacy `builds` array**, and that is deliberate. It looks like an
+obvious cleanup candidate. It is not, and replacing it breaks every deploy.
+
+The Vercel project's **Root Directory is `.`**, so the Git integration builds from the workspace root,
+where `package.json` has no `next` — `next` lives here, in `apps/site/package.json`. Framework
+detection then fails before any build runs:
+
+```
+Warning: Could not identify Next.js version, ensure it is defined as a project dependency.
+Error: No Next.js version detected.
+```
+
+**The supported `framework` + `buildCommand` + `outputDirectory` form does not fix this**, which is
+the counter-intuitive part. Framework detection runs *before* `buildCommand`, so the install command
+succeeds, the build command is never reached, and the deploy fails with the same error. This was
+tried and measured in MNE-192; the deployment log shows `pnpm install` completing and the Next.js
+check failing immediately after.
+
+A `builds` entry names the builder and its source explicitly, so detection is skipped. It is the only
+mechanism that fixes this **from inside the repo**.
+
+**The real fix is one dashboard click:** set Root Directory to `apps/site` in project settings. That
+is exposed by neither the `vercel` CLI (`vercel project` has no settings command) nor the Vercel MCP
+server, so it cannot be automated from here. Once it is set, **delete `vercel.json`** — keeping both
+is worse than either, because a `builds` array causes Vercel to ignore most project-level settings,
+including the Root Directory you just set.
+
 ## Environment
 
 | Variable | Required | Default | Used by |
