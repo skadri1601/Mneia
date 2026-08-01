@@ -1,80 +1,36 @@
-import type { Metadata } from 'next';
 import { ButtonPrimary } from '@/components/Button';
+import { FaqList } from '@/components/Faq';
+import { JsonLd } from '@/components/JsonLd';
 import prose from '@/components/Prose.module.css';
-import { Rise, RiseOnScroll, SlideOnScroll } from '@/components/Reveal';
+import { SlideOnScroll } from '@/components/Reveal';
+import { Rich } from '@/components/RichText';
 import { Tile, type TileSurface } from '@/components/Tile';
+import {
+  FEATURES,
+  FEATURES_COMPOUND,
+  FEATURES_COMPOUND_QUOTE,
+  FEATURES_FAQ,
+  FEATURES_INTRO,
+} from '@/content/pages';
+import { breadcrumbSchema, faqSchema, webPageSchema } from '@/lib/schema';
+import { pageMetadata } from '@/lib/site';
 import styles from './page.module.css';
 
-export const metadata: Metadata = {
-  title: 'Features',
-  description:
-    'Five things that exist together nowhere else: the handoff artifact, conflict resolution across humans and agents, provenance with actor attribution, selective rehydration under a token budget, and boundary-triggered checkpoints.',
-};
-
-const FEATURES = [
-  {
-    index: '01',
-    title: 'The handoff is a first-class object',
-    body: 'A receivable artifact produced when work stops and consumed when it resumes. Not a record you have to know how to search for. A thing that arrives.',
-    todayLabel: 'Today',
-    todayValue: 'Nobody ships this',
-    todayBody:
-      'Everyone stores memory. Nobody hands off. The closest available thing is "query the memory store", which puts the entire burden on whoever is picking the work up.',
-  },
-  {
-    index: '02',
-    title: 'Conflict resolution across humans and agents',
-    body: 'Explicit arbitration when a teammate and an agent disagree about project state. Agent versus human-confirmed: the human wins, always, and the agent assertion is stored as disputed rather than silently applied. Human versus human is never auto-resolved.',
-    todayLabel: 'Today',
-    todayValue: 'Announced, not shipped',
-    todayBody:
-      'Single-user products have no conflicts by construction. Products that do detect contradictions tend to invalidate the older fact automatically, which is exactly wrong for a decision, where a human has to arbitrate.',
-  },
-  {
-    index: '03',
-    title: 'Provenance with actor attribution',
-    body: 'Every item records whether a human or an agent asserted it, which one, when, and on what basis. That distinction is rendered everywhere it appears, because it is the distinction that decides what to trust.',
-    todayLabel: 'Today',
-    todayValue: 'Partial at best',
-    todayBody:
-      'Some products carry episode-level provenance for facts, or commit history. None distinguish human authority from agent assertion.',
-  },
-  {
-    index: '04',
-    title: 'Selective rehydration under a token budget',
-    body: 'Choose the minimal correct slice for the next task, with per-kind quotas so a pile of similar facts cannot crowd out every constraint. Load-bearing active constraints are always included, whatever the budget pressure.',
-    todayLabel: 'Today',
-    todayValue: 'Compaction, which is not selection',
-    todayBody:
-      'Compaction and context editing shrink the window. They do not select for the task at hand. Compaction is lossy by design and task-blind, and semantic search returns what is similar rather than what is load-bearing.',
-  },
-  {
-    index: '05',
-    title: 'Boundary-triggered structured checkpoints',
-    body: 'Explicit capture at a task or day boundary into a typed schema, with contradiction detection before anything is written, and human confirmation on the load-bearing items.',
-    todayLabel: 'Today',
-    todayValue: 'Ambient, or threshold-triggered',
-    todayBody:
-      'Ambient capture produces noise. Threshold compaction fires when the window is full, which is the worst possible moment, and it produces nothing you can review.',
-  },
-];
+export const metadata = pageMetadata('/features');
 
 const SURFACES: readonly TileSurface[] = ['dark1', 'canvas', 'parchment', 'canvas', 'dark1'];
 
 export default function FeaturesPage() {
   return (
     <>
+      <JsonLd
+        nodes={[webPageSchema('/features'), breadcrumbSchema('/features'), faqSchema(FEATURES_FAQ)]}
+      />
+
       <Tile surface="canvas">
-        <Rise step={0}>
-          <p className={prose.eyebrow}>Features</p>
-        </Rise>
-        <Rise step={1}>
-          <h1 className={prose.hero}>Five things that exist together nowhere else.</h1>
-        </Rise>
-        <p className={prose.lead}>
-          Individually, several of these have partial answers elsewhere. The combination is what
-          does not exist, and the combination is what a team actually needs.
-        </p>
+        <p className={prose.eyebrow}>{FEATURES_INTRO.eyebrow}</p>
+        <h1 className={prose.hero}>{FEATURES_INTRO.heading}</h1>
+        <p className={prose.lead}>{FEATURES_INTRO.lead}</p>
       </Tile>
 
       {FEATURES.map((feature, i) => (
@@ -98,21 +54,29 @@ export default function FeaturesPage() {
 
       <Tile surface="parchment">
         <SlideOnScroll>
-          <p className={prose.eyebrow}>Why it compounds</p>
+          <p className={prose.eyebrow}>{FEATURES_COMPOUND.eyebrow}</p>
         </SlideOnScroll>
         <div className={styles.honest}>
-          <p className={prose.leadAiry}>The value is not the feature list. It is the record.</p>
+          <p className={prose.leadAiry}>{FEATURES_COMPOUND_QUOTE}</p>
           <div className={`${prose.body} ${prose.stack}`}>
-            <p>
-              After a year of checkpointing, your project carries its own history: what was decided,
-              why, who confirmed it, and what was already ruled out. That record is yours, it is
-              specific to your work, and it gets more useful every month it grows.
-            </p>
+            {FEATURES_COMPOUND.paragraphs.map((paragraph) => (
+              <p key={paragraph[0]?.text}>
+                <Rich paragraph={paragraph} />
+              </p>
+            ))}
           </div>
         </div>
         <div className={prose.actions}>
           <ButtonPrimary href="/#waitlist">Request access</ButtonPrimary>
         </div>
+      </Tile>
+
+      <Tile surface="canvas">
+        <SlideOnScroll>
+          <p className={prose.eyebrow}>Questions</p>
+          <h2 className={prose.displayLg}>What people ask before they install it.</h2>
+        </SlideOnScroll>
+        <FaqList items={FEATURES_FAQ} />
       </Tile>
     </>
   );

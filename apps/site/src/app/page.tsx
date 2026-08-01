@@ -1,49 +1,42 @@
 import { ButtonPrimary, ButtonSecondaryPill } from '@/components/Button';
 import { Card, CardGrid } from '@/components/Card';
 import { HandoffArtifact } from '@/components/HandoffArtifact';
-import { Rise, RiseOnScroll } from '@/components/Reveal';
+import { JsonLd } from '@/components/JsonLd';
 import prose from '@/components/Prose.module.css';
+import { Rise, RiseOnScroll } from '@/components/Reveal';
+import { Rich } from '@/components/RichText';
 import { Tile } from '@/components/Tile';
 import { WaitlistForm } from '@/components/WaitlistForm';
+import {
+  HOME_ARTIFACT,
+  HOME_INTRO,
+  HOME_OPERATIONS_INTRO,
+  HOME_PROBLEM,
+  HOME_SURFACES,
+  HOME_WAITLIST,
+  OPERATIONS,
+} from '@/content/pages';
+import { breadcrumbSchema, webPageSchema } from '@/lib/schema';
+import { pageMetadata } from '@/lib/site';
 import styles from './page.module.css';
 
-const OPERATIONS = [
-  {
-    index: '01',
-    title: 'Checkpoint',
-    body: 'At a task or day boundary, extract the decisions, constraints, and open questions out of the session. Detect contradictions with what is already known. Ask a human to confirm the load-bearing ones.',
-    aside: 'Explicit capture at a boundary, not ambient capture that produces noise.',
-  },
-  {
-    index: '02',
-    title: 'Rehydrate',
-    body: 'Given the next task and a token budget, assemble the minimal high-signal slice. Not replay-everything, and not raw semantic search. Semantic search returns what is similar, not what is load-bearing.',
-    aside: 'Active constraints are always included, whatever the budget pressure.',
-  },
-  {
-    index: '03',
-    title: 'Handoff',
-    body: 'Produce something a person or an agent receives: what is done, current state, open questions, constraints, next action. Provenance on every line, so the receiver knows what to trust.',
-    aside: 'The artifact, not a memory store you have to know how to query.',
-  },
-];
+export const metadata = pageMetadata('/');
 
 export default function HomePage() {
   return (
     <>
+      <JsonLd nodes={[webPageSchema('/'), breadcrumbSchema('/')]} />
+
       <Tile surface="canvas" centered>
         <div className={styles.hero}>
           <Rise step={0}>
-            <p className={prose.eyebrow}>Project memory and handoff</p>
+            <p className={prose.eyebrow}>{HOME_INTRO.eyebrow}</p>
           </Rise>
           <Rise step={1}>
-            <h1 className={prose.hero}>Your agent forgets.</h1>
+            <h1 className={prose.hero}>{HOME_INTRO.heading}</h1>
           </Rise>
           <Rise step={2}>
-            <p className={`${prose.lead} ${prose.centered}`}>
-              Your teammate never knew. Mneia captures the decisions a session produced at the
-              moment work stops, and hands them to whoever picks it up next.
-            </p>
+            <p className={`${prose.lead} ${prose.centered}`}>{HOME_INTRO.lead}</p>
           </Rise>
           <Rise step={3}>
             <div className={`${prose.actions} ${prose.actionsCentered}`}>
@@ -56,43 +49,24 @@ export default function HomePage() {
 
       <Tile surface="dark1" centered>
         <RiseOnScroll>
-          <p className={prose.eyebrow}>The problem</p>
-          <h2 className={prose.displayLg}>Three hours of context, gone by Tuesday.</h2>
+          <p className={prose.eyebrow}>{HOME_PROBLEM.eyebrow}</p>
+          <h2 className={prose.displayLg}>{HOME_PROBLEM.heading}</h2>
         </RiseOnScroll>
         <div className={styles.scenario}>
-          <p>
-            A developer works with Claude Code or Cursor for three hours on Monday. They establish
-            twenty decisions along the way: why Postgres over DynamoDB, which auth pattern, which
-            edge cases are out of scope, what broke when they tried the obvious approach.
-          </p>
-          <p>
-            <strong>On Tuesday they open a new session. The agent knows none of it.</strong> They
-            spend the first fifteen minutes re-explaining.
-          </p>
-          <p>
-            Worse: mid-session, auto-compaction fires. The agent silently loses the constraint
-            established two hours ago and confidently proposes the approach that was already
-            rejected.
-          </p>
-          <p>
-            Worse still: a teammate picks up the work.{' '}
-            <strong>
-              The decisions live in a chat transcript that was compacted away, or in one
-              person&apos;s head.
-            </strong>
-          </p>
+          {HOME_PROBLEM.paragraphs.map((paragraph) => (
+            <p key={paragraph[0]?.text}>
+              <Rich paragraph={paragraph} />
+            </p>
+          ))}
         </div>
       </Tile>
 
       <Tile surface="canvas" centered>
         <RiseOnScroll>
-          <p className={prose.eyebrow}>The artifact</p>
-          <h2 className={prose.displayLg}>This is the thing we ship.</h2>
+          <p className={prose.eyebrow}>{HOME_ARTIFACT.eyebrow}</p>
+          <h2 className={prose.displayLg}>{HOME_ARTIFACT.heading}</h2>
         </RiseOnScroll>
-        <p className={`${prose.lead} ${prose.centered}`}>
-          Not a memory store you query. An object you receive, with every line marked by who
-          asserted it.
-        </p>
+        <p className={`${prose.lead} ${prose.centered}`}>{HOME_ARTIFACT.lead}</p>
         <RiseOnScroll late className={styles.artifactStage}>
           <HandoffArtifact highlightSuperseded />
         </RiseOnScroll>
@@ -103,8 +77,8 @@ export default function HomePage() {
 
       <Tile surface="parchment" wide centered>
         <RiseOnScroll>
-          <p className={prose.eyebrow}>Three operations</p>
-          <h2 className={prose.displayLg}>Everything else serves these.</h2>
+          <p className={prose.eyebrow}>{HOME_OPERATIONS_INTRO.eyebrow}</p>
+          <h2 className={prose.displayLg}>{HOME_OPERATIONS_INTRO.heading}</h2>
         </RiseOnScroll>
         <CardGrid>
           {OPERATIONS.map((operation) => (
@@ -122,32 +96,25 @@ export default function HomePage() {
 
       <Tile surface="dark1" centered>
         <RiseOnScroll>
-          <p className={prose.eyebrow}>Where it runs</p>
-          <h2 className={prose.displayLg}>In the tools you already work in.</h2>
+          <p className={prose.eyebrow}>{HOME_SURFACES.eyebrow}</p>
+          <h2 className={prose.displayLg}>{HOME_SURFACES.heading}</h2>
         </RiseOnScroll>
         <div className={`${prose.body} ${prose.centered} ${prose.stack}`}>
-          <p>
-            An MCP server that works in Claude Code, Cursor, Codex, or any MCP client. A CLI. File
-            interop with the AGENTS.md and CLAUDE.md you already keep. Plus a deliberately thin web
-            app for the things a terminal is bad at.
-          </p>
-          <p>
-            <strong>The inner loop stays in your terminal.</strong> A handoff that only works inside
-            one vendor&apos;s tool is not a handoff, it is a session feature.
-          </p>
+          {HOME_SURFACES.paragraphs.map((paragraph) => (
+            <p key={paragraph[0]?.text}>
+              <Rich paragraph={paragraph} />
+            </p>
+          ))}
         </div>
       </Tile>
 
       <Tile surface="canvas" centered id="waitlist">
         <div className={styles.waitlist}>
           <RiseOnScroll>
-            <p className={prose.eyebrow}>Access</p>
-            <h2 className={prose.displayLg}>Request early access.</h2>
+            <p className={prose.eyebrow}>{HOME_WAITLIST.eyebrow}</p>
+            <h2 className={prose.displayLg}>{HOME_WAITLIST.heading}</h2>
           </RiseOnScroll>
-          <p className={`${prose.lead} ${prose.centered}`}>
-            We are onboarding teams in stages. Tell us where to reach you and we will get you set
-            up.
-          </p>
+          <p className={`${prose.lead} ${prose.centered}`}>{HOME_WAITLIST.lead}</p>
           <WaitlistForm />
         </div>
       </Tile>
