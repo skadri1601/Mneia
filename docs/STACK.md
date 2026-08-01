@@ -25,7 +25,7 @@ That criterion outweighs marginal feature differences between otherwise-similar 
 | Database | **Neon Postgres** | §11 already ruled Postgres + pgvector. Branching gives every PR an isolated database. |
 | ~~Local store~~ | **None** | Resolved by §11.1 — hosted-only, one engine. MNE-152 closed, MNE-46 cancelled. |
 | Errors | **Sentry** | MCP connected — issues can be pulled and triaged without relaying stack traces. |
-| Auth | **Clerk** | Organizations built in, which is MNE-126/127 rather than a rewrite. Now needed at M1, not M4 — MNE-181's device-flow approval page cannot be built before the provider is chosen, which is why MNE-166 went Urgent. |
+| Auth | **Neon Auth** (`better_auth`) | **Changed 2026-08-01, provisionally — see MNE-166.** Enabled on the Neon project and live. Its schema already ships `organization`, `member`, and `invitation`, which is the property Clerk was recommended for: MNE-126/127 become configuration, not a rewrite. It also keeps the one-dependency rule intact — auth tables sit in the same Postgres as everything else rather than adding a fourth vendor. **Cost:** the M5 SSO/SAML story (MNE-144) is weaker than WorkOS, and this option was never weighed against Clerk on its merits. |
 | Billing | **Stripe** | §14, $24/seat. No real alternative for self-serve seat-based. Pulled into M1 by the 2026-07-29 ruling. |
 | Inference | **Anthropic, our account** | Fork 4 closed: we pay, BYOK rejected. Server-side credential, spent on every checkpoint. Model tier still open — see MNE-180. |
 | Test + lint | **Vitest + Biome** | One binary for lint and format; fewer configs to get wrong. |
@@ -70,10 +70,16 @@ unattended. Fly is better if the hosted API ever needs long-lived connections or
 call is request/response, so Vercel is fine, but the M4 multiplayer design may change that. **More urgent
 than it was:** M1 now hosts the web app too, not just the API. Tracked as MNE-165.
 
-**2. Clerk vs WorkOS.** Clerk is faster and has orgs. WorkOS is built for the M5 SSO story (MNE-144) and
-avoids a migration. Either way **CLI device-flow auth is custom work** — neither gives it free, and
-MNE-101 should say so. **Raised to Urgent 2026-07-29:** MNE-181's signup and device-flow approval pages
-are M1 work and cannot start until this closes. This is now the decision most likely to block M1.
+**2. Clerk vs WorkOS vs Neon Auth.** Clerk is faster and has orgs. WorkOS is built for the M5 SSO story
+(MNE-144) and avoids a migration. Either way **CLI device-flow auth is custom work** — neither gives it
+free, and MNE-101 should say so. **Raised to Urgent 2026-07-29:** MNE-181's signup and device-flow
+approval pages are M1 work and cannot start until this closes.
+
+**Overtaken by events 2026-08-01.** A third option was enabled on the Neon project and the table above
+now names it. Neon Auth was never compared against the other two on the merits — it arrived through
+`neon init`, not through this decision. **MNE-166 stays open** until that comparison is written down and
+the founder confirms. The risk if it is left implicit: M1 gets built against `neon_auth`, and the
+question closes by accretion rather than by a ruling.
 
 **3. Sentry in the CLI, or server-side only?** Weaker than it was: under §11.1 the item bodies are
 already on our servers, so the old *"nothing leaves the machine"* argument no longer applies. What
