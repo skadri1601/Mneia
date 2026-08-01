@@ -34,3 +34,7 @@ pnpm-debug.log*
 
 # local run artifacts
 logs/
+
+# opennext build output
+.open-next/
+.wrangler/
