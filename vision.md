@@ -532,9 +532,9 @@ pure JavaScript plus a login.
 ### 11.2 Open — infrastructure and logic
 
 **These are not settled, and the sections that follow should be read as provisional where they touch
-them.** All six are filed. **Item 1 is now ruled**; five remain open. Of those, two are strategy and sit
-in S0; three are implementation and sit in M1, because they block MNE-42 and MNE-101 rather than waiting
-on a business ruling.
+them.** All six are filed. **Items 1 and 3 are now ruled**; four remain open. Of those, two are strategy
+and sit in S0; two are implementation and sit in M1, because they block MNE-42 and MNE-101 rather than
+waiting on a business ruling.
 
 Numbering is preserved after the ruling on purpose — other sections cite these by number.
 
@@ -542,7 +542,7 @@ Numbering is preserved after the ruling on purpose — other sections cite these
 |---|---|---|---|
 | 1 | ~~Who pays for inference?~~ **RULED 2026-07-29: we do.** BYOK rejected on every tier — see §14.1. | MNE-174 ✅ | Settled the model, not the number. The allowance still has to be sized against measured cost (MNE-180). |
 | 2 | **Does the CLI need a read cache after all?** | MNE-175 | Decided by whether hosted rehydrate can meet §12.1's 300ms p95. Currently an assumption, not a measurement. **Measure before building the cache** — a cache reintroduces exactly the staleness §11.1 was worth having for removing. |
-| 3 | **Multi-tenancy model.** Shared tables filtered by `workspace_id`, schema-per-tenant, or RLS. | MNE-172 | Hard to change later, and it has to be decided **before MNE-42 writes the six core tables.** Drives the M5 residency and isolation story. |
+| 3 | ~~Multi-tenancy model.~~ **RULED 2026-07-31: shared schema, `workspace_id` on every row, Postgres RLS mandatory.** See §11.3. | MNE-172 ✅ | Settled the model, not the enforcement. RLS and the cross-workspace invariant test are now hard gates on MNE-42 and MNE-44. |
 | 4 | **Where embeddings are computed**, and by whom. | MNE-176 | Settled on *where* — server-side, at write time. Open on *which vendor*: Anthropic has no embeddings endpoint, so this is a separate procurement decision. |
 | 5 | **Rate limiting and abuse.** A CI loop can call checkpoint indefinitely. | MNE-173 | Directly protects the margin in §14, and it is a hard gate on MNE-105. An unmetered public endpoint that runs inference on request loses money non-linearly. |
 | 6 | **What "open source" now means** when the server is proprietary. | MNE-177 | §16's distribution depends on the answer being one the compaction-thread audience accepts. The risk is not being closed — it is being called out for describing closed as open. |
@@ -555,6 +555,38 @@ makes the §14.1 allowance the thing standing between us and a runaway CI loop.
 
 That is the accepted cost of the simpler product. It is not a reason to relitigate it — it is a reason
 MNE-173 and MNE-180 are both Urgent.
+
+### 11.3 Multi-tenancy: what it decided
+
+**Ruled 2026-07-31 (MNE-172), settling §11.2 question 3. Shared schema. Every row carries
+`workspace_id`. Postgres RLS is mandatory, not a later hardening pass.**
+
+Schema-per-tenant buys isolation by construction and an easier enterprise security questionnaire in
+M5. It was rejected because it fights the product. §5 Stage 4's cross-team read path — the roadmap
+lookup that answers "is anyone already building this" — is a requirement, not an edge case, and
+schema-per-tenant makes exactly that query awkward. The migration runner iterating every tenant and
+the connection-pool pressure past a few hundred schemas are real costs, but they are not the reason.
+
+**What this obliges, on the first commit rather than a later one:**
+
+- **`workspace_id` is not nullable on any §9 table.** No table gets an exemption, including join
+  tables. A row that cannot name its workspace cannot be filtered and is a leak waiting to happen.
+- **RLS policies ship in the same migration as the table** (MNE-42, MNE-43). A table that lands
+  without its policy is a defect, not an increment.
+- **The store interface enforces the filter** (MNE-44). RLS is the second layer, not the only one.
+  Defence in depth here is the whole point: the interface catches the ordinary mistake, RLS catches
+  the hand-written query.
+- **MNE-169 gets an invariant test that proves a workspace cannot read another's rows even with a
+  hand-written query that omits the filter.** This ranks with the two GUARD invariants. It is not
+  satisfied by a test that goes through the store interface, because the interface is the layer being
+  bypassed.
+
+**The residency and isolation story for M5 is now a controls story**, consistent with the §11.1
+rewrite of privacy. We answer isolation with RLS plus the invariant test, not with separate schemas.
+
+**BYOC (MNE-147) is not this.** It is a third model — a dedicated deployment — and it stays the honest
+answer for a customer who accepts neither shared schema nor our controls. Do not let it be offered as
+a softener for this ruling.
 
 ---
 
@@ -825,6 +857,7 @@ Things not yet settled. Resolve deliberately, do not drift into them.
 7. ~~**Who pays for inference.**~~ **RESOLVED 2026-07-29: we do. BYOK rejected on every tier.** See §14.1 and MNE-174. The seat price carries variable COGS, so MNE-173 (rate limiting) and MNE-180 (measure the allowance) are both Urgent consequences rather than follow-ups.
 8. ~~**When the web app ships.**~~ **RESOLVED 2026-07-29: with CLI, MCP, and the hosted API in the first milestone**, not at Month 6. See §12.3. Invites, roles, and conflict resolution UI stay at Month 6 — they are multiplayer, not web.
 9. **What a paying customer gets before Month 6.** Billing plumbing now exists in the first milestone, but most of §14's Team tier — roles, conflict resolution, team handoffs — does not. Thinner tier, early-access price, or dark plumbing? Tracked on MNE-26. **Do not ship a checkout page until this is answered.**
+10. ~~**Multi-tenancy model.**~~ **RESOLVED 2026-07-31: shared schema, `workspace_id` on every row, RLS mandatory.** See §11.3 and MNE-172. Schema-per-tenant was rejected because §5 Stage 4's cross-team read path is a product requirement it fights. The consequence is that RLS policies and MNE-169's cross-workspace invariant test are hard gates on MNE-42, MNE-43, and MNE-44 rather than follow-ups.
 
 ---
 
