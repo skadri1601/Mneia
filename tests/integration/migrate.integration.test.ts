@@ -74,6 +74,34 @@ describe.skipIf(connectionString === undefined)('migrate against Postgres', () =
     });
   });
 
+  it('creates extensions in public even when search_path points elsewhere', async () => {
+    const schema = await withSchema(async (driver, client) => {
+      await migrate(driver, { appliedBy: 'integration' });
+
+      const namespaces = await client.query(
+        `SELECT e.extname, n.nspname
+           FROM pg_extension e
+           JOIN pg_namespace n ON n.oid = e.extnamespace
+          WHERE e.extname IN ('vector', 'pgcrypto')
+          ORDER BY e.extname`,
+      );
+
+      expect(namespaces.rows.map((row) => row.nspname)).toEqual(['public', 'public']);
+      return (await client.query('SELECT current_schema() AS name')).rows[0]?.name as string;
+    });
+
+    const client = await connect();
+    try {
+      const surviving = await client.query(
+        "SELECT extname FROM pg_extension WHERE extname IN ('vector', 'pgcrypto')",
+      );
+      expect(surviving.rows.map((row) => row.extname).sort()).toEqual(['pgcrypto', 'vector']);
+      expect(schema).not.toBe('public');
+    } finally {
+      await client.end();
+    }
+  });
+
   it('is a no-op on a second run', async () => {
     await withSchema(async (driver) => {
       await migrate(driver);
