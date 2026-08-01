@@ -61,6 +61,16 @@ Paragraphs are modelled as `Segment[]` so a bolded run survives into the plain-t
 [{ text: 'The inner loop stays in your terminal.', strong: true }, { text: ' A handoff that ...' }]
 ```
 
+**Legal copy is the one exception, and it lives in `src/content/legal.ts`.** Terms and the Privacy
+Policy are structured as sections of typed blocks — text, bullets, tables, notes — because a document
+of that length is authored and reviewed as a document, not as marketing copy. It uses the same
+`Segment[]` model underneath, via a `rich()` helper that parses `**bold**` so a clause can be written
+as one string instead of a hand-built array.
+
+Legal pages appear in `ROUTES`, so `sitemap.xml` and the `llms.txt` index list them. They are
+deliberately **not** in `llms-full.txt` — `corpus.ts` builds that from an explicit array, and twenty
+thousand words of clauses would drown the product copy the corpus exists to deliver.
+
 ## Discovery surfaces
 
 Generated, never hand-edited. All of them derive from `ROUTES` in `src/lib/site.ts`.

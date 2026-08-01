@@ -17,7 +17,14 @@ export const SITE_DESCRIPTION =
 
 export const REPO_URL = 'https://github.com/skadri1601/Mneia';
 
-export type RoutePath = '/' | '/handoff' | '/features' | '/pricing' | '/about';
+export type RoutePath =
+  | '/'
+  | '/handoff'
+  | '/features'
+  | '/pricing'
+  | '/about'
+  | '/terms'
+  | '/privacy';
 
 export type RouteEntry = {
   path: RoutePath;
@@ -71,6 +78,24 @@ export const ROUTES: readonly RouteEntry[] = [
     description:
       'Why Mneia exists, who it is built for, and how it is licensed. The context layer is permanent, and nobody has built it for teams working with AI agents.',
     priority: 0.6,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/terms',
+    name: 'Terms of Service',
+    title: 'Terms of Service',
+    description:
+      'The agreement between you and Mneia: what the Service is, who owns your content, how fees and metering work, and how disputes are resolved.',
+    priority: 0.3,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/privacy',
+    name: 'Privacy Policy',
+    title: 'Privacy Policy',
+    description:
+      'What we collect, why, who else touches it, and your rights under GDPR, the CCPA and other US state laws, and India’s DPDP Act. We do not train models on your content.',
+    priority: 0.3,
     changeFrequency: 'monthly',
   },
 ];
