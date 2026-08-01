@@ -1,10 +1,22 @@
 import { neon } from '@neondatabase/serverless';
 
 const EMAIL = /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_EMAIL_LENGTH = 254;
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 
-export type SignupOutcome = 'stored' | 'already_present';
+const siteOrigin = (): string =>
+  (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://mneia.dev').replace(/\/+$/, '');
+
+export const unsubscribePostUrl = (token: string): string =>
+  `${siteOrigin()}/api/waitlist/unsubscribe?token=${encodeURIComponent(token)}`;
+
+export const unsubscribePageUrl = (token: string): string =>
+  `${siteOrigin()}/unsubscribe?token=${encodeURIComponent(token)}`;
+
+export type SignupResult =
+  | { outcome: 'stored'; unsubscribeToken: string }
+  | { outcome: 'already_present' };
 
 export class WaitlistError extends Error {
   constructor(
@@ -30,7 +42,7 @@ export function normaliseEmail(raw: unknown): string {
   return email;
 }
 
-export async function storeSignup(email: string, source: string): Promise<SignupOutcome> {
+export async function storeSignup(email: string, source: string): Promise<SignupResult> {
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
@@ -45,16 +57,45 @@ export async function storeSignup(email: string, source: string): Promise<Signup
     INSERT INTO waitlist_signup (email, source)
     VALUES (${email}, ${source})
     ON CONFLICT (lower(email)) DO NOTHING
+    RETURNING unsubscribe_token
+  `;
+
+  const token = rows[0]?.unsubscribe_token;
+
+  if (typeof token !== 'string') return { outcome: 'already_present' };
+
+  return { outcome: 'stored', unsubscribeToken: token };
+}
+
+export async function forgetSignup(token: string): Promise<boolean> {
+  const connectionString = process.env.DATABASE_URL;
+
+  if (!connectionString) {
+    throw new WaitlistError(
+      'not_configured',
+      'expected DATABASE_URL to hold the Neon connection string; found none',
+    );
+  }
+
+  if (!UUID.test(token)) return false;
+
+  const sql = neon(connectionString);
+  const rows = await sql`
+    DELETE FROM waitlist_signup
+     WHERE unsubscribe_token = ${token}
     RETURNING id
   `;
 
-  return rows.length > 0 ? 'stored' : 'already_present';
+  return rows.length > 0;
 }
 
-export async function sendConfirmation(email: string): Promise<boolean> {
+export async function sendConfirmation(email: string, unsubscribeToken: string): Promise<boolean> {
   const key = process.env.RESEND_API_KEY;
 
   if (!key) return false;
+
+  const oneClick = unsubscribePostUrl(unsubscribeToken);
+  const optOut = unsubscribePageUrl(unsubscribeToken);
 
   const response = await fetch(RESEND_ENDPOINT, {
     method: 'POST',
@@ -66,6 +107,10 @@ export async function sendConfirmation(email: string): Promise<boolean> {
       from: process.env.WAITLIST_FROM ?? 'Mneia <hello@mneia.dev>',
       to: [email],
       subject: 'You are on the Mneia list',
+      headers: {
+        'List-Unsubscribe': `<${oneClick}>`,
+        'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      },
       text: [
         'Thanks for asking for early access to Mneia.',
         '',
@@ -77,6 +122,10 @@ export async function sendConfirmation(email: string): Promise<boolean> {
         'https://mneia.dev',
         '',
         'If you did not request this, ignore it and you will hear nothing further.',
+        '',
+        'To come off the list, open this link — it deletes your address rather than',
+        'suppressing it, and takes effect immediately:',
+        optOut,
       ].join('\n'),
     }),
   });
