@@ -47,3 +47,12 @@
   letter-spacing: var(--tracking-caption);
   color: var(--tile-faint);
 }
+
+.noteStrong {
+  color: var(--tile-ink);
+  font-weight: var(--weight-semibold);
+}
+
+.input:disabled {
+  opacity: 0.55;
+}
