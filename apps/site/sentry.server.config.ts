@@ -1,0 +1,19 @@
+import * as Sentry from '@sentry/nextjs';
+
+Sentry.init({
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.VERCEL_ENV ?? 'development',
+  attachStacktrace: true,
+  maxBreadcrumbs: 100,
+  includeLocalVariables: true,
+  dataCollection: {
+    userInfo: true,
+    cookies: true,
+    httpHeaders: { request: true, response: true },
+    httpBodies: ['incomingRequest', 'outgoingRequest', 'incomingResponse', 'outgoingResponse'],
+    urlQueryParams: true,
+    stackFrameVariables: true,
+    frameContextLines: 10,
+  },
+  integrations: [Sentry.extraErrorDataIntegration({ depth: 10 })],
+});
