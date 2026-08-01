@@ -43,18 +43,18 @@ export async function POST(request: Request): Promise<Response> {
     return json({ ok: false, error: message }, 400);
   }
 
-  let outcome: Awaited<ReturnType<typeof storeSignup>>;
+  let result: Awaited<ReturnType<typeof storeSignup>>;
 
   try {
-    outcome = await storeSignup(email, 'site');
+    result = await storeSignup(email, 'site');
   } catch (error) {
     Sentry.captureException(error);
     return json({ ok: false, error: 'we could not save that just now — try again shortly' }, 503);
   }
 
-  if (outcome === 'stored') {
+  if (result.outcome === 'stored') {
     try {
-      if (await sendConfirmation(email)) {
+      if (await sendConfirmation(email, result.unsubscribeToken)) {
         await markNotified(email);
       }
     } catch (error) {
