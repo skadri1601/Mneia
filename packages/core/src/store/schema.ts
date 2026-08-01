@@ -26,6 +26,25 @@ export type WorkspacePlan = (typeof WORKSPACE_PLANS)[number];
 export const BILLING_STATUSES = ['active', 'trialing', 'past_due', 'canceled'] as const;
 export type BillingStatus = (typeof BILLING_STATUSES)[number];
 
+export const ITEM_KINDS = [
+  'decision',
+  'constraint',
+  'open_question',
+  'fact',
+  'artifact_ref',
+] as const;
+export type ItemKind = (typeof ITEM_KINDS)[number];
+
+export const ITEM_STATUSES = ['active', 'superseded', 'disputed', 'retired'] as const;
+export type ItemStatus = (typeof ITEM_STATUSES)[number];
+
+export const ACCESS_SCOPES = ['private', 'project', 'team', 'workspace', 'restricted'] as const;
+export type AccessScope = (typeof ACCESS_SCOPES)[number];
+
+export const ACCESS_SCOPE_ORDER = ['private', 'project', 'team', 'workspace'] as const;
+
+export const EMBEDDING_DIMENSIONS = 1536;
+
 export const CORE_ENTITY_TABLES = [
   'workspace',
   'actor',
