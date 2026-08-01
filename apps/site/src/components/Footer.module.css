@@ -20,7 +20,7 @@
 .wordmark {
   color: var(--tile-ink);
   font-family: var(--font-display);
-  font-size: var(--size-tagline);
+  font-size: var(--size-footer-wordmark);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tagline);
   letter-spacing: var(--tracking-tagline);
@@ -29,7 +29,7 @@
 .tagline {
   margin-block-start: var(--space-xs);
   max-width: 34ch;
-  font-size: var(--size-fine-print);
+  font-size: var(--size-footer-fine);
   line-height: var(--leading-caption);
   letter-spacing: var(--tracking-fine-print);
   color: var(--tile-faint);
@@ -41,7 +41,7 @@
 
 .heading {
   font-family: var(--font-text);
-  font-size: var(--size-caption);
+  font-size: var(--size-footer-heading);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-caption-strong);
   letter-spacing: var(--tracking-caption);
@@ -59,7 +59,7 @@
   align-items: center;
   min-height: var(--target-min);
   font-family: var(--font-text);
-  font-size: var(--size-body);
+  font-size: var(--size-footer-link);
   font-weight: var(--weight-regular);
   line-height: var(--leading-dense-link);
   letter-spacing: var(--tracking-none);
@@ -76,7 +76,7 @@
   margin-block-start: var(--space-xxl);
   padding-block-start: var(--space-lg);
   border-top: 1px solid var(--tile-hairline);
-  font-size: var(--size-fine-print);
+  font-size: var(--size-footer-fine);
   line-height: var(--leading-caption);
   letter-spacing: var(--tracking-fine-print);
   color: var(--tile-faint);

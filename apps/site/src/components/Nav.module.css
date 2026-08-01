@@ -71,7 +71,7 @@
 .subName {
   color: var(--ink);
   font-family: var(--font-display);
-  font-size: var(--size-tagline);
+  font-size: var(--size-subnav-name);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tagline);
   letter-spacing: var(--tracking-tagline);
