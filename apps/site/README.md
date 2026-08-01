@@ -14,10 +14,39 @@ pnpm --filter @mneia/site typecheck  # tsc --noEmit
 |---|---|---|---|
 | `NEXT_PUBLIC_SITE_URL` | Production only | `https://mneia.dev` | Canonicals, sitemap, robots, JSON-LD, `llms.txt` |
 | `NEXT_PUBLIC_WAITLIST_ENDPOINT` | Yes, to accept signups | none | `WaitlistForm` |
+| `NEXT_PUBLIC_SENTRY_DSN` | For browser error reporting | none | `src/instrumentation-client.ts` |
+| `SENTRY_DSN` | For server and edge error reporting | none | `sentry.server.config.ts`, `sentry.edge.config.ts` |
+| `SENTRY_AUTH_TOKEN` | Build time, for readable stack traces | none | `withSentryConfig` source map upload |
 
 `NEXT_PUBLIC_SITE_URL` must have no trailing slash and must match the domain the site is actually
 served from. Every absolute URL the site emits is derived from it, so a wrong value points canonicals
 and structured data at a host that does not exist.
+
+## Error reporting
+
+Sentry runs across all three Next runtimes — browser, Node, and Edge — initialised from
+`src/instrumentation-client.ts`, `sentry.server.config.ts`, and `sentry.edge.config.ts`. The server
+and edge configs are loaded by `src/instrumentation.ts`, which also exports `onRequestError` so
+Server Component and route handler failures are captured without a `captureException` at every call
+site. `src/app/global-error.tsx` exists because Next catches root layout errors before Sentry ever
+sees them, so that boundary has to report explicitly.
+
+**Errors only — tracing is deliberately off.** `excludeTracing` in `next.config.ts` strips the
+tracing bundle, which is worth 52 kB of client JS on every page. On 18 prerendered static pages the
+Web Vitals and navigation spans it buys are not worth that against the Core Web Vitals the discovery
+work depends on. Re-enabling means removing `excludeTracing` **and** restoring `tracesSampleRate` in
+all three configs — a sample rate alone does nothing once the bundle is stripped.
+
+**`dataCollection` is set deliberately, and its default is a trap.** Omitting the option entirely
+falls back to `sendDefaultPii` (default `false`); passing the object — *even empty* — flips every
+unset category to its permissive default. Only `userInfo` defaults to `false`, and it is the category
+that carries the visitor's **IP address**. The configs set it to `true` on purpose, so events carry
+IP, OS name and version, device, and browser. Do not "tidy" these blocks away — deleting them
+silently narrows what is captured, and setting `dataCollection: {}` silently widens it.
+
+Collecting IP addresses is a privacy commitment, not just a config value. It needs a privacy policy
+that says so before the site takes real traffic, and it can be reversed at any time from Sentry's
+project settings (*Security & Privacy → Prevent Storing of IP Addresses*) without a deploy.
 
 ## Where the copy lives
 

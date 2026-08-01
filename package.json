@@ -32,6 +32,7 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "@biomejs/biome",
+      "@sentry/cli",
       "esbuild"
     ]
   }

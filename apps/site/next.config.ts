@@ -1,3 +1,4 @@
+import { withSentryConfig } from '@sentry/nextjs';
 import type { NextConfig } from 'next';
 
 const config: NextConfig = {
@@ -6,4 +7,14 @@ const config: NextConfig = {
   distDir: process.env.NEXT_DIST_DIR ?? '.next',
 };
 
-export default config;
+export default withSentryConfig(config, {
+  org: 'mneia',
+  project: 'javascript-nextjs',
+  widenClientFileUpload: true,
+  tunnelRoute: '/monitoring',
+  silent: !process.env.CI,
+  bundleSizeOptimizations: {
+    excludeDebugStatements: true,
+    excludeTracing: true,
+  },
+});
