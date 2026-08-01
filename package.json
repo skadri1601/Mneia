@@ -18,7 +18,8 @@
     "format": "biome format --write .",
     "format:check": "biome format .",
     "check:tests": "node scripts/check-test-integrity.mjs",
-    "check:policy": "node scripts/check-git-policy.mjs"
+    "check:policy": "node scripts/check-git-policy.mjs",
+    "db:migrate": "node scripts/db-migrate.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",

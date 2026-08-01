@@ -58,6 +58,7 @@ pnpm typecheck        # tsc --build --force — local only
 pnpm check:tests      # rejects committed .only / .skip / .todo — local only
 pnpm format           # biome format --write
 pnpm lint             # biome check — everything, warnings included
+pnpm db:migrate       # apply pending migrations to DATABASE_URL — local and the Neon workflow
 ```
 
 **CI does not run tests or typecheck.** Ruled by the founder 2026-07-30: both were judged noise.
@@ -69,14 +70,33 @@ yourself before opening a PR**, especially on anything touching `packages/core/s
 package name, which resolves to `packages/core/dist` — so a clean checkout has nothing to import.
 Do not remove the build from the `test` script without also fixing those imports.
 
+## The database
+
+Neon Postgres, hosted (`docs/STACK.md`). Copy `.env.example` to `.env` and put the connection string
+in `DATABASE_URL` — `.env` is gitignored, and both `pnpm db:migrate` and `pnpm test` read it.
+
+**Use the direct connection string, not the `-pooler` one.** The migration runner holds a session-level
+`pg_advisory_lock` across the whole run, and Neon's pooled endpoint is PgBouncer in transaction mode,
+where the server connection can change between statements. `.env.example` shows both.
+
+Every PR gets its own Neon branch — `.github/workflows/neon_workflow.yml` creates `preview/pr-<n>`,
+applies migrations to it, posts a schema diff to the PR, and deletes the branch when the PR closes.
+It skips fork PRs, which cannot see `NEON_API_KEY`. **That workflow is the only thing that runs
+migrations automatically; nothing migrates production.** Applying to production is a deliberate
+`pnpm db:migrate` against the production `DATABASE_URL`, and `CLAUDE.md` requires asking first.
+
 The Postgres integration tests under `tests/integration/` need a real engine and **skip themselves
-when `DATABASE_URL` is unset**. To run them locally:
+when `DATABASE_URL` is unset**. They create and drop their own `mne40_*` schemas, so they are safe to
+point at a Neon branch. A local container also works:
 
 ```
 docker run -d --name mneia-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=mneia \
   -p 5433:5432 pgvector/pgvector:pg17
 DATABASE_URL='postgres://postgres:postgres@localhost:5433/mneia' pnpm test
 ```
+
+An explicit prefix like that always wins over `.env` — `process.loadEnvFile` does not overwrite a
+variable the environment already set.
 
 ## The nine standing rules
 
