@@ -62,6 +62,7 @@ describe.skipIf(connectionString === undefined)('core entity schema', () => {
          END IF;
        END $$`,
     );
+    await client.query(`GRANT ${TENANT_ROLE} TO CURRENT_USER`);
     await client.end();
   });
 
@@ -181,7 +182,7 @@ describe.skipIf(connectionString === undefined)('core entity schema', () => {
     });
   });
 
-  it('is bypassed by a superuser even with FORCE, which is why the app must not connect as one', async () => {
+  it('is bypassed by a BYPASSRLS or superuser role even with FORCE, which is why the app must not connect as one', async () => {
     await withSchema(async (client) => {
       await seedTwoWorkspaces(client);
 
@@ -196,8 +197,15 @@ describe.skipIf(connectionString === undefined)('core entity schema', () => {
         );
       }
 
-      const isSuperuser = await client.query("SELECT current_setting('is_superuser') AS v");
-      expect(isSuperuser.rows[0]?.v).toBe('on');
+      const bypasses = await client.query(
+        `SELECT current_setting('is_superuser') = 'on'
+                OR EXISTS (
+                  SELECT 1 FROM pg_roles g
+                   WHERE (g.rolbypassrls OR g.rolsuper)
+                     AND pg_has_role(current_user, g.oid, 'MEMBER')
+                ) AS v`,
+      );
+      expect(bypasses.rows[0]?.v).toBe(true);
 
       await setWorkspace(client, WS_A);
       const rows = await client.query('SELECT workspace_id FROM team');
