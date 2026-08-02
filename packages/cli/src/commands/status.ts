@@ -1,5 +1,6 @@
 import type { ContextItem, IntervalMs, ItemKind, ItemStatus, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
+import { callApi } from '../api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
 
@@ -70,57 +71,6 @@ const MS_PER_DAY = 86_400_000;
 
 function usageError(message: string): CliError {
   return new CliError('usage', message, `usage: ${USAGE}`);
-}
-
-function readOf(value: unknown, key: string): unknown {
-  return typeof value === 'object' && value !== null && key in value
-    ? (value as Record<string, unknown>)[key]
-    : undefined;
-}
-
-function networkErrorCode(error: unknown): string | null {
-  let current: unknown = error;
-
-  for (let depth = 0; depth < CAUSE_DEPTH; depth += 1) {
-    const code = readOf(current, 'code');
-    if (typeof code === 'string' && NETWORK_ERROR_CODES.has(code)) {
-      return code;
-    }
-    const name = readOf(current, 'name');
-    if (name === 'TimeoutError' || name === 'ConnectTimeoutError') {
-      return 'ETIMEDOUT';
-    }
-    current = readOf(current, 'cause');
-    if (current === undefined || current === null) {
-      return null;
-    }
-  }
-
-  return null;
-}
-
-async function callApi<T>(endpoint: string, call: () => Promise<T>): Promise<T> {
-  try {
-    return await call();
-  } catch (error) {
-    if (error instanceof CliError) {
-      throw error;
-    }
-    const code = networkErrorCode(error);
-    if (code !== null) {
-      throw new CliError(
-        'network',
-        `the Mneia API at ${endpoint} could not be reached (${code})`,
-        'check your network connection, then run mneia status again — your token is fine',
-      );
-    }
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new CliError(
-      'failed',
-      `the Mneia API call failed: ${detail}`,
-      'retry, and report it if it keeps failing',
-    );
-  }
 }
 
 function assertNoPositionals(args: readonly string[]): void {
@@ -395,7 +345,7 @@ export function createStatusCommand(deps: StatusDeps): CommandDefinition {
       assertNoPositionals(invocation.args);
       const now = (deps.now ?? systemClock)();
       const config = await deps.loadConfig(invocation.io.cwd);
-      const report = await callApi(config.endpoint, () => deps.api.status({ config }));
+      const report = await callApi(config.endpoint, 'status', () => deps.api.status({ config }));
       invocation.io.stdout(
         invocation.json ? renderJson(report, config, now) : renderHuman(report, config, now),
       );

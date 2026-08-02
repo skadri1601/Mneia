@@ -147,11 +147,7 @@ export async function resolveToken(
 
   const token = raw.trim();
   if (token.length === 0) {
-    throw new CliError(
-      'auth',
-      `${path} is empty`,
-      'run mneia login to obtain a token',
-    );
+    throw new CliError('auth', `${path} is empty`, 'run mneia login to obtain a token');
   }
   return token;
 }

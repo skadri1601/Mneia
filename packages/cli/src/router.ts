@@ -154,7 +154,9 @@ export function assertRegistrableCommands(commands: readonly CommandDefinition[]
       );
     }
     if (seen.has(command.name)) {
-      throw new Error(`command "${command.name}" is registered twice; every command name must be unique`);
+      throw new Error(
+        `command "${command.name}" is registered twice; every command name must be unique`,
+      );
     }
     seen.add(command.name);
   }
@@ -396,7 +398,11 @@ export async function route(options: RouteOptions): Promise<number> {
     const parsed = parseArgv(options.argv);
 
     if (parsed.version) {
-      io.stdout(parsed.json ? `${JSON.stringify({ version: options.version })}\n` : `mneia ${options.version}\n`);
+      io.stdout(
+        parsed.json
+          ? `${JSON.stringify({ version: options.version })}\n`
+          : `mneia ${options.version}\n`,
+      );
       return EXIT_OK;
     }
 

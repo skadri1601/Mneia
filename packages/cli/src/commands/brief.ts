@@ -1,4 +1,5 @@
 import type { ItemKind, ItemStatus, ScoredItem, Slice } from '@mneia/core';
+import { callApi } from '../api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 
 type ConfigModule = typeof import('../config.js');
@@ -60,22 +61,6 @@ function readBudget(flags: CommandInvocation['flags']): number {
     throw usageError(`--budget expects a positive whole number of tokens; got ${raw}`);
   }
   return parsed;
-}
-
-async function callApi<T>(call: () => Promise<T>): Promise<T> {
-  try {
-    return await call();
-  } catch (error) {
-    if (error instanceof CliError) {
-      throw error;
-    }
-    const detail = error instanceof Error ? error.message : String(error);
-    throw new CliError(
-      'failed',
-      `the Mneia API call failed: ${detail}`,
-      'retry, and report it if it keeps failing',
-    );
-  }
 }
 
 function loadBearingCount(items: readonly ScoredItem[]): number {
@@ -160,10 +145,10 @@ export function createBriefCommand(deps: BriefDeps): CommandDefinition {
       const task = readTask(invocation);
       const tokenBudget = readBudget(invocation.flags);
       const config = await deps.loadConfig(invocation.io.cwd);
-      const slice = await callApi(() => deps.api.rehydrate({ config, task, tokenBudget }));
-      invocation.io.stdout(
-        invocation.json ? renderJson(slice, task) : renderHuman(slice, task),
+      const slice = await callApi(config.endpoint, 'brief', () =>
+        deps.api.rehydrate({ config, task, tokenBudget }),
       );
+      invocation.io.stdout(invocation.json ? renderJson(slice, task) : renderHuman(slice, task));
       return EXIT_OK;
     },
   };
