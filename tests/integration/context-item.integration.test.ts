@@ -100,6 +100,9 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
           `SELECT e.enumlabel FROM pg_enum e
              JOIN pg_type t ON t.oid = e.enumtypid
             WHERE t.typname = $1
+              AND t.typnamespace = (
+                SELECT oid FROM pg_namespace WHERE nspname = current_schema()
+              )
             ORDER BY e.enumsortorder`,
           [name],
         );
@@ -279,6 +282,7 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
            END IF;
          END $$`,
       );
+      await client.query('GRANT mne42_tenant TO CURRENT_USER');
       await client.query(`GRANT USAGE ON SCHEMA "${schema}" TO mne42_tenant`);
       await client.query(`GRANT SELECT ON ALL TABLES IN SCHEMA "${schema}" TO mne42_tenant`);
       await client.query('SET ROLE mne42_tenant');

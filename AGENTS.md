@@ -67,10 +67,17 @@ pnpm lint             # biome check — everything, warnings included
 pnpm db:migrate       # apply pending migrations to DATABASE_URL — local and the Neon workflow
 ```
 
-**CI does not run tests or typecheck.** Ruled by the founder 2026-07-30: both were judged noise.
-CI is format, lint errors, build, and git policy. `pnpm build` is `tsc --build`, so a type error
-still fails CI as a build failure — but nothing runs the test suite automatically. **Run `pnpm test`
-yourself before opening a PR**, especially on anything touching `packages/core/src/store/`.
+**`ci.yml` does not run tests or typecheck.** Ruled by the founder 2026-07-30: both were judged
+noise. That job is format, lint errors, build, and git policy. `pnpm build` is `tsc --build`, so a
+type error still fails as a build failure.
+
+**But the Neon workflow does run them** (MNE-203, approved 2026-08-01 as a narrow exception). On
+every non-fork PR, `neon_workflow.yml` migrates `preview/pr-<n>` and then runs the full suite
+against it with `MNEIA_REQUIRE_DB=1` — which turns a skipped integration suite into a failure
+rather than a silent green. That is what makes the GUARD invariants real instead of decorative.
+
+Still run `pnpm test` yourself before opening a PR — the PR run is a backstop, not your first
+feedback loop. It needs `DATABASE_URL`; without one the integration suites skip themselves.
 
 **`pnpm test` builds first, on purpose.** The `cli` and `mcp-server` tests import `@mneia/core` by
 package name, which resolves to `packages/core/dist` — so a clean checkout has nothing to import.

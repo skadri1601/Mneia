@@ -55,6 +55,15 @@ jobs:
         env:
           DATABASE_URL: ${{ steps.create.outputs.db_url }}
 
+      - name: reject committed .only / .skip / .todo
+        run: pnpm check:tests
+
+      - name: run the suite against the branch
+        run: pnpm build && npx vitest run
+        env:
+          DATABASE_URL: ${{ steps.create.outputs.db_url }}
+          MNEIA_REQUIRE_DB: '1'
+
       - name: post schema diff
         uses: neondatabase/schema-diff-action@v1
         with:
