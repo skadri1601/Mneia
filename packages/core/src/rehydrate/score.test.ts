@@ -43,7 +43,10 @@ const BASE_ITEM: ContextItem = {
   embedding: null,
 };
 
-const item = (overrides: Partial<ContextItem> = {}): ContextItem => ({ ...BASE_ITEM, ...overrides });
+const item = (overrides: Partial<ContextItem> = {}): ContextItem => ({
+  ...BASE_ITEM,
+  ...overrides,
+});
 
 const componentValues = (components: ScoreComponents): number[] => [
   components.semanticRelevance,

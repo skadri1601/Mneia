@@ -315,7 +315,11 @@ describe('mneia_rehydrate pipeline', () => {
   it('returns rendered markdown and structured content a client can correlate', async () => {
     const fake = createStore();
     const telemetry = createTelemetry();
-    const result = await runTool({ task: 'wire the retry path', project: 'payments-migration' }, fake, telemetry);
+    const result = await runTool(
+      { task: 'wire the retry path', project: 'payments-migration' },
+      fake,
+      telemetry,
+    );
 
     expect(result.isError).toBeUndefined();
     expect(textOf(result).length).toBeGreaterThan(0);

@@ -61,7 +61,12 @@ export function isRedactedKey(key: string): boolean {
 }
 
 function isOpaqueValue(value: unknown): boolean {
-  if (value === null || typeof value !== 'object' || Array.isArray(value) || value instanceof Date) {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    value instanceof Date
+  ) {
     return false;
   }
   const prototype = Object.getPrototypeOf(value) as object | null;

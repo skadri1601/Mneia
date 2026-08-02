@@ -151,7 +151,10 @@ describe('packSlice', () => {
     ];
     const budget = costOfFirst(flood) * 10;
 
-    const slice = packSlice({ scored: [...flood, ...constraints], tokenBudget: budget }, { counter });
+    const slice = packSlice(
+      { scored: [...flood, ...constraints], tokenBudget: budget },
+      { counter },
+    );
     const included = new Set(idsOf(slice.items));
 
     for (const constraint of constraints) {
@@ -216,10 +219,7 @@ describe('packSlice', () => {
 
   it('reports every item it could not fit', () => {
     const corpus = facts(12);
-    const slice = packSlice(
-      { scored: corpus, tokenBudget: costOfFirst(corpus) * 5 },
-      { counter },
-    );
+    const slice = packSlice({ scored: corpus, tokenBudget: costOfFirst(corpus) * 5 }, { counter });
 
     const included = idsOf(slice.items);
     const dropped = [...slice.droppedItemIds];

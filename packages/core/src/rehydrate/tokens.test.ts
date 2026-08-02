@@ -74,7 +74,10 @@ const BASE_ITEM: ContextItem = {
   embedding: null,
 };
 
-const item = (overrides: Partial<ContextItem> = {}): ContextItem => ({ ...BASE_ITEM, ...overrides });
+const item = (overrides: Partial<ContextItem> = {}): ContextItem => ({
+  ...BASE_ITEM,
+  ...overrides,
+});
 
 const wordCounter: TokenCounter = {
   name: 'test-words',
