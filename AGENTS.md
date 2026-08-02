@@ -65,6 +65,7 @@ pnpm check:tests      # rejects committed .only / .skip / .todo — local only
 pnpm format           # biome format --write
 pnpm lint             # biome check — everything, warnings included
 pnpm db:migrate       # apply pending migrations to DATABASE_URL — local and the Neon workflow
+pnpm waitlist:notify  # preview or send a waitlist campaign — local only, see below
 ```
 
 **`ci.yml` does not run tests or typecheck.** Ruled by the founder 2026-07-30: both were judged
@@ -110,6 +111,23 @@ DATABASE_URL='postgres://postgres:postgres@localhost:5433/mneia' pnpm test
 
 An explicit prefix like that always wins over `.env` — `process.loadEnvFile` does not overwrite a
 variable the environment already set.
+
+## The waitlist
+
+`apps/site` collects signups; `pnpm waitlist:notify <campaign>` is the only way to mail them.
+It previews by default and sends nothing until you add `--send` — the same shape as `db:migrate`,
+and for the same reason: there is no automatic path to a real person's inbox.
+
+**Two published promises decide what may be sent, and neither is yours to relax.** The privacy
+policy says the address is used for one thing, *"telling you when access opens"*, and the
+confirmation email promises *"one more email … nothing else"*. So the list is **not** a newsletter.
+Adding a campaign that is not the access announcement means changing `apps/site/src/content/legal.ts`
+first, and that is a founder decision. The retention clause — deleted within 30 days of access
+opening — is a live obligation too, not a statement of intent.
+
+Every delivery is recorded in `waitlist_broadcast_send`, unique on `(campaign, signup_id)`. That
+constraint, not the loop, is what stops a double send; re-running a campaign only reaches whoever
+it missed. Unsubscribing hard-deletes the address and cascades its send history away with it.
 
 ## The nine standing rules
 
