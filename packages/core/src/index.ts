@@ -50,7 +50,52 @@ export type {
   Slice,
   SliceRequest,
 } from './rehydrate/types.js';
+export { DEFAULT_SCORING_WEIGHTS, scoreItems } from './rehydrate/score.js';
+export type { TokenCounter } from './rehydrate/tokens.js';
+export {
+  countItemTokens,
+  heuristicTokenCounter,
+  truncateToTokens,
+} from './rehydrate/tokens.js';
+export type { PackOptions } from './rehydrate/pack.js';
+export { DEFAULT_KIND_QUOTAS, isMandatoryItem, packSlice, sliceOverflow } from './rehydrate/pack.js';
+export type { RenderSliceInput } from './rehydrate/render.js';
+export { SLICE_SECTION_HEADINGS, renderSlice, shortenItemIds } from './rehydrate/render.js';
+export type {
+  SupersedeBlockedOutcome,
+  SupersedeOutcome,
+  SupersedeRequest,
+  SupersedeVerdict,
+} from './policy/index.js';
+export {
+  SupersedeNotAllowedError,
+  assertSupersedeAllowed,
+  evaluateSupersede,
+} from './policy/index.js';
+export type {
+  JsonlSinkOptions,
+  MemorySinkOptions,
+  MemoryTelemetrySink,
+  TelemetryEmitterOptions,
+} from './telemetry/index.js';
+export {
+  TelemetrySinkError,
+  TelemetryValidationError,
+  TelemetryWriteError,
+  createJsonlSink,
+  createMemorySink,
+  createNoopEmitter,
+  createTelemetryEmitter,
+  redactEvent,
+  telemetryEnabledIn,
+} from './telemetry/index.js';
 export type { MigrationDriver, SqlExecutor, SqlResult, SqlValue } from './store/driver.js';
+export type {
+  PostgresConnectionSource,
+  PostgresSession,
+  SqlRow,
+} from './store/adapter/index.js';
+export { toActor, toTeam, toTeamMember, toWorkspace } from './store/adapter/index.js';
 export type { MigrateOptions, MigrateResult } from './store/migrate.js';
 export {
   BOOKKEEPING_TABLE,
@@ -85,6 +130,7 @@ export {
   CONFLICT_RESOLUTIONS,
   CORE_ENTITY_TABLES,
   EMBEDDING_DIMENSIONS,
+  IDENTITY_SUBJECT_SETTING,
   ITEM_KINDS,
   ITEM_STATUSES,
   TEAM_FUNCTIONS,
@@ -92,6 +138,15 @@ export {
   WORKSPACE_PLANS,
   WORKSPACE_SETTING,
 } from './store/schema.js';
+export type { RlsGuardErrorCode, RlsPosture } from './store/rls-guard.js';
+export {
+  RLS_BYPASS_ESCAPE_HATCH,
+  RLS_POSTURE_SQL,
+  RlsGuardError,
+  assertConnectionEnforcesRls,
+  assertRlsEnforced,
+  inspectRlsPosture,
+} from './store/rls-guard.js';
 export {
   MigrationError,
   checksumOf,

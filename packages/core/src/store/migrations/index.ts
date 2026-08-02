@@ -3,6 +3,8 @@ import { migration as coreEntities } from './0002-core-entities.js';
 import { migration as contextItem } from './0003-context-item.js';
 import { migration as waitlistSignup } from './0004-waitlist-signup.js';
 import { migration as waitlistUnsubscribe } from './0005-waitlist-unsubscribe.js';
+import { migration as checkpointHandoff } from './0006-checkpoint-handoff.js';
+import { migration as actorIdentity } from './0007-actor-identity.js';
 import type { Migration } from './migration.js';
 
 export type { AppliedMigration, Migration } from './migration.js';
@@ -13,4 +15,6 @@ export const MIGRATIONS: readonly Migration[] = [
   contextItem,
   waitlistSignup,
   waitlistUnsubscribe,
+  checkpointHandoff,
+  actorIdentity,
 ];

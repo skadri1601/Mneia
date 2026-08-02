@@ -17,5 +17,8 @@
   ],
   "scripts": {
     "build": "tsc --build"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }

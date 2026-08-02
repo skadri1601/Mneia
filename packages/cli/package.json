@@ -16,6 +16,7 @@
     "build": "tsc --build"
   },
   "dependencies": {
-    "@mneia/core": "workspace:*"
+    "@mneia/core": "workspace:*",
+    "zod": "^4.4.3"
   }
 }

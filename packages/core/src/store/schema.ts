@@ -1,4 +1,5 @@
 export const WORKSPACE_SETTING = 'mneia.workspace_id';
+export const IDENTITY_SUBJECT_SETTING = 'mneia.identity_subject';
 
 export const ACTOR_KINDS = ['human', 'agent'] as const;
 export type ActorKind = (typeof ACTOR_KINDS)[number];
