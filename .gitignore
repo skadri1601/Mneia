@@ -39,3 +39,6 @@ logs/
 # opennext build output
 .open-next/
 .wrangler/
+
+# superpowers session scratch — plans and specs live in docs/superpowers/
+.superpowers/

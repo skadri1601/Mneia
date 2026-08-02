@@ -1,4 +1,5 @@
 export const WORKSPACE_SETTING = 'mneia.workspace_id';
+export const IDENTITY_SUBJECT_SETTING = 'mneia.identity_subject';
 
 export const ACTOR_KINDS = ['human', 'agent'] as const;
 export type ActorKind = (typeof ACTOR_KINDS)[number];
@@ -42,6 +43,20 @@ export const ACCESS_SCOPES = ['private', 'project', 'team', 'workspace', 'restri
 export type AccessScope = (typeof ACCESS_SCOPES)[number];
 
 export const ACCESS_SCOPE_ORDER = ['private', 'project', 'team', 'workspace'] as const;
+
+export const CHECKPOINT_TRIGGERS = [
+  'task_boundary',
+  'day_boundary',
+  'manual',
+  'pre_compaction',
+] as const;
+export type CheckpointTrigger = (typeof CHECKPOINT_TRIGGERS)[number];
+
+export const CHECKPOINT_ACTIONS = ['created', 'updated', 'superseded', 'rejected'] as const;
+export type CheckpointAction = (typeof CHECKPOINT_ACTIONS)[number];
+
+export const CONFLICT_RESOLUTIONS = ['a_wins', 'b_wins', 'merged', 'both_retired'] as const;
+export type ConflictResolution = (typeof CONFLICT_RESOLUTIONS)[number];
 
 export const EMBEDDING_DIMENSIONS = 1536;
 

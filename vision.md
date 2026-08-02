@@ -858,6 +858,7 @@ Things not yet settled. Resolve deliberately, do not drift into them.
 8. ~~**When the web app ships.**~~ **RESOLVED 2026-07-29: with CLI, MCP, and the hosted API in the first milestone**, not at Month 6. See §12.3. Invites, roles, and conflict resolution UI stay at Month 6 — they are multiplayer, not web.
 9. **What a paying customer gets before Month 6.** Billing plumbing now exists in the first milestone, but most of §14's Team tier — roles, conflict resolution, team handoffs — does not. Thinner tier, early-access price, or dark plumbing? Tracked on MNE-26. **Do not ship a checkout page until this is answered.**
 10. ~~**Multi-tenancy model.**~~ **RESOLVED 2026-07-31: shared schema, `workspace_id` on every row, RLS mandatory.** See §11.3 and MNE-172. Schema-per-tenant was rejected because §5 Stage 4's cross-team read path is a product requirement it fights. The consequence is that RLS policies and MNE-169's cross-workspace invariant test are hard gates on MNE-42, MNE-43, and MNE-44 rather than follow-ups.
+11. ~~**Identity provider.**~~ **RESOLVED 2026-08-01: Clerk.** Clerk is the single identity provider for the web app, CLI, and MCP. Mneia's own Postgres model remains the authorization source of truth: Clerk user ids map to actors, and workspace, team, and scope enforcement stays behind RLS. The CLI and MCP receive Mneia device-flow tokens only after approval in a Clerk-authenticated web session. See MNE-166.
 
 ---
 

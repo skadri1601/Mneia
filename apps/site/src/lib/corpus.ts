@@ -23,12 +23,12 @@ import {
   HOME_SURFACES,
   METERING,
   OPERATIONS,
-  paragraphText,
   PRICING_FAQ,
   PRICING_INTRO,
   PRICING_METERING,
   PRICING_NO_KEY,
   PRICING_PREVIEW,
+  paragraphText,
   THESIS_QUOTE,
   TIERS,
 } from '@/content/pages';
@@ -116,7 +116,7 @@ const PREAMBLE = `# ${SITE_NAME}
 
 ${SITE_DESCRIPTION}
 
-Mneia performs three operations. Checkpoint captures the decisions, constraints, and open questions out of an agent session at a task or day boundary. Rehydrate assembles the minimal high-signal context slice for the next task under a token budget. Handoff produces a receivable artifact when work changes hands.
+MNEIA performs three operations. Checkpoint captures the decisions, constraints, and open questions out of an agent session at a task or day boundary. Rehydrate assembles the minimal high-signal context slice for the next task under a token budget. Handoff produces a receivable artifact when work changes hands.
 
 It runs as an MCP server for Claude Code, Cursor, Codex, or any MCP client, as a CLI, and as a deliberately thin web app. The client packages are Apache 2.0. The hosted service is proprietary and required.`;
 

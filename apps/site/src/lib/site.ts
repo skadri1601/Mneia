@@ -5,15 +5,15 @@ export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://mneia.dev'
   '',
 );
 
-export const SITE_NAME = 'Mneia';
+export const SITE_NAME = 'MNEIA';
 
-export const SITE_TITLE = 'Mneia: the handoff layer for teams working with AI agents';
+export const SITE_TITLE = 'MNEIA: shared memory and handoffs for AI-assisted teams';
 
 export const SITE_TAGLINE =
   'The shared project memory and handoff layer for teams working with AI agents.';
 
 export const SITE_DESCRIPTION =
-  'Agent sessions lose the decisions you made in them. Mneia captures them at the boundary and hands them to whoever picks the work up next.';
+  'MNEIA preserves shared project memory, decisions, constraints, and handoffs so AI-assisted teams can resume work with the right context.';
 
 export const REPO_URL = 'https://github.com/skadri1601/Mneia';
 

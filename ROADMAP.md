@@ -186,9 +186,9 @@ Tick these off here when you like — but **the ticket state in Linear is what c
 - [x] ~~MNE-172 — Multi-tenancy: shared schema + RLS, or schema-per-tenant (§11.2 Q3)~~ — **RULED 2026-07-31: shared schema, `workspace_id` on every row, RLS mandatory** (§11.3). Implemented in migrations `0002`/`0003`
 - [ ] MNE-173 — Rate limiting and abuse controls — **hard gate on MNE-105.** Urgent since the MNE-174 ruling: we pay for inference, so this is the whole margin guard
 - [ ] MNE-180 — Measure real checkpoint cost and size the §14.1 allowance — **blocks MNE-141**
-- [ ] MNE-181 — Web account plane: signup, device-flow approval, workspace and project management — **blocked by MNE-166**
+- [ ] MNE-181 — Web account plane: signup, device-flow approval, workspace and project management
 - [ ] MNE-165 — Vercel vs Fly ruling (needed before MNE-101 lands)
-- [ ] MNE-166 — Clerk vs WorkOS ruling — **Urgent, now blocks MNE-181 as well as MNE-101**
+- [x] ~~MNE-166 — Clerk vs WorkOS vs Neon Auth~~ — **RESOLVED 2026-08-01: Clerk is the identity provider; Mneia Postgres remains the authorization source of truth**
 
 **MNE-25 · Web review app** — *moved from M4, 2026-07-29*
 - [ ] MNE-138 — Project decision browser
@@ -397,7 +397,7 @@ Three more §11.2 questions are implementation rather than strategy and live in 
 
 *Opened by the 2026-07-29 web ruling:*
 
-- [ ] MNE-166 — DECISION: Clerk or WorkOS — raised to **Urgent**; now blocks MNE-181 as well as MNE-101
+- [x] ~~MNE-166 — DECISION: Clerk or WorkOS or Neon Auth~~ — **RESOLVED 2026-08-01: Clerk**
 - [ ] **§20 item 9 — what a paying customer gets before M4.** Billing plumbing lands in M1 but §14's Team feature table does not become true until M4. Tracked on MNE-26; needs a founder ruling before any checkout page ships.
 
 **MNE-29 · Kill-criteria watch (§18)** — **these never close**

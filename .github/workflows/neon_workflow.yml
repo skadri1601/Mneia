@@ -66,6 +66,7 @@ jobs:
 
       - name: post schema diff
         uses: neondatabase/schema-diff-action@v1
+        continue-on-error: true
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           compare_branch: ${{ env.NEON_BRANCH }}

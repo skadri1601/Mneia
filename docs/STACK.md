@@ -1,8 +1,10 @@
 # Stack
 
-> **Status: proposed, partly unresolved.** Three forks below are awaiting a founder ruling and are
-> tracked as Linear decision tickets. Nothing here is settled until those close.
-> Last updated 2026-07-29 — fork 4 (inference) closed; Stripe and the web app pulled into M1.
+> **Status: proposed, partly unresolved.** Two forks remain open: Vercel vs Fly.io and Sentry in the
+> CLI vs server-side only. They are tracked as Linear decision tickets; Clerk and the inference payer
+> are resolved. The extraction model tier remains open within the closed inference-payer ruling.
+> Last updated 2026-08-01 — Clerk selected; fork 4 (inference payer) closed; Stripe and the web app
+> pulled into M1.
 
 ## Selection criterion
 
@@ -25,7 +27,7 @@ That criterion outweighs marginal feature differences between otherwise-similar 
 | Database | **Neon Postgres** | §11 already ruled Postgres + pgvector. Branching gives every PR an isolated database. |
 | ~~Local store~~ | **None** | Resolved by §11.1 — hosted-only, one engine. MNE-152 closed, MNE-46 cancelled. |
 | Errors | **Sentry** | MCP connected — issues can be pulled and triaged without relaying stack traces. |
-| Auth | **Neon Auth** (`better_auth`) | **Changed 2026-08-01, provisionally — see MNE-166.** Enabled on the Neon project and live. Its schema already ships `organization`, `member`, and `invitation`, which is the property Clerk was recommended for: MNE-126/127 become configuration, not a rewrite. It also keeps the one-dependency rule intact — auth tables sit in the same Postgres as everything else rather than adding a fourth vendor. **Cost:** the M5 SSO/SAML story (MNE-144) is weaker than WorkOS, and this option was never weighed against Clerk on its merits. |
+| Auth | **Clerk** | **Resolved 2026-08-01 (MNE-166).** Clerk is the single identity provider for web, CLI, and MCP. Mneia owns workspace, team, and scope authorization in Postgres; Clerk user ids map to `actor.external_ref`. The CLI and MCP use Mneia device-flow tokens approved in a Clerk-authenticated web session. |
 | Billing | **Stripe** | §14, $24/seat. No real alternative for self-serve seat-based. Pulled into M1 by the 2026-07-29 ruling. |
 | Inference | **Anthropic, our account** | Fork 4 closed: we pay, BYOK rejected. Server-side credential, spent on every checkpoint. Model tier still open — see MNE-180. |
 | Test + lint | **Vitest + Biome** | One binary for lint and format; fewer configs to get wrong. |
@@ -70,16 +72,12 @@ unattended. Fly is better if the hosted API ever needs long-lived connections or
 call is request/response, so Vercel is fine, but the M4 multiplayer design may change that. **More urgent
 than it was:** M1 now hosts the web app too, not just the API. Tracked as MNE-165.
 
-**2. Clerk vs WorkOS vs Neon Auth.** Clerk is faster and has orgs. WorkOS is built for the M5 SSO story
-(MNE-144) and avoids a migration. Either way **CLI device-flow auth is custom work** — neither gives it
-free, and MNE-101 should say so. **Raised to Urgent 2026-07-29:** MNE-181's signup and device-flow
-approval pages are M1 work and cannot start until this closes.
-
-**Overtaken by events 2026-08-01.** A third option was enabled on the Neon project and the table above
-now names it. Neon Auth was never compared against the other two on the merits — it arrived through
-`neon init`, not through this decision. **MNE-166 stays open** until that comparison is written down and
-the founder confirms. The risk if it is left implicit: M1 gets built against `neon_auth`, and the
-question closes by accretion rather than by a ruling.
+**2. ~~Clerk vs WorkOS vs Neon Auth.~~ RESOLVED 2026-08-01: Clerk.** Clerk is Mneia's single identity
+provider for web, CLI, and MCP. Mneia's Postgres model remains the authorization source of truth, so
+workspace, team, and scope checks stay behind RLS rather than moving into the identity provider. CLI
+device flow remains custom work: the API issues Mneia tokens after a user approves a request in their
+Clerk-authenticated web session. WorkOS and Neon Auth were rejected for this stage; reconsider the SSO
+provider only if M5 requirements make Clerk insufficient.
 
 **3. Sentry in the CLI, or server-side only?** Weaker than it was: under §11.1 the item bodies are
 already on our servers, so the old *"nothing leaves the machine"* argument no longer applies. What
@@ -100,18 +98,20 @@ What is still open is the extraction model tier, not the payer. A Haiku-first pa
 larger model on low-confidence or contradiction candidates may cover most items; contradiction detection
 (§10.1 step 3) probably needs more. MNE-180 measures it.
 
-## Repo split
+## Repository boundary
 
-Per `.claude/rules/architecture.md` and §15:
+Per `.claude/rules/architecture.md` and §15, this repository is private. It contains the Apache 2.0
+packages (`core`, `cli`, and `mcp-server`) and may contain the proprietary hosted API and product app,
+including `apps/web`, billing, and conflict UI. The product app can consume `@mneia/core` directly in
+this single private repository.
 
-- **`mneia/mneia`** — public, Apache 2.0: `core`, `cli`, `mcp-server`
-- **`mneia/cloud`** — private: hosted API, web app, billing, conflict UI
+If this repository is ever made public, extract the entire proprietary hosted layer into a separate
+private repository before publishing: API, hosted store, product app, billing, conflict UI, permissions,
+and audit. The resulting public repository may contain only the Apache 2.0 clients; a private directory
+cannot protect proprietary code in a public repository.
 
 **This repo is now M1 work, not M4 work.** The 2026-07-29 ruling puts the web app and billing in the
-first milestone, so `mneia/cloud` gets created alongside `mneia/mneia` rather than months later.
-
-Cloud consumes `@mneia/core` from npm. A private directory inside a public repo is not possible, and
-a single repo with a licence split confuses contributors.
+first milestone.
 
 **Current remote is `skadri1601/stealth-startup`** — a placeholder. MNE-33 reserves the real org and
 this repo moves under it.

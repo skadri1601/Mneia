@@ -35,6 +35,8 @@ jobs:
 
       - name: build every workspace member
         run: pnpm -r --if-present build
+        env:
+          NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk
 
   policy:
     name: policy

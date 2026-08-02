@@ -1,6 +1,7 @@
 ---
 paths:
   - "packages/**"
+  - "apps/**"
   - "package.json"
   - "pnpm-workspace.yaml"
   - "turbo.json"
@@ -15,6 +16,7 @@ paths:
 | `@mneia/core` | Data model, store adapters, checkpoint, rehydration, handoff render, telemetry | Apache 2.0 |
 | `@mneia/cli` | Thin surface over core | Apache 2.0 |
 | `@mneia/mcp-server` | Thin surface over core | Apache 2.0 |
+| `@mneia/web` | Proprietary hosted product control plane | Unlicensed |
 
 **Dependency direction is one-way.** `cli` and `mcp-server` both depend on `core`. They never depend
 on each other, and `core` never imports from either. If a behaviour is needed in both surfaces, it
@@ -23,15 +25,20 @@ belongs in `core`.
 Keeping the surfaces thin is what makes MNE-104 possible — the CLI and the MCP server returning
 identical results for the same input requires the logic to live in one place.
 
-## The open/closed split is physical
+## The open/closed split
 
-The three packages above are Apache 2.0 **clients**. The hosted layer — API, store, web app, billing,
-conflict UI, permissions, audit — is **proprietary and lives in a separate private repo**, consuming
-`@mneia/core` from npm.
+This repository is private. It may contain both the Apache 2.0 **client** packages and the proprietary
+hosted layer — API, store, `apps/web`, billing, conflict UI, permissions, and audit. The hosted layer
+consumes `@mneia/core` within this repository.
 
-A private directory inside a public repo is not possible, and a single repo with a licence split
-confuses contributors. MNE-37 requires CONTRIBUTING to state the boundary; two repos make it
-self-evident instead of a rule anyone has to remember.
+The root Apache 2.0 licence covers only `packages/core`, `packages/cli`, and `packages/mcp-server`.
+Each hosted package must declare `UNLICENSED` and carry a nested licence notice that excludes it from
+the root licence.
+
+If this repository is ever made public, extract the entire proprietary hosted layer into a separate
+private repository before publishing: API, hosted store, product app, billing, conflict UI, permissions,
+and audit. A public repository may contain only the Apache 2.0 clients; a private directory inside it
+cannot protect proprietary product code.
 
 **Never add server concerns to these packages.** They hold the schema, the prompts, the ranking
 algorithm, and the surface translation — nothing that requires the database.

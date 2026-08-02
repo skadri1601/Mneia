@@ -18,12 +18,22 @@
 }
 
 .wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
   color: var(--tile-ink);
   font-family: var(--font-display);
   font-size: var(--size-footer-wordmark);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-tagline);
   letter-spacing: var(--tracking-tagline);
+}
+
+.mark {
+  width: 1.15em;
+  height: 1.15em;
+  color: var(--tile-ink);
+  --mark-signal: var(--primary);
 }
 
 .tagline {
