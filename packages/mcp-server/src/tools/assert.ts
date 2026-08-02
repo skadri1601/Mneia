@@ -67,9 +67,10 @@ const AssertInputSchema = z.object({
 
 export type AssertInput = z.infer<typeof AssertInputSchema>;
 
-const INPUT_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(AssertInputSchema, {
-  target: 'draft-7',
-});
+const INPUT_JSON_SCHEMA: Record<string, unknown> = {
+  ...z.toJSONSchema(AssertInputSchema, { target: 'draft-7', io: 'input' }),
+  additionalProperties: false,
+};
 
 function describeIssues(error: z.ZodError): string {
   return error.issues
@@ -172,8 +173,7 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
           ],
           isError: verdict.outcome === 'refused',
           structuredContent: {
-            status:
-              verdict.outcome === 'refused' ? 'refused' : 'pending_human_confirmation',
+            status: verdict.outcome === 'refused' ? 'refused' : 'pending_human_confirmation',
             pendingCount: 1,
             pending: [blocked],
             written: null,

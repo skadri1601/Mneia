@@ -26,4 +26,4 @@ export interface ToolDefinition<TInput> {
   run(input: TInput, context: ToolContext): Promise<ToolResult>;
 }
 
-export type AnyToolDefinition = ToolDefinition<never>;
+export type AnyToolDefinition = ToolDefinition<unknown>;

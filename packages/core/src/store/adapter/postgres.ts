@@ -63,6 +63,7 @@ export class StoreError extends Error {
 
 export interface PostgresSession extends SqlExecutor {
   release(): Promise<void>;
+  discard(): Promise<void>;
 }
 
 export interface PostgresConnectionSource {
@@ -159,7 +160,8 @@ const resolveLimit = (limit: number | undefined, label: string): number => {
   return limit;
 };
 
-const escapeLike = (text: string): string => text.replace(/[\\%_]/g, (character) => `\\${character}`);
+const escapeLike = (text: string): string =>
+  text.replace(/[\\%_]/g, (character) => `\\${character}`);
 
 const expectOne = (rows: readonly SqlRow[], what: string): SqlRow => {
   const row = rows[0];
@@ -385,9 +387,7 @@ class PostgresScopedStore implements ScopedStore {
 
     if (search.text !== undefined && search.text.trim() !== '') {
       const pattern = params.add(`%${escapeLike(search.text.trim())}%`);
-      conditions.push(
-        `(title ILIKE ${pattern} ESCAPE '\\' OR body ILIKE ${pattern} ESCAPE '\\')`,
-      );
+      conditions.push(`(title ILIKE ${pattern} ESCAPE '\\' OR body ILIKE ${pattern} ESCAPE '\\')`);
     }
 
     let ordering = 'asserted_at DESC, id DESC';
@@ -753,6 +753,7 @@ export class PostgresStoreAdapter implements StoreAdapter {
 
     const session = await this.source.acquire();
     const store = new PostgresScopedStore(session, scope);
+    let discardSession = false;
 
     try {
       await session.execute('BEGIN');
@@ -768,6 +769,7 @@ export class PostgresStoreAdapter implements StoreAdapter {
         try {
           await session.execute('ROLLBACK');
         } catch (rollbackError) {
+          discardSession = true;
           throw new StoreError(
             'rollback_failed',
             `the transaction for workspace ${scope.workspaceId} failed with "${describeCause(error)}" and the rollback failed too; the connection is unusable`,
@@ -778,7 +780,11 @@ export class PostgresStoreAdapter implements StoreAdapter {
       }
     } finally {
       store.detach();
-      await session.release();
+      if (discardSession) {
+        await session.discard();
+      } else {
+        await session.release();
+      }
     }
   }
 
