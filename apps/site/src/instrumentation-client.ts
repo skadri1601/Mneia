@@ -1,4 +1,10 @@
 import * as Sentry from '@sentry/nextjs';
+import { initHoneybadger } from '../honeybadger.config';
+
+initHoneybadger(
+  process.env.NEXT_PUBLIC_HONEYBADGER_API_KEY,
+  process.env.NEXT_PUBLIC_VERCEL_ENV ?? 'development',
+);
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
