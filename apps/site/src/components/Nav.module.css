@@ -16,7 +16,7 @@
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 0;
   min-height: var(--global-nav-height);
   color: var(--body-on-dark);
   font-family: var(--font-display);
@@ -26,9 +26,10 @@
 }
 
 .mark {
-  width: 1.2em;
-  height: 1.2em;
-  color: var(--body-on-dark);
+  width: 0.66em;
+  height: 0.72em;
+  margin-right: 0.04em;
+  transform: translateY(0.015em);
   --mark-signal: var(--primary-on-dark);
 }
 

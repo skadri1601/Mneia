@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import styles from './Footer.module.css';
-import { MneiaMark } from './MneiaMark';
+import { MneiaLetter } from './MneiaMark';
 
 const COLUMNS = [
   {
@@ -33,7 +33,7 @@ export function Footer() {
       <div className={styles.inner}>
         <div className={styles.brand}>
           <div className={styles.wordmark}>
-            <MneiaMark className={styles.mark} />
+            <MneiaLetter className={styles.mark} />
             NEIA
           </div>
           <p className={styles.tagline}>

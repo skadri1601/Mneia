@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import type React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, test, vi } from 'vitest';
@@ -23,9 +24,15 @@ describe('Nav', () => {
     const markup = renderToStaticMarkup(<Nav />);
 
     expect(markup).toContain('<svg');
-    expect(markup).toContain('viewBox="0 0 64 64"');
+    expect(markup).toContain('viewBox="0 0 22 24"');
     expect(markup).toContain('aria-label="MNEIA"');
     expect(markup).toContain('>NEIA</a>');
     expect(markup).not.toContain('>Mneia</a>');
+  });
+
+  test('keeps the letter and word flush in the lockup', async () => {
+    const styles = await readFile(new URL('./Nav.module.css', import.meta.url), 'utf8');
+
+    expect(styles).toMatch(/\.wordmark\s*\{[^}]*\bgap:\s*0;/s);
   });
 });
