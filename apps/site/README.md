@@ -60,6 +60,51 @@ Server Component and route handler failures are captured without a `captureExcep
 site. `src/app/global-error.tsx` exists because Next catches root layout errors before Sentry ever
 sees them, so that boundary has to report explicitly.
 
+**The SDK is `@sentry/nextjs` everywhere, including on Cloudflare Workers.** This is Sentry's
+supported configuration for Next.js on Workers and it needs two things from `wrangler.jsonc`, both
+already set: the `nodejs_compat` compatibility flag, and a `compatibility_date` of `2025-08-16` or
+later — the date that introduced `https.request` to `workerd`, which the SDK needs to send events.
+Do not lower either.
+
+**`global-error.tsx` imports from `@sentry/browser`, not `@sentry/nextjs`, and that is load-bearing.**
+It is a `'use client'` component, so Next server-renders it too — and on the server pass
+`@sentry/nextjs` resolves to the *Node* SDK, dragging OpenTelemetry and forty-odd Node
+instrumentations into the Worker for a boundary that only ever reports from the browser. That single
+import cost **529 KiB gzipped**, a sixth of the entire Worker budget. `@sentry/browser` is the same
+client the page already has: `@sentry/nextjs` depends on it, and both carry the same `^10.69.0`
+range, so pnpm resolves them to one copy, webpack emits one module, and `captureException` finds the
+client `instrumentation-client.ts` initialised. The `global-error` chunk is 6 KiB as a result.
+**Keep the two ranges in step** — Sentry's global client registry is keyed by SDK version, so letting
+them resolve to different versions would split the registry and silently stop this boundary
+reporting. And **do not "unify" this import back to `@sentry/nextjs`.**
+
+**Worker bundle size, measured on MNE-198** — `wrangler deploy --dry-run` after `pnpm build:cf`:
+
+| Configuration | Raw | Gzipped | Headroom under 3 MiB |
+|---|---|---|---|
+| Before MNE-198 | 12888 KiB | **3032 KiB** | 40 KiB |
+| Now | 10740 KiB | **2503 KiB** | 569 KiB |
+
+Cloudflare's hard limit is **3072 KiB gzipped** and validation fails with `code: 10027`. Re-measure
+with `pnpm exec wrangler deploy --dry-run` before adding any server-side dependency.
+
+**`@sentry/cloudflare` was evaluated on MNE-198 and rejected — do not swap to it.** It is genuinely
+smaller: routing the server and edge paths through it measured 2085 KiB gzipped, another 418 KiB
+below where we are now. It was rejected on correctness, not size. It has no `init()`, so it only
+initialises by wrapping the Worker's `fetch` export via `withSentry` — and this site also deploys to
+**Vercel**, where that entry point does not exist, so every server-side `captureException` would
+become a silent no-op there. It also has no `captureRequestError`, which is what gives `onRequestError`
+its Next-specific context. 418 KiB is not worth it against 569 KiB of headroom.
+
+**`includeLocalVariables` was removed on MNE-198 because it never worked on `workerd`.** It is a
+`@sentry/node` option that needs `node:inspector`. Under `nodejs_compat` that module *imports* — which
+is why this looked fine — but `new inspector.Session()` throws `ERR_METHOD_NOT_IMPLEMENTED`, verified
+against `workerd` directly. Sentry catches that and reports it through `debug.log`, which
+`excludeDebugStatements` strips, so the failure was completely silent. There is no `workerd`
+equivalent, so it cannot be made to work. `dataCollection.stackFrameVariables` and `frameContextLines`
+are kept verbatim to preserve the block's exact semantics, but they are Node-oriented too and are
+inert on Workers for the same reason.
+
 **Errors only — tracing is deliberately off.** `excludeTracing` in `next.config.ts` strips the
 tracing bundle, which is worth 52 kB of client JS on every page. On 18 prerendered static pages the
 Web Vitals and navigation spans it buys are not worth that against the Core Web Vitals the discovery

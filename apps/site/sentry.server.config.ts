@@ -5,7 +5,6 @@ Sentry.init({
   environment: process.env.VERCEL_ENV ?? 'development',
   attachStacktrace: true,
   maxBreadcrumbs: 100,
-  includeLocalVariables: true,
   dataCollection: {
     userInfo: true,
     cookies: true,
