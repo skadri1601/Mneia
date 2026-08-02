@@ -32,9 +32,9 @@ export function Nav() {
           <Link className={styles.skip} href="#main">
             Skip to content
           </Link>
-          <Link aria-label="Mneia" className={styles.wordmark} href="/">
+          <Link aria-label="MNEIA" className={styles.wordmark} href="/">
             <MneiaMark className={styles.mark} />
-            Mneia
+            NEIA
           </Link>
           <ul className={styles.globalLinks}>
             {ROUTES.map((route) => (

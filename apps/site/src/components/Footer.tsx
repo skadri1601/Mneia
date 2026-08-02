@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import styles from './Footer.module.css';
+import { MneiaMark } from './MneiaMark';
 
 const COLUMNS = [
   {
@@ -31,7 +32,10 @@ export function Footer() {
     <footer className={styles.footer}>
       <div className={styles.inner}>
         <div className={styles.brand}>
-          <div className={styles.wordmark}>Mneia</div>
+          <div className={styles.wordmark}>
+            <MneiaMark className={styles.mark} />
+            NEIA
+          </div>
           <p className={styles.tagline}>
             The shared project memory and handoff layer for teams working with AI agents.
           </p>

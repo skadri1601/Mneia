@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { SupersedeNotAllowedError } from '../../policy/index.js';
 import type { SqlResult, SqlValue } from '../driver.js';
+import type { ActorKind } from '../schema.js';
 import type { PostgresConnectionSource, PostgresSession } from './postgres.js';
 import { PostgresStoreAdapter, type StoreError } from './postgres.js';
+import type { CheckpointWrite } from './types.js';
 
 const SCOPE = {
   workspaceId: '11111111-1111-4111-8111-111111111111',
@@ -76,6 +79,254 @@ class ArchivedProjectSession implements PostgresSession {
 
   async discard(): Promise<void> {}
 }
+
+const PROJECT = '77777777-7777-4777-8777-777777777777';
+const TARGET_ITEM = '55555555-5555-4555-8555-555555555555';
+const REPLACEMENT_ITEM = '66666666-6666-4666-8666-666666666666';
+const HUMAN_ASSERTER = '88888888-8888-4888-8888-888888888888';
+const AGENT_ASSERTER = '99999999-9999-4999-8999-999999999999';
+const CHECKPOINT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const TIMESTAMP = new Date('2026-08-01T00:00:00.000Z');
+
+type Row = Record<string, unknown>;
+
+const targetItemRow = (overrides: Row = {}): Row => ({
+  id: TARGET_ITEM,
+  workspace_id: SCOPE.workspaceId,
+  project_id: PROJECT,
+  kind: 'constraint',
+  title: 'never deploy on Fridays',
+  body: null,
+  status: 'active',
+  asserted_by: HUMAN_ASSERTER,
+  asserted_at: TIMESTAMP,
+  source_session_id: null,
+  source_ref: null,
+  confidence: 0.9,
+  human_confirmed: true,
+  load_bearing: true,
+  last_verified_at: null,
+  decay_after: null,
+  valid_from: TIMESTAMP,
+  valid_to: null,
+  supersedes_id: null,
+  superseded_by_id: null,
+  access_scope: 'project',
+  embedding: null,
+  ...overrides,
+});
+
+class SupersedeSession implements PostgresSession {
+  readonly calls: string[] = [];
+  readonly params: (readonly SqlValue[])[] = [];
+
+  constructor(
+    private readonly actorKind: ActorKind | null,
+    private readonly target: Row | null,
+  ) {}
+
+  async execute<TRow = Record<string, unknown>>(
+    sql: string,
+    params: readonly SqlValue[] = [],
+  ): Promise<SqlResult<TRow>> {
+    this.calls.push(sql);
+    this.params.push(params);
+
+    if (sql.includes('FROM actor')) {
+      if (this.actorKind === null) return { rows: [] };
+      return {
+        rows: [
+          {
+            id: SCOPE.actorId,
+            workspace_id: SCOPE.workspaceId,
+            kind: this.actorKind,
+            display_name: 'the scoped actor',
+            external_ref: null,
+            created_at: TIMESTAMP,
+          } as TRow,
+        ],
+      };
+    }
+
+    if (sql.includes('FROM context_item')) {
+      return { rows: this.target === null ? [] : [this.target as TRow] };
+    }
+
+    if (sql.includes('INSERT INTO checkpoint (')) {
+      return {
+        rows: [
+          {
+            id: CHECKPOINT_ID,
+            workspace_id: SCOPE.workspaceId,
+            project_id: PROJECT,
+            session_id: null,
+            actor_id: SCOPE.actorId,
+            trigger: 'task_boundary',
+            created_at: TIMESTAMP,
+            summary: null,
+          } as TRow,
+        ],
+      };
+    }
+
+    if (sql.includes('INSERT INTO context_item')) {
+      return {
+        rows: [
+          targetItemRow({
+            id: REPLACEMENT_ITEM,
+            title: 'deploy on Fridays behind a flag',
+            human_confirmed: this.actorKind === 'human',
+            supersedes_id: TARGET_ITEM,
+          }) as TRow,
+        ],
+      };
+    }
+
+    if (sql.includes('UPDATE context_item')) {
+      return { rows: [{ id: TARGET_ITEM } as TRow] };
+    }
+
+    if (sql.includes('INSERT INTO checkpoint_item')) {
+      return {
+        rows: [
+          {
+            workspace_id: SCOPE.workspaceId,
+            checkpoint_id: CHECKPOINT_ID,
+            item_id: REPLACEMENT_ITEM,
+            action: 'superseded',
+          } as TRow,
+        ],
+      };
+    }
+
+    return { rows: [] };
+  }
+
+  async release(): Promise<void> {}
+
+  async discard(): Promise<void> {}
+}
+
+const supersedingCheckpoint = (assertedBy: string): CheckpointWrite => ({
+  checkpoint: { projectId: PROJECT, actorId: SCOPE.actorId, trigger: 'task_boundary' },
+  items: [
+    {
+      action: 'superseded',
+      item: {
+        projectId: PROJECT,
+        kind: 'decision',
+        title: 'deploy on Fridays behind a flag',
+        assertedBy,
+        supersedesId: TARGET_ITEM,
+      },
+    },
+  ],
+});
+
+const callIndex = (calls: readonly string[], fragment: string): number =>
+  calls.findIndex((sql) => sql.includes(fragment));
+
+describe('PostgresStoreAdapter supersede policy', () => {
+  it('resolves the asserting actor kind from the scoped actor rather than the write payload', async () => {
+    const session = new SupersedeSession('agent', targetItemRow());
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    await expect(
+      adapter.withScope(SCOPE, (store) =>
+        store.writeCheckpoint(supersedingCheckpoint(HUMAN_ASSERTER)),
+      ),
+    ).rejects.toBeInstanceOf(SupersedeNotAllowedError);
+
+    const lookup = callIndex(session.calls, 'FROM actor');
+    expect(lookup).toBeGreaterThan(-1);
+    expect(session.params[lookup]).toEqual([SCOPE.workspaceId, SCOPE.actorId]);
+  });
+
+  it('blocks an agent assertion against a human-confirmed item and writes nothing', async () => {
+    const session = new SupersedeSession('agent', targetItemRow());
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    const error = await adapter
+      .withScope(SCOPE, (store) => store.writeCheckpoint(supersedingCheckpoint(SCOPE.actorId)))
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(SupersedeNotAllowedError);
+    expect(error).toMatchObject({
+      outcome: 'requires_human_confirmation',
+      itemId: TARGET_ITEM,
+    });
+    expect((error as SupersedeNotAllowedError).message).toContain(TARGET_ITEM);
+    expect((error as SupersedeNotAllowedError).message).toContain('§10.1 step 5');
+
+    expect(callIndex(session.calls, 'INSERT INTO context_item')).toBe(-1);
+    expect(callIndex(session.calls, 'UPDATE context_item')).toBe(-1);
+    expect(callIndex(session.calls, 'INSERT INTO checkpoint_item')).toBe(-1);
+  });
+
+  it('refuses a target that already has a successor so only one replacement wins', async () => {
+    const session = new SupersedeSession(
+      'human',
+      targetItemRow({ superseded_by_id: REPLACEMENT_ITEM }),
+    );
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    const error = await adapter
+      .withScope(SCOPE, (store) => store.writeCheckpoint(supersedingCheckpoint(SCOPE.actorId)))
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ outcome: 'refused', itemId: TARGET_ITEM });
+    expect(callIndex(session.calls, 'UPDATE context_item')).toBe(-1);
+  });
+
+  it('locks the target FOR UPDATE before it inserts the replacement or marks the row superseded', async () => {
+    const session = new SupersedeSession(
+      'human',
+      targetItemRow({ human_confirmed: false, load_bearing: false, asserted_by: AGENT_ASSERTER }),
+    );
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    const result = await adapter.withScope(SCOPE, (store) =>
+      store.writeCheckpoint(supersedingCheckpoint(SCOPE.actorId)),
+    );
+
+    expect(result.written.map((item) => item.id)).toEqual([REPLACEMENT_ITEM]);
+
+    const locked = callIndex(session.calls, 'FOR UPDATE');
+    const inserted = callIndex(session.calls, 'INSERT INTO context_item');
+    const linked = callIndex(session.calls, 'UPDATE context_item');
+
+    expect(locked).toBeGreaterThan(-1);
+    expect(locked).toBeLessThan(inserted);
+    expect(locked).toBeLessThan(linked);
+  });
+
+  it('names the scoped actor when its kind cannot be resolved', async () => {
+    const session = new SupersedeSession(null, targetItemRow());
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    const error = await adapter
+      .withScope(SCOPE, (store) => store.writeCheckpoint(supersedingCheckpoint(SCOPE.actorId)))
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code: 'not_found' } satisfies Partial<StoreError>);
+    expect((error as StoreError).message).toContain(SCOPE.actorId);
+    expect((error as StoreError).message).toMatch(/open the scope with an actor row that exists/);
+    expect(callIndex(session.calls, 'FOR UPDATE')).toBe(-1);
+  });
+
+  it('names the missing target when the item to supersede is not in the workspace', async () => {
+    const session = new SupersedeSession('human', null);
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    const error = await adapter
+      .withScope(SCOPE, (store) => store.writeCheckpoint(supersedingCheckpoint(SCOPE.actorId)))
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ code: 'not_found' } satisfies Partial<StoreError>);
+    expect((error as StoreError).message).toContain(TARGET_ITEM);
+    expect((error as StoreError).message).toMatch(/re-read the chain/);
+  });
+});
 
 describe('PostgresStoreAdapter transaction cleanup', () => {
   it('releases the session after a successful rollback', async () => {

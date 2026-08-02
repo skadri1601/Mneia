@@ -24,8 +24,14 @@ export function organizationSchema(): JsonLdNode {
     name: SITE_NAME,
     url: SITE_URL,
     description: SITE_TAGLINE,
-    logo: absoluteUrl('/icon'),
+    logo: absoluteUrl('/icon.svg'),
     sameAs: [REPO_URL],
+    knowsAbout: [
+      'Project memory',
+      'AI-assisted software teams',
+      'Agent handoffs',
+      'Context rehydration',
+    ],
   };
 }
 

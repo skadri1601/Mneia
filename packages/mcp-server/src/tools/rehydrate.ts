@@ -5,7 +5,15 @@ import {
   renderSlice,
   scoreItems,
 } from '@mneia/core';
-import type { ContextItem, Project, Slice, TelemetryEvent, Uuid } from '@mneia/core';
+import type {
+  ContextItem,
+  ItemKind,
+  ItemStatus,
+  Project,
+  Slice,
+  TelemetryEvent,
+  Uuid,
+} from '@mneia/core';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
@@ -14,12 +22,18 @@ export const DEFAULT_TOKEN_BUDGET = 4000;
 export const MIN_TOKEN_BUDGET = 500;
 export const MAX_TOKEN_BUDGET = 32_000;
 
+export const MANDATORY_ITEM_LIMIT = 1000;
+export const RECENT_SUPERSEDED_LIMIT = 5;
+export const MAX_CANDIDATES = 200;
+
 const MAX_TASK_LENGTH = 4000;
 const CANDIDATES_PER_1K_TOKENS = 40;
 const MIN_CANDIDATES = 60;
-const MAX_CANDIDATES = 400;
 const MAX_CAUSE_LENGTH = 200;
-const ACTIVE_STATUSES = ['active'] as const;
+const ACTIVE_STATUSES: readonly ItemStatus[] = ['active'];
+const SUPERSEDED_STATUSES: readonly ItemStatus[] = ['superseded'];
+const MANDATORY_KINDS: readonly ItemKind[] = ['constraint'];
+const SUPERSEDED_KINDS: readonly ItemKind[] = ['decision', 'constraint'];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const rehydrateInputSchema = z.object({
@@ -124,17 +138,13 @@ function candidateLimitFor(tokenBudget: number): number {
   return Math.min(MAX_CANDIDATES, Math.max(MIN_CANDIDATES, scaled));
 }
 
-function mergeCandidates(
-  mandatory: readonly ContextItem[],
-  candidates: readonly ContextItem[],
-): readonly ContextItem[] {
+function mergeCandidates(...groups: readonly (readonly ContextItem[])[]): readonly ContextItem[] {
   const byId = new Map<Uuid, ContextItem>();
-  for (const item of mandatory) {
-    byId.set(item.id, item);
-  }
-  for (const item of candidates) {
-    if (!byId.has(item.id)) {
-      byId.set(item.id, item);
+  for (const group of groups) {
+    for (const item of group) {
+      if (!byId.has(item.id)) {
+        byId.set(item.id, item);
+      }
     }
   }
   return [...byId.values()];
@@ -185,28 +195,37 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
       );
     }
 
-    const [candidates, loadBearing] = await Promise.all([
+    const [candidates, mandatory, superseded] = await Promise.all([
       fromStore('searchContextItems', () =>
         context.store.searchContextItems({
           projectId: project.id,
           statuses: ACTIVE_STATUSES,
           asOf: now,
-          text: input.task,
           limit: candidateLimitFor(input.tokenBudget),
         }),
       ),
-      fromStore('listContextItems', () =>
+      fromStore('listContextItems for load-bearing constraints', () =>
         context.store.listContextItems({
           projectId: project.id,
+          kinds: MANDATORY_KINDS,
           statuses: ACTIVE_STATUSES,
           loadBearing: true,
           asOf: now,
+          limit: MANDATORY_ITEM_LIMIT,
+        }),
+      ),
+      fromStore('listContextItems for recently superseded items', () =>
+        context.store.listContextItems({
+          projectId: project.id,
+          kinds: SUPERSEDED_KINDS,
+          statuses: SUPERSEDED_STATUSES,
+          limit: RECENT_SUPERSEDED_LIMIT,
         }),
       ),
     ]);
 
     const scored = scoreItems({
-      items: mergeCandidates(loadBearing, candidates),
+      items: mergeCandidates(mandatory, superseded, candidates),
       taskEmbedding: null,
       now,
       weights: DEFAULT_SCORING_WEIGHTS,
@@ -256,6 +275,7 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
         sliceId: slice.id,
         projectId: project.id,
         itemIds,
+        mandatoryItemIds: packed.mandatoryItemIds,
         droppedItemIds: packed.droppedItemIds,
         tokenBudget: slice.tokenBudget,
         tokensUsed: slice.tokensUsed,

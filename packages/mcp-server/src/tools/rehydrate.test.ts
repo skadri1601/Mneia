@@ -2,6 +2,8 @@ import type {
   ContextItem,
   ContextItemFilter,
   ContextItemSearch,
+  ItemKind,
+  ItemStatus,
   Project,
   ScopedStore,
   TelemetryEmitter,
@@ -9,7 +11,14 @@ import type {
   Uuid,
 } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_TOKEN_BUDGET, rehydrateTool } from './rehydrate.js';
+import {
+  DEFAULT_TOKEN_BUDGET,
+  MANDATORY_ITEM_LIMIT,
+  MAX_CANDIDATES,
+  MAX_TOKEN_BUDGET,
+  RECENT_SUPERSEDED_LIMIT,
+  rehydrateTool,
+} from './rehydrate.js';
 import type { ToolContext, ToolResult } from './types.js';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
@@ -17,6 +26,12 @@ const ACTOR_ID = '22222222-2222-4222-8222-222222222222';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const NOW = new Date('2026-08-01T12:00:00.000Z');
 const ASSERTED_AT = new Date('2026-07-20T09:00:00.000Z');
+const SUPERSEDED_AT = new Date('2026-07-28T09:00:00.000Z');
+
+const STORE_DEFAULT_LIMIT = 200;
+const STORE_MAX_LIMIT = 1000;
+
+const ORDINARY_TASK = 'wire the retry path in charges/worker.rb to the new idempotency key';
 
 const PROJECT: Project = {
   id: PROJECT_ID,
@@ -78,6 +93,52 @@ const FACTS: readonly ContextItem[] = [
   }),
 ];
 
+const SUPERSEDED_DECISION = contextItem({
+  id: '77777777-7777-4777-8777-777777777777',
+  title: 'Redis-based cutover lock',
+  body: 'BODY-SUPERSEDED-DECISION-must-not-leak',
+  kind: 'decision',
+  status: 'superseded',
+  validTo: SUPERSEDED_AT,
+  supersededById: '99999999-9999-4999-8999-999999999999',
+});
+
+const SUPERSEDED_LOAD_BEARING_CONSTRAINT = contextItem({
+  id: '88888888-8888-4888-8888-888888888888',
+  title: 'Seven-day dual-read window',
+  body: 'BODY-SUPERSEDED-CONSTRAINT-must-not-leak',
+  kind: 'constraint',
+  status: 'superseded',
+  loadBearing: true,
+  humanConfirmed: true,
+  validTo: SUPERSEDED_AT,
+  supersededById: '99999999-9999-4999-8999-999999999999',
+});
+
+const SUPERSEDED_ITEMS: readonly ContextItem[] = [
+  SUPERSEDED_DECISION,
+  SUPERSEDED_LOAD_BEARING_CONSTRAINT,
+];
+
+const ALL_FIXTURES: readonly ContextItem[] = [
+  LOAD_BEARING_CONSTRAINT,
+  ...FACTS,
+  ...SUPERSEDED_ITEMS,
+];
+
+function loadBearingConstraints(count: number): readonly ContextItem[] {
+  return Array.from({ length: count }, (_unused, index) =>
+    contextItem({
+      id: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, '0')}`,
+      title: `Load-bearing constraint ${index}`,
+      kind: 'constraint',
+      loadBearing: true,
+      humanConfirmed: true,
+      confidence: 1,
+    }),
+  );
+}
+
 interface StoreCall {
   readonly method: string;
   readonly argument: unknown;
@@ -86,7 +147,8 @@ interface StoreCall {
 interface FakeStoreOptions {
   readonly project?: Project | null;
   readonly candidates?: readonly ContextItem[];
-  readonly loadBearing?: readonly ContextItem[];
+  readonly mandatory?: readonly ContextItem[];
+  readonly superseded?: readonly ContextItem[];
   readonly failOn?: string;
 }
 
@@ -99,11 +161,71 @@ function unsupported(method: string): never {
   throw new Error(`ScopedStore.${method} is not used by mneia_rehydrate`);
 }
 
+function matchesKinds(item: ContextItem, kinds: readonly ItemKind[] | undefined): boolean {
+  return kinds === undefined || kinds.includes(item.kind);
+}
+
+function matchesStatuses(item: ContextItem, statuses: readonly ItemStatus[] | undefined): boolean {
+  return statuses === undefined || statuses.includes(item.status);
+}
+
+function matchesLoadBearing(item: ContextItem, loadBearing: boolean | undefined): boolean {
+  return loadBearing === undefined || item.loadBearing === loadBearing;
+}
+
+function withinValidity(item: ContextItem, asOf: Date | undefined): boolean {
+  if (asOf === undefined) {
+    return true;
+  }
+  if (item.validFrom.getTime() > asOf.getTime()) {
+    return false;
+  }
+  return item.validTo === null || item.validTo.getTime() > asOf.getTime();
+}
+
+function matchesText(item: ContextItem, text: string | undefined): boolean {
+  if (text === undefined || text.trim() === '') {
+    return true;
+  }
+  const needle = text.trim().toLowerCase();
+  return (
+    item.title.toLowerCase().includes(needle) || (item.body ?? '').toLowerCase().includes(needle)
+  );
+}
+
+function applyLimit(
+  items: readonly ContextItem[],
+  limit: number | undefined,
+): readonly ContextItem[] {
+  if (limit === undefined) {
+    return items.slice(0, STORE_DEFAULT_LIMIT);
+  }
+  if (!Number.isInteger(limit) || limit < 1 || limit > STORE_MAX_LIMIT) {
+    throw new Error(
+      `expected filter.limit to be an integer between 1 and ${STORE_MAX_LIMIT}; received ${limit}`,
+    );
+  }
+  return items.slice(0, limit);
+}
+
+function select(pool: readonly ContextItem[], search: ContextItemSearch): readonly ContextItem[] {
+  const matched = pool.filter(
+    (item) =>
+      matchesKinds(item, search.kinds) &&
+      matchesStatuses(item, search.statuses) &&
+      matchesLoadBearing(item, search.loadBearing) &&
+      withinValidity(item, search.asOf) &&
+      matchesText(item, search.text),
+  );
+  return applyLimit(matched, search.limit);
+}
+
 function createStore(options: FakeStoreOptions = {}): FakeStore {
   const calls: StoreCall[] = [];
   const project = options.project === undefined ? PROJECT : options.project;
   const candidates = options.candidates ?? FACTS;
-  const loadBearing = options.loadBearing ?? [LOAD_BEARING_CONSTRAINT];
+  const mandatory = options.mandatory ?? [LOAD_BEARING_CONSTRAINT];
+  const superseded = options.superseded ?? SUPERSEDED_ITEMS;
 
   function record(method: string, argument: unknown): void {
     calls.push({ method, argument });
@@ -125,11 +247,17 @@ function createStore(options: FakeStoreOptions = {}): FakeStore {
     },
     async searchContextItems(search: ContextItemSearch): Promise<readonly ContextItem[]> {
       record('searchContextItems', search);
-      return search.limit === undefined ? candidates : candidates.slice(0, search.limit);
+      return select(candidates, search);
     },
     async listContextItems(filter: ContextItemFilter): Promise<readonly ContextItem[]> {
       record('listContextItems', filter);
-      return filter.loadBearing === true ? loadBearing : candidates;
+      if (filter.loadBearing === true) {
+        return select(mandatory, filter);
+      }
+      if (filter.statuses?.includes('superseded') === true) {
+        return select(superseded, filter);
+      }
+      return select(candidates, filter);
     },
 
     getActor: () => unsupported('getActor'),
@@ -192,6 +320,14 @@ function structuredOf(result: ToolResult): Record<string, unknown> {
   return structuredContent;
 }
 
+function idsOf(result: ToolResult, field: string): readonly string[] {
+  const value = structuredOf(result)[field];
+  if (!Array.isArray(value)) {
+    throw new Error(`expected structuredContent.${field} to be an array of item ids`);
+  }
+  return value as readonly string[];
+}
+
 function errorCodeOf(result: ToolResult): string {
   const { error } = structuredOf(result);
   if (typeof error !== 'object' || error === null || !('code' in error)) {
@@ -201,12 +337,25 @@ function errorCodeOf(result: ToolResult): string {
   return typeof code === 'string' ? code : '';
 }
 
-function callArgument(calls: readonly StoreCall[], method: string): Record<string, unknown> {
-  const call = calls.find((candidate) => candidate.method === method);
-  if (call === undefined) {
-    throw new Error(`expected the tool to call ScopedStore.${method}`);
+function callArguments(
+  calls: readonly StoreCall[],
+  method: string,
+): readonly Record<string, unknown>[] {
+  return calls
+    .filter((candidate) => candidate.method === method)
+    .map((candidate) => candidate.argument as Record<string, unknown>);
+}
+
+function callArgument(
+  calls: readonly StoreCall[],
+  method: string,
+  occurrence = 0,
+): Record<string, unknown> {
+  const argument = callArguments(calls, method)[occurrence];
+  if (argument === undefined) {
+    throw new Error(`expected the tool to call ScopedStore.${method} at least ${occurrence + 1}x`);
   }
-  return call.argument as Record<string, unknown>;
+  return argument;
 }
 
 function messageOf(run: () => unknown): string {
@@ -316,7 +465,7 @@ describe('mneia_rehydrate pipeline', () => {
     const fake = createStore();
     const telemetry = createTelemetry();
     const result = await runTool(
-      { task: 'wire the retry path', project: 'payments-migration' },
+      { task: ORDINARY_TASK, project: 'payments-migration' },
       fake,
       telemetry,
     );
@@ -328,6 +477,7 @@ describe('mneia_rehydrate pipeline', () => {
     expect(structured.projectId).toBe(PROJECT_ID);
     expect(typeof structured.sliceId).toBe('string');
     expect(Array.isArray(structured.itemIds)).toBe(true);
+    expect(Array.isArray(structured.mandatoryItemIds)).toBe(true);
     expect(structured.tokenBudget).toBe(DEFAULT_TOKEN_BUDGET);
     expect(typeof structured.tokensUsed).toBe('number');
   });
@@ -335,11 +485,12 @@ describe('mneia_rehydrate pipeline', () => {
   it('reaches the store once per query and resolves the project by slug', async () => {
     const fake = createStore();
     const telemetry = createTelemetry();
-    await runTool({ task: 'wire the retry path', project: 'payments-migration' }, fake, telemetry);
+    await runTool({ task: ORDINARY_TASK, project: 'payments-migration' }, fake, telemetry);
 
     expect(fake.calls.map((call) => call.method)).toEqual([
       'getProjectBySlug',
       'searchContextItems',
+      'listContextItems',
       'listContextItems',
     ]);
   });
@@ -347,33 +498,124 @@ describe('mneia_rehydrate pipeline', () => {
   it('resolves a project id without a slug lookup', async () => {
     const fake = createStore();
     const telemetry = createTelemetry();
-    await runTool({ task: 'wire the retry path', project: PROJECT_ID }, fake, telemetry);
+    await runTool({ task: ORDINARY_TASK, project: PROJECT_ID }, fake, telemetry);
 
     expect(fake.calls[0]?.method).toBe('getProject');
   });
 
-  it('bounds the candidate query but never the load-bearing query', async () => {
-    const fake = createStore();
-    const telemetry = createTelemetry();
-    await runTool({ task: 'wire the retry path', project: 'payments-migration' }, fake, telemetry);
-
-    const search = callArgument(fake.calls, 'searchContextItems');
-    expect(typeof search.limit).toBe('number');
-    expect(search.limit as number).toBeGreaterThan(0);
-    expect(search.statuses).toEqual(['active']);
-    expect(search.asOf).toEqual(NOW);
-
-    const list = callArgument(fake.calls, 'listContextItems');
-    expect(list.loadBearing).toBe(true);
-    expect(list.limit).toBeUndefined();
-    expect(list.statuses).toEqual(['active']);
-  });
-
-  it('keeps a load-bearing active constraint the candidate limit excluded', async () => {
-    const fake = createStore({ candidates: FACTS, loadBearing: [LOAD_BEARING_CONSTRAINT] });
+  it('does not duplicate an item returned by more than one query', async () => {
+    const fake = createStore({
+      candidates: [LOAD_BEARING_CONSTRAINT, ...FACTS],
+      mandatory: [LOAD_BEARING_CONSTRAINT],
+    });
     const telemetry = createTelemetry();
     const result = await runTool(
-      { task: 'wire the retry path', project: 'payments-migration', tokenBudget: 500 },
+      { task: ORDINARY_TASK, project: 'payments-migration' },
+      fake,
+      telemetry,
+    );
+
+    const itemIds = idsOf(result, 'itemIds');
+    expect(new Set(itemIds).size).toBe(itemIds.length);
+  });
+});
+
+describe('mneia_rehydrate candidate retrieval', () => {
+  it('retrieves a candidate pool for an ordinary task without an exact-phrase filter', async () => {
+    const fake = createStore();
+    const telemetry = createTelemetry();
+    const result = await runTool(
+      { task: ORDINARY_TASK, project: 'payments-migration' },
+      fake,
+      telemetry,
+    );
+
+    const search = callArgument(fake.calls, 'searchContextItems');
+    expect(search.text).toBeUndefined();
+
+    const itemIds = idsOf(result, 'itemIds');
+    for (const fact of FACTS) {
+      expect(itemIds).toContain(fact.id);
+    }
+  });
+
+  it('bounds the candidate pool so an unconditional call stays inside the latency budget', async () => {
+    const fake = createStore();
+    const telemetry = createTelemetry();
+    await runTool(
+      { task: ORDINARY_TASK, project: 'payments-migration', tokenBudget: MAX_TOKEN_BUDGET },
+      fake,
+      telemetry,
+    );
+
+    const search = callArgument(fake.calls, 'searchContextItems');
+    expect(search.limit).toBe(MAX_CANDIDATES);
+    expect(search.statuses).toEqual(['active']);
+    expect(search.asOf).toEqual(NOW);
+  });
+
+  it('scales the candidate pool with the token budget', async () => {
+    const small = createStore();
+    const large = createStore();
+    const telemetry = createTelemetry();
+
+    await runTool(
+      { task: ORDINARY_TASK, project: 'payments-migration', tokenBudget: 500 },
+      small,
+      telemetry,
+    );
+    await runTool(
+      { task: ORDINARY_TASK, project: 'payments-migration', tokenBudget: 16_000 },
+      large,
+      telemetry,
+    );
+
+    const smallLimit = callArgument(small.calls, 'searchContextItems').limit;
+    const largeLimit = callArgument(large.calls, 'searchContextItems').limit;
+    expect(typeof smallLimit).toBe('number');
+    expect(largeLimit as number).toBeGreaterThan(smallLimit as number);
+    expect(largeLimit as number).toBeLessThanOrEqual(MAX_CANDIDATES);
+  });
+});
+
+describe('mneia_rehydrate load-bearing constraints', () => {
+  it('asks for exactly the constraints the packer treats as mandatory', async () => {
+    const fake = createStore();
+    const telemetry = createTelemetry();
+    await runTool({ task: ORDINARY_TASK, project: 'payments-migration' }, fake, telemetry);
+
+    const list = callArgument(fake.calls, 'listContextItems');
+    expect(list.kinds).toEqual(['constraint']);
+    expect(list.statuses).toEqual(['active']);
+    expect(list.loadBearing).toBe(true);
+    expect(list.asOf).toEqual(NOW);
+    expect(list.limit).toBe(MANDATORY_ITEM_LIMIT);
+    expect(list.text).toBeUndefined();
+  });
+
+  it('carries every load-bearing constraint past the store default limit to the packer', async () => {
+    const constraints = loadBearingConstraints(STORE_DEFAULT_LIMIT + 50);
+    const fake = createStore({ mandatory: constraints });
+    const telemetry = createTelemetry();
+    const result = await runTool(
+      { task: ORDINARY_TASK, project: 'payments-migration' },
+      fake,
+      telemetry,
+    );
+
+    const mandatoryItemIds = idsOf(result, 'mandatoryItemIds');
+    expect(mandatoryItemIds).toHaveLength(constraints.length);
+
+    const included = new Set(idsOf(result, 'itemIds'));
+    const missing = constraints.filter((item) => !included.has(item.id)).map((item) => item.id);
+    expect(missing).toEqual([]);
+  });
+
+  it('keeps a load-bearing constraint the candidate limit excluded, at the smallest budget', async () => {
+    const fake = createStore({ candidates: FACTS, mandatory: [LOAD_BEARING_CONSTRAINT] });
+    const telemetry = createTelemetry();
+    const result = await runTool(
+      { task: ORDINARY_TASK, project: 'payments-migration', tokenBudget: 500 },
       fake,
       telemetry,
     );
@@ -381,25 +623,72 @@ describe('mneia_rehydrate pipeline', () => {
     const search = callArgument(fake.calls, 'searchContextItems');
     expect(search.limit).not.toBeUndefined();
 
-    const itemIds = structuredOf(result).itemIds;
-    expect(itemIds).toContain(LOAD_BEARING_CONSTRAINT.id);
+    expect(idsOf(result, 'itemIds')).toContain(LOAD_BEARING_CONSTRAINT.id);
     expect(textOf(result)).toContain(LOAD_BEARING_CONSTRAINT.title);
   });
+});
 
-  it('does not duplicate an item returned by both queries', async () => {
-    const fake = createStore({
-      candidates: [LOAD_BEARING_CONSTRAINT, ...FACTS],
-      loadBearing: [LOAD_BEARING_CONSTRAINT],
-    });
+describe('mneia_rehydrate superseded items', () => {
+  it('reads a small window of recently superseded decisions and constraints', async () => {
+    const fake = createStore();
+    const telemetry = createTelemetry();
+    await runTool({ task: ORDINARY_TASK, project: 'payments-migration' }, fake, telemetry);
+
+    const list = callArgument(fake.calls, 'listContextItems', 1);
+    expect(list.statuses).toEqual(['superseded']);
+    expect(list.kinds).toEqual(['decision', 'constraint']);
+    expect(list.limit).toBe(RECENT_SUPERSEDED_LIMIT);
+    expect(RECENT_SUPERSEDED_LIMIT).toBeLessThanOrEqual(MAX_CANDIDATES / 10);
+    expect(list.loadBearing).toBeUndefined();
+    expect(list.asOf).toBeUndefined();
+  });
+
+  it('renders superseded items under the do-not-re-propose heading', async () => {
+    const fake = createStore();
     const telemetry = createTelemetry();
     const result = await runTool(
-      { task: 'wire the retry path', project: 'payments-migration' },
+      { task: ORDINARY_TASK, project: 'payments-migration' },
       fake,
       telemetry,
     );
 
-    const itemIds = structuredOf(result).itemIds as readonly string[];
-    expect(new Set(itemIds).size).toBe(itemIds.length);
+    const itemIds = idsOf(result, 'itemIds');
+    for (const item of SUPERSEDED_ITEMS) {
+      expect(itemIds).toContain(item.id);
+    }
+    expect(textOf(result)).toContain('Superseded recently (do not re-propose)');
+    expect(textOf(result)).toContain(SUPERSEDED_DECISION.title);
+  });
+
+  it('never makes a superseded item mandatory, even a load-bearing constraint', async () => {
+    const fake = createStore();
+    const telemetry = createTelemetry();
+    const result = await runTool(
+      { task: ORDINARY_TASK, project: 'payments-migration' },
+      fake,
+      telemetry,
+    );
+
+    const mandatoryItemIds = idsOf(result, 'mandatoryItemIds');
+    expect(mandatoryItemIds).toEqual([LOAD_BEARING_CONSTRAINT.id]);
+    for (const item of SUPERSEDED_ITEMS) {
+      expect(mandatoryItemIds).not.toContain(item.id);
+    }
+  });
+
+  it('does not crowd the live slice out with superseded items', async () => {
+    const fake = createStore();
+    const telemetry = createTelemetry();
+    const result = await runTool(
+      { task: ORDINARY_TASK, project: 'payments-migration' },
+      fake,
+      telemetry,
+    );
+
+    const itemIds = idsOf(result, 'itemIds');
+    const supersededIds = new Set(SUPERSEDED_ITEMS.map((item) => item.id));
+    const live = itemIds.filter((id) => !supersededIds.has(id));
+    expect(live.length).toBeGreaterThanOrEqual(itemIds.length - RECENT_SUPERSEDED_LIMIT);
   });
 });
 
@@ -408,7 +697,7 @@ describe('mneia_rehydrate telemetry', () => {
     const fake = createStore();
     const telemetry = createTelemetry();
     const result = await runTool(
-      { task: 'wire the retry path', project: 'payments-migration' },
+      { task: ORDINARY_TASK, project: 'payments-migration' },
       fake,
       telemetry,
     );
@@ -434,7 +723,7 @@ describe('mneia_rehydrate telemetry', () => {
   it('carries no item body and no field beyond the §17 shape', async () => {
     const fake = createStore();
     const telemetry = createTelemetry();
-    await runTool({ task: 'wire the retry path', project: 'payments-migration' }, fake, telemetry);
+    await runTool({ task: ORDINARY_TASK, project: 'payments-migration' }, fake, telemetry);
 
     const [event] = telemetry.events;
     if (event === undefined) {
@@ -442,14 +731,14 @@ describe('mneia_rehydrate telemetry', () => {
     }
 
     const serialised = JSON.stringify(event);
-    for (const item of [LOAD_BEARING_CONSTRAINT, ...FACTS]) {
+    for (const item of ALL_FIXTURES) {
       const { body } = item;
       if (body !== null) {
         expect(serialised).not.toContain(body);
       }
       expect(serialised).not.toContain(item.title);
     }
-    expect(serialised).not.toContain('wire the retry path');
+    expect(serialised).not.toContain(ORDINARY_TASK);
 
     expect(Object.keys(event).sort()).toEqual(
       [
@@ -471,7 +760,7 @@ describe('mneia_rehydrate telemetry', () => {
     const fake = createStore();
     const telemetry = createTelemetry({ throwOnEmit: true });
     const result = await runTool(
-      { task: 'wire the retry path', project: 'payments-migration' },
+      { task: ORDINARY_TASK, project: 'payments-migration' },
       fake,
       telemetry,
     );
@@ -486,7 +775,7 @@ describe('mneia_rehydrate errors', () => {
   it('distinguishes an unbound project and names both fixes', async () => {
     const fake = createStore();
     const telemetry = createTelemetry();
-    const result = await runTool({ task: 'wire the retry path' }, fake, telemetry);
+    const result = await runTool({ task: ORDINARY_TASK }, fake, telemetry);
 
     expect(result.isError).toBe(true);
     expect(errorCodeOf(result)).toBe('project_not_bound');
@@ -499,7 +788,7 @@ describe('mneia_rehydrate errors', () => {
   it('distinguishes a project that does not exist', async () => {
     const fake = createStore({ project: null });
     const telemetry = createTelemetry();
-    const result = await runTool({ task: 'wire the retry path', project: 'nope' }, fake, telemetry);
+    const result = await runTool({ task: ORDINARY_TASK, project: 'nope' }, fake, telemetry);
 
     expect(result.isError).toBe(true);
     expect(errorCodeOf(result)).toBe('project_not_found');
@@ -511,7 +800,7 @@ describe('mneia_rehydrate errors', () => {
     const fake = createStore({ failOn: 'searchContextItems' });
     const telemetry = createTelemetry();
     const result = await runTool(
-      { task: 'wire the retry path', project: 'payments-migration' },
+      { task: ORDINARY_TASK, project: 'payments-migration' },
       fake,
       telemetry,
     );
@@ -523,11 +812,25 @@ describe('mneia_rehydrate errors', () => {
     expect(telemetry.events).toHaveLength(0);
   });
 
+  it('names which read failed when the store drops mid-retrieval', async () => {
+    const fake = createStore({ failOn: 'listContextItems' });
+    const telemetry = createTelemetry();
+    const result = await runTool(
+      { task: ORDINARY_TASK, project: 'payments-migration' },
+      fake,
+      telemetry,
+    );
+
+    expect(errorCodeOf(result)).toBe('store_unavailable');
+    expect(textOf(result)).toContain('listContextItems');
+    expect(textOf(result)).toContain('load-bearing constraints');
+  });
+
   it('reports an unreachable store during project resolution too', async () => {
     const fake = createStore({ failOn: 'getProjectBySlug' });
     const telemetry = createTelemetry();
     const result = await runTool(
-      { task: 'wire the retry path', project: 'payments-migration' },
+      { task: ORDINARY_TASK, project: 'payments-migration' },
       fake,
       telemetry,
     );

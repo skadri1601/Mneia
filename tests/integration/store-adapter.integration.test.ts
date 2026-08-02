@@ -1,7 +1,11 @@
 import { Client } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { SqlResult, SqlValue } from '../../packages/core/src/index.js';
-import { migrate, WORKSPACE_SETTING } from '../../packages/core/src/index.js';
+import {
+  migrate,
+  SupersedeNotAllowedError,
+  WORKSPACE_SETTING,
+} from '../../packages/core/src/index.js';
 import type {
   PostgresConnectionSource,
   PostgresSession,
@@ -22,9 +26,11 @@ const TEAM_B = 'ccccccc1-0000-4000-8000-000000000004';
 const PROJECT_A = 'ddddddd1-0000-4000-8000-000000000005';
 const PROJECT_B = 'ddddddd1-0000-4000-8000-000000000006';
 const GHOST_ACTOR = 'eeeeeee1-0000-4000-8000-000000000007';
+const AGENT_A = 'fffffff1-0000-4000-8000-000000000008';
 
 const SCOPE_A: WorkspaceScope = { workspaceId: WS_A, actorId: ACTOR_A };
 const SCOPE_B: WorkspaceScope = { workspaceId: WS_B, actorId: ACTOR_B };
+const SCOPE_AGENT_A: WorkspaceScope = { workspaceId: WS_A, actorId: AGENT_A };
 
 const connect = async (): Promise<Client> => {
   const client = new Client({ connectionString });
@@ -120,12 +126,36 @@ async function seed(client: Client): Promise<void> {
       [projectId, workspaceId, teamId, `${slug}-platform`],
     );
   }
+
+  await client.query('SELECT set_config($1, $2, false)', [WORKSPACE_SETTING, WS_A]);
+  await client.query(
+    'INSERT INTO actor (id, workspace_id, kind, display_name) VALUES ($1, $2, $3, $4)',
+    [AGENT_A, WS_A, 'agent', 'acme coding agent'],
+  );
+  await client.query(
+    'INSERT INTO team_member (workspace_id, team_id, actor_id, role) VALUES ($1, $2, $3, $4)',
+    [WS_A, TEAM_A, AGENT_A, 'member'],
+  );
+}
+
+async function rawRows(
+  client: Client,
+  workspaceId: string,
+  sql: string,
+): Promise<readonly Record<string, unknown>[]> {
+  await client.query('SELECT set_config($1, $2, false)', [WORKSPACE_SETTING, workspaceId]);
+  const result = await client.query(sql);
+  return result.rows as Record<string, unknown>[];
 }
 
 let schemaCounter = 0;
 
 async function withAdapter(
-  run: (adapter: PostgresStoreAdapter, source: SchemaConnectionSource) => Promise<void>,
+  run: (
+    adapter: PostgresStoreAdapter,
+    source: SchemaConnectionSource,
+    setup: Client,
+  ) => Promise<void>,
 ): Promise<void> {
   const schema = `mne44_${process.pid}_${++schemaCounter}`;
   const setup = await connect();
@@ -137,7 +167,7 @@ async function withAdapter(
     await migrate(new PgDriver(setup), { appliedBy: 'integration' });
     await seed(setup);
 
-    await run(new PostgresStoreAdapter(source), source);
+    await run(new PostgresStoreAdapter(source), source, setup);
   } finally {
     await source.close();
     await setup.query(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
@@ -262,6 +292,201 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
         });
         expect(active.map((item) => item.id)).toEqual([replacement.id]);
       });
+    });
+  });
+
+  it('never lets an agent assertion supersede a human-confirmed item, with no MCP or CLI in the path', async () => {
+    await withAdapter(async (adapter, _source, setup) => {
+      const confirmed = await adapter.withScope(SCOPE_A, async (store) =>
+        store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'never deploy on Fridays'),
+          kind: 'constraint',
+          humanConfirmed: true,
+          loadBearing: true,
+        }),
+      );
+
+      const refusal = await adapter
+        .withScope(SCOPE_AGENT_A, async (store) =>
+          store.writeCheckpoint({
+            checkpoint: { projectId: PROJECT_A, actorId: AGENT_A, trigger: 'task_boundary' },
+            items: [
+              {
+                action: 'superseded',
+                item: {
+                  ...newItem(PROJECT_A, AGENT_A, 'deploy on Fridays behind a flag'),
+                  kind: 'constraint',
+                  supersedesId: confirmed.id,
+                },
+              },
+            ],
+          }),
+        )
+        .catch((caught: unknown) => caught);
+
+      expect(refusal).toBeInstanceOf(SupersedeNotAllowedError);
+      expect(refusal).toMatchObject({
+        outcome: 'requires_human_confirmation',
+        itemId: confirmed.id,
+      });
+
+      const target = await adapter.withScope(SCOPE_A, (store) =>
+        store.getContextItem(confirmed.id),
+      );
+      expect(target?.status).toBe('active');
+      expect(target?.supersededById).toBeNull();
+      expect(target?.validTo).toBeNull();
+      expect(target?.humanConfirmed).toBe(true);
+
+      const survivors = await rawRows(setup, WS_A, 'SELECT id FROM context_item');
+      expect(survivors.map((row) => row.id)).toEqual([confirmed.id]);
+    });
+  });
+
+  it('lets a human supersede an agent-asserted item', async () => {
+    await withAdapter(async (adapter) => {
+      const asserted = await adapter.withScope(SCOPE_AGENT_A, async (store) =>
+        store.insertContextItem(newItem(PROJECT_A, AGENT_A, 'the queue is RabbitMQ')),
+      );
+      expect(asserted.humanConfirmed).toBe(false);
+
+      const result = await adapter.withScope(SCOPE_A, async (store) =>
+        store.writeCheckpoint({
+          checkpoint: { projectId: PROJECT_A, actorId: ACTOR_A, trigger: 'task_boundary' },
+          items: [
+            {
+              action: 'superseded',
+              item: {
+                ...newItem(PROJECT_A, ACTOR_A, 'the queue is Postgres LISTEN/NOTIFY'),
+                humanConfirmed: true,
+                supersedesId: asserted.id,
+              },
+            },
+          ],
+        }),
+      );
+
+      const replacement = result.written[0];
+      expect(replacement?.supersedesId).toBe(asserted.id);
+
+      const previous = await adapter.withScope(SCOPE_A, (store) =>
+        store.getContextItem(asserted.id),
+      );
+      expect(previous?.status).toBe('superseded');
+      expect(previous?.supersededById).toBe(replacement?.id);
+    });
+  });
+
+  it('refuses to supersede a row that is no longer the head of its chain', async () => {
+    await withAdapter(async (adapter) => {
+      const original = await adapter.withScope(SCOPE_A, async (store) =>
+        store.insertContextItem(newItem(PROJECT_A, ACTOR_A, 'ship the adapter behind a flag')),
+      );
+      const first = await adapter.withScope(SCOPE_A, async (store) =>
+        store.supersedeContextItem(original.id, newItem(PROJECT_A, ACTOR_A, 'ship the adapter')),
+      );
+
+      const refusal = await adapter
+        .withScope(SCOPE_A, async (store) =>
+          store.writeCheckpoint({
+            checkpoint: { projectId: PROJECT_A, actorId: ACTOR_A, trigger: 'manual' },
+            items: [
+              {
+                action: 'superseded',
+                item: {
+                  ...newItem(PROJECT_A, ACTOR_A, 'ship the adapter next week'),
+                  supersedesId: original.id,
+                },
+              },
+            ],
+          }),
+        )
+        .catch((caught: unknown) => caught);
+
+      expect(refusal).toBeInstanceOf(SupersedeNotAllowedError);
+      expect(refusal).toMatchObject({ outcome: 'refused', itemId: original.id });
+
+      const head = await adapter.withScope(SCOPE_A, (store) => store.getContextItem(original.id));
+      expect(head?.supersededById).toBe(first.id);
+    });
+  });
+
+  it('lets only one of two concurrent supersedes of the same row win', async () => {
+    await withAdapter(async (adapter, _source, setup) => {
+      const original = await adapter.withScope(SCOPE_A, async (store) =>
+        store.insertContextItem(
+          newItem(PROJECT_A, ACTOR_A, 'the store adapter is the choke point'),
+        ),
+      );
+
+      const race = (title: string) =>
+        adapter.withScope(SCOPE_A, async (store) =>
+          store.writeCheckpoint({
+            checkpoint: { projectId: PROJECT_A, actorId: ACTOR_A, trigger: 'manual' },
+            items: [
+              {
+                action: 'superseded',
+                item: { ...newItem(PROJECT_A, ACTOR_A, title), supersedesId: original.id },
+              },
+            ],
+          }),
+        );
+
+      const outcomes = await Promise.allSettled([race('successor one'), race('successor two')]);
+      const failures: unknown[] = outcomes.flatMap((outcome) =>
+        outcome.status === 'rejected' ? [outcome.reason] : [],
+      );
+
+      expect(outcomes.filter((outcome) => outcome.status === 'fulfilled')).toHaveLength(1);
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toBeInstanceOf(SupersedeNotAllowedError);
+      expect(failures[0]).toMatchObject({ outcome: 'refused', itemId: original.id });
+
+      const head = await adapter.withScope(SCOPE_A, (store) => store.getContextItem(original.id));
+      expect(head?.supersededById).not.toBeNull();
+
+      expect(await rawRows(setup, WS_A, 'SELECT id FROM checkpoint')).toHaveLength(1);
+      expect(await rawRows(setup, WS_A, 'SELECT id FROM context_item')).toHaveLength(2);
+    });
+  });
+
+  it('rolls the whole checkpoint back when one of its items is refused', async () => {
+    await withAdapter(async (adapter, _source, setup) => {
+      const confirmed = await adapter.withScope(SCOPE_A, async (store) =>
+        store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'RLS is mandatory on every table'),
+          kind: 'constraint',
+          humanConfirmed: true,
+        }),
+      );
+
+      await expect(
+        adapter.withScope(SCOPE_AGENT_A, async (store) =>
+          store.writeCheckpoint({
+            checkpoint: { projectId: PROJECT_A, actorId: AGENT_A, trigger: 'day_boundary' },
+            items: [
+              {
+                action: 'created',
+                item: newItem(PROJECT_A, AGENT_A, 'this item is perfectly valid on its own'),
+              },
+              {
+                action: 'superseded',
+                item: {
+                  ...newItem(PROJECT_A, AGENT_A, 'RLS is optional on preview branches'),
+                  kind: 'constraint',
+                  supersedesId: confirmed.id,
+                },
+              },
+            ],
+          }),
+        ),
+      ).rejects.toThrow(/§10.1 step 5/);
+
+      expect(await rawRows(setup, WS_A, 'SELECT id FROM checkpoint')).toHaveLength(0);
+      expect(await rawRows(setup, WS_A, 'SELECT item_id FROM checkpoint_item')).toHaveLength(0);
+
+      const survivors = await rawRows(setup, WS_A, 'SELECT id FROM context_item');
+      expect(survivors.map((row) => row.id)).toEqual([confirmed.id]);
     });
   });
 

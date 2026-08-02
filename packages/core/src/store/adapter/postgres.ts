@@ -10,6 +10,7 @@ import type {
   Session,
   Uuid,
 } from '../../domain/types.js';
+import { assertSupersedeAllowed } from '../../policy/index.js';
 import type { SqlExecutor, SqlValue } from '../driver.js';
 import { EMBEDDING_DIMENSIONS, WORKSPACE_SETTING } from '../schema.js';
 import { visibilityPredicate } from '../scope.js';
@@ -178,6 +179,7 @@ class PostgresScopedStore implements ScopedStore {
   private attached = true;
   private savepoints = 0;
   private teamIds: readonly Uuid[] | null = null;
+  private scopedActor: Actor | null = null;
 
   constructor(
     private readonly session: PostgresSession,
@@ -236,6 +238,50 @@ class PostgresScopedStore implements ScopedStore {
       this.teamIds = rows.map((row) => toUuid(row, 'team_id'));
     }
     return this.teamIds;
+  }
+
+  private async assertingActor(): Promise<Actor> {
+    if (this.scopedActor === null) {
+      const rows = await this.rows(
+        `SELECT ${ACTOR_COLUMNS} FROM actor WHERE workspace_id = $1 AND id = $2`,
+        [this.scope.workspaceId, this.scope.actorId],
+      );
+      const row = rows[0];
+      if (row === undefined) {
+        throw new StoreError(
+          'not_found',
+          `expected scope.actorId ${this.scope.actorId} to name an actor in workspace ${this.scope.workspaceId}, because the store reads actor.kind there to arbitrate a supersede; found no such actor — open the scope with an actor row that exists in this workspace`,
+        );
+      }
+      this.scopedActor = toActor(row);
+    }
+    return this.scopedActor;
+  }
+
+  private async guardSupersede(previousId: Uuid): Promise<void> {
+    const actor = await this.assertingActor();
+
+    const rows = await this.rows(
+      `SELECT ${CONTEXT_ITEM_COLUMNS}
+         FROM context_item
+        WHERE workspace_id = $1 AND id = $2
+        FOR UPDATE`,
+      [this.scope.workspaceId, previousId],
+    );
+    const row = rows[0];
+    if (row === undefined) {
+      throw new StoreError(
+        'not_found',
+        `expected context item ${previousId} in workspace ${this.scope.workspaceId} to supersede; found none — re-read the chain and name an item that exists in this workspace`,
+      );
+    }
+
+    assertSupersedeAllowed({
+      existing: toContextItem(row),
+      assertingActorKind: actor.kind,
+      assertingActorId: actor.id,
+      humanConfirmedByAsserter: actor.kind === 'human',
+    });
   }
 
   async getActor(id: Uuid): Promise<Actor | null> {
@@ -419,7 +465,10 @@ class PostgresScopedStore implements ScopedStore {
       return toContextItem(await this.insertContextItemRow(item, null));
     }
 
-    return this.atomic(`inserting a context item superseding ${item.supersedesId}`, async () => {
+    const supersedesId = assertUuid(item.supersedesId, 'item.supersedesId');
+
+    return this.atomic(`inserting a context item superseding ${supersedesId}`, async () => {
+      await this.guardSupersede(supersedesId);
       const inserted = toContextItem(await this.insertContextItemRow(item, null));
       if (inserted.supersedesId !== null) {
         await this.linkSupersession(inserted.supersedesId, inserted.id);
@@ -507,16 +556,7 @@ class PostgresScopedStore implements ScopedStore {
     assertUuid(previousId, 'previousId');
 
     return this.atomic(`superseding context item ${previousId}`, async () => {
-      const previous = await this.rows(
-        'SELECT id FROM context_item WHERE workspace_id = $1 AND id = $2 FOR UPDATE',
-        [this.scope.workspaceId, previousId],
-      );
-      if (previous[0] === undefined) {
-        throw new StoreError(
-          'not_found',
-          `expected context item ${previousId} in workspace ${this.scope.workspaceId} to supersede; found none`,
-        );
-      }
+      await this.guardSupersede(previousId);
 
       const inserted = toContextItem(await this.insertContextItemRow(replacement, previousId));
       await this.linkSupersession(previousId, inserted.id);
@@ -555,6 +595,11 @@ class PostgresScopedStore implements ScopedStore {
       const links: CheckpointItem[] = [];
 
       for (const entry of items) {
+        const supersedesId = assertOptionalUuid(entry.item.supersedesId, 'item.supersedesId');
+        if (supersedesId !== null) {
+          await this.guardSupersede(supersedesId);
+        }
+
         const item = toContextItem(await this.insertContextItemRow(entry.item, null));
         written.push(item);
 
