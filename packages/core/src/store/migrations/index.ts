@@ -5,6 +5,7 @@ import { migration as waitlistSignup } from './0004-waitlist-signup.js';
 import { migration as waitlistUnsubscribe } from './0005-waitlist-unsubscribe.js';
 import { migration as checkpointHandoff } from './0006-checkpoint-handoff.js';
 import { migration as actorIdentity } from './0007-actor-identity.js';
+import { migration as conflictPairConstraints } from './0008-conflict-pair-constraints.js';
 import type { Migration } from './migration.js';
 
 export type { AppliedMigration, Migration } from './migration.js';
@@ -17,4 +18,5 @@ export const MIGRATIONS: readonly Migration[] = [
   waitlistUnsubscribe,
   checkpointHandoff,
   actorIdentity,
+  conflictPairConstraints,
 ];
