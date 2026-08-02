@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { ButtonPrimary } from './Button';
+import { MneiaMark } from './MneiaMark';
 import styles from './Nav.module.css';
 
 const ROUTES = [
@@ -31,7 +32,8 @@ export function Nav() {
           <Link className={styles.skip} href="#main">
             Skip to content
           </Link>
-          <Link className={styles.wordmark} href="/">
+          <Link aria-label="Mneia" className={styles.wordmark} href="/">
+            <MneiaMark className={styles.mark} />
             Mneia
           </Link>
           <ul className={styles.globalLinks}>

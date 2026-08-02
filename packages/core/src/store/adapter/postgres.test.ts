@@ -36,13 +36,45 @@ class FakeSession implements PostgresSession {
 }
 
 class FakeSource implements PostgresConnectionSource {
-  constructor(readonly session: FakeSession) {}
+  constructor(readonly session: PostgresSession) {}
 
   async acquire(): Promise<PostgresSession> {
     return this.session;
   }
 
   async close(): Promise<void> {}
+}
+
+const ARCHIVED_PROJECT_ID = '33333333-3333-4333-8333-333333333333';
+
+class ArchivedProjectSession implements PostgresSession {
+  readonly calls: string[] = [];
+
+  async execute<TRow = Record<string, unknown>>(
+    sql: string,
+    _params: readonly SqlValue[] = [],
+  ): Promise<SqlResult<TRow>> {
+    this.calls.push(sql);
+    if (sql.includes('FROM project') && !sql.includes('archived_at IS NULL')) {
+      return {
+        rows: [
+          {
+            id: ARCHIVED_PROJECT_ID,
+            workspace_id: SCOPE.workspaceId,
+            team_id: null,
+            slug: 'archived-project',
+            repo_url: null,
+            created_at: new Date('2026-08-01T00:00:00.000Z'),
+          } as TRow,
+        ],
+      };
+    }
+    return { rows: [] };
+  }
+
+  async release(): Promise<void> {}
+
+  async discard(): Promise<void> {}
 }
 
 describe('PostgresStoreAdapter transaction cleanup', () => {
@@ -79,5 +111,29 @@ describe('PostgresStoreAdapter transaction cleanup', () => {
     } satisfies Partial<StoreError>);
     expect(session.releaseCount).toBe(0);
     expect(session.discardCount).toBe(1);
+  });
+});
+
+describe('PostgresStoreAdapter active project resolution', () => {
+  it('does not resolve an archived project by id', async () => {
+    const session = new ArchivedProjectSession();
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    const project = await adapter.withScope(SCOPE, (store) =>
+      store.getProject(ARCHIVED_PROJECT_ID),
+    );
+
+    expect(project).toBeNull();
+  });
+
+  it('does not resolve an archived project by slug', async () => {
+    const session = new ArchivedProjectSession();
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    const project = await adapter.withScope(SCOPE, (store) =>
+      store.getProjectBySlug('archived-project'),
+    );
+
+    expect(project).toBeNull();
   });
 });

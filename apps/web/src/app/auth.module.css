@@ -1,0 +1,22 @@
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: var(--space-lg);
+}
+
+.panel {
+  width: min(100%, 480px);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-xl, 32px);
+}
+
+.panel h1 {
+  font-family: var(--font-display);
+  font-size: var(--size-display-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-display-lg);
+  letter-spacing: var(--tracking-display-lg);
+  text-align: center;
+}

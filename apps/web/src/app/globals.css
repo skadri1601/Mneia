@@ -1,0 +1,43 @@
+@import "./tokens.css";
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--canvas-parchment);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: var(--canvas-parchment);
+  color: var(--tile-ink);
+  font-family: var(--font-text);
+  font-size: var(--size-body);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-body);
+  letter-spacing: var(--tracking-body);
+}
+
+h1,
+h2,
+p,
+dl,
+dd {
+  margin: 0;
+}
+
+a {
+  text-decoration: none;
+}
+
+code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+}
+
+button,
+input {
+  font: inherit;
+}

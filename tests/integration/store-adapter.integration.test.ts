@@ -1,7 +1,7 @@
 import { Client } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { SqlResult, SqlValue } from '../../packages/core/src/index.js';
-import { WORKSPACE_SETTING, migrate } from '../../packages/core/src/index.js';
+import { migrate, WORKSPACE_SETTING } from '../../packages/core/src/index.js';
 import type {
   PostgresConnectionSource,
   PostgresSession,
@@ -40,11 +40,17 @@ class SchemaSession implements PostgresSession {
     params: readonly SqlValue[] = [],
   ): Promise<SqlResult<TRow>> {
     const result =
-      params.length === 0 ? await this.client.query(sql) : await this.client.query(sql, [...params]);
+      params.length === 0
+        ? await this.client.query(sql)
+        : await this.client.query(sql, [...params]);
     return { rows: result.rows as TRow[] };
   }
 
   async release(): Promise<void> {}
+
+  async discard(): Promise<void> {
+    await this.client.end();
+  }
 }
 
 class SchemaConnectionSource implements PostgresConnectionSource {
@@ -179,7 +185,7 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
 
   it('detaches the scoped store when the callback returns, so it cannot outlive its transaction', async () => {
     await withAdapter(async (adapter) => {
-      let escaped: ScopedStore | undefined = undefined;
+      let escaped: ScopedStore | undefined;
 
       await adapter.withScope(SCOPE_A, async (store) => {
         escaped = store;
@@ -409,14 +415,14 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
         await expect(store.getActor('actor-1')).rejects.toThrow(
           /expected id to be a UUID; received "actor-1"/,
         );
-        await expect(
-          store.listContextItems({ projectId: PROJECT_A, limit: 0 }),
-        ).rejects.toThrow(/expected filter.limit to be an integer between 1 and 1000/);
+        await expect(store.listContextItems({ projectId: PROJECT_A, limit: 0 })).rejects.toThrow(
+          /expected filter.limit to be an integer between 1 and 1000/,
+        );
       });
 
-      await expect(adapter.withScope({ workspaceId: 'nope', actorId: ACTOR_A }, async () => {})).rejects.toThrow(
-        /expected scope.workspaceId to be a UUID/,
-      );
+      await expect(
+        adapter.withScope({ workspaceId: 'nope', actorId: ACTOR_A }, async () => {}),
+      ).rejects.toThrow(/expected scope.workspaceId to be a UUID/);
     });
   });
 });

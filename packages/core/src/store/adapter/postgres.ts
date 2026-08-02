@@ -251,7 +251,9 @@ class PostgresScopedStore implements ScopedStore {
   async getProject(id: Uuid): Promise<Project | null> {
     assertUuid(id, 'id');
     const rows = await this.rows(
-      `SELECT ${PROJECT_COLUMNS} FROM project WHERE workspace_id = $1 AND id = $2`,
+      `SELECT ${PROJECT_COLUMNS}
+         FROM project
+        WHERE workspace_id = $1 AND id = $2 AND archived_at IS NULL`,
       [this.scope.workspaceId, id],
     );
     const row = rows[0];
@@ -261,7 +263,9 @@ class PostgresScopedStore implements ScopedStore {
   async getProjectBySlug(slug: string): Promise<Project | null> {
     assertNonEmpty(slug, 'slug');
     const rows = await this.rows(
-      `SELECT ${PROJECT_COLUMNS} FROM project WHERE workspace_id = $1 AND slug = $2`,
+      `SELECT ${PROJECT_COLUMNS}
+         FROM project
+        WHERE workspace_id = $1 AND slug = $2 AND archived_at IS NULL`,
       [this.scope.workspaceId, slug],
     );
     const row = rows[0];

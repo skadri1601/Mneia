@@ -1,18 +1,17 @@
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-vi.mock('server-only', () => ({}));
+vi.mock('../../apps/web/node_modules/server-only/index.js', () => ({}));
 
 import {
   IDENTITY_SUBJECT_SETTING,
+  migrate,
   type PostgresConnectionSource,
   type PostgresSession,
   type SqlResult,
   type SqlValue,
   WORKSPACE_SETTING,
-  migrate,
 } from '../../packages/core/src/index.js';
-import { PostgresAccountStore } from '../../apps/web/src/server/store/postgres-account-store.js';
 import { PgDriver } from './pg-driver.js';
 
 const connectionString = process.env.DATABASE_URL;
@@ -50,7 +49,9 @@ class RoleSession implements PostgresSession {
     params: readonly SqlValue[] = [],
   ): Promise<SqlResult<TRow>> {
     const result =
-      params.length === 0 ? await this.client.query(sql) : await this.client.query(sql, [...params]);
+      params.length === 0
+        ? await this.client.query(sql)
+        : await this.client.query(sql, [...params]);
     return { rows: result.rows as TRow[] };
   }
 
@@ -59,6 +60,10 @@ class RoleSession implements PostgresSession {
     this.released = true;
     this.forget(this.client);
     await this.client.end();
+  }
+
+  async discard(): Promise<void> {
+    await this.release();
   }
 }
 
@@ -160,11 +165,8 @@ interface ActorIdentityRow {
 }
 
 const visibleActors = async (session: PostgresSession): Promise<readonly ActorIdentityRow[]> =>
-  (
-    await session.execute<ActorIdentityRow>(
-      'SELECT id, kind, external_ref FROM actor ORDER BY id',
-    )
-  ).rows;
+  (await session.execute<ActorIdentityRow>('SELECT id, kind, external_ref FROM actor ORDER BY id'))
+    .rows;
 
 interface AccountCounts {
   readonly workspaces: number;
@@ -202,6 +204,15 @@ const fixedIds = (values: readonly string[]): (() => string) => {
   };
 };
 
+async function accountStore(source: RoleConnectionSource, idFactory?: () => string) {
+  const { PostgresAccountStore } = await import(
+    '../../apps/web/src/server/store/postgres-account-store.js'
+  );
+  return idFactory === undefined
+    ? new PostgresAccountStore(source)
+    : new PostgresAccountStore(source, idFactory);
+}
+
 async function scopedEntityIds(
   source: RoleConnectionSource,
   workspaceId: string,
@@ -210,7 +221,9 @@ async function scopedEntityIds(
     await session.execute('BEGIN');
     try {
       await session.execute('SELECT set_config($1, $2, true)', [WORKSPACE_SETTING, workspaceId]);
-      const workspaces = await session.execute<{ id: string }>('SELECT id FROM workspace ORDER BY id');
+      const workspaces = await session.execute<{ id: string }>(
+        'SELECT id FROM workspace ORDER BY id',
+      );
       const teams = await session.execute<{ id: string }>('SELECT id FROM team ORDER BY id');
       await session.execute('COMMIT');
       return {
@@ -257,7 +270,7 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
        DECLARE schema_name TEXT;
        BEGIN
          FOR schema_name IN
-           SELECT nspname FROM pg_namespace WHERE nspname LIKE '${schemaPrefix}_%'
+           SELECT nspname FROM pg_namespace WHERE starts_with(nspname, '${schemaPrefix}_')
          LOOP
            EXECUTE format('DROP SCHEMA IF EXISTS %I CASCADE', schema_name);
          END LOOP;
@@ -352,7 +365,9 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
         await session.execute('ROLLBACK');
       });
 
-      const unchanged = await admin.query('SELECT display_name FROM actor WHERE id = $1', [ACTOR_A]);
+      const unchanged = await admin.query('SELECT display_name FROM actor WHERE id = $1', [
+        ACTOR_A,
+      ]);
       expect(unchanged.rows[0]?.display_name).toBe('Human A');
     });
   });
@@ -383,10 +398,7 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
 
   it('creates the exact solo account once and reuses it without creating a project', async () => {
     await withAccountSchema(async ({ admin, source }) => {
-      const store = new PostgresAccountStore(
-        source,
-        fixedIds([WORKSPACE_A, ACTOR_A, TEAM_A]),
-      );
+      const store = await accountStore(source, fixedIds([WORKSPACE_A, ACTOR_A, TEAM_A]));
 
       const created = await store.bootstrapSoloAccount({
         subject: SUBJECT_A,
@@ -447,7 +459,7 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
 
   it('serializes concurrent bootstrap calls into one account', async () => {
     await withAccountSchema(async ({ admin, source }) => {
-      const store = new PostgresAccountStore(source);
+      const store = await accountStore(source);
       const [first, second] = await Promise.all([
         store.bootstrapSoloAccount({
           subject: SUBJECT_CONCURRENT,
@@ -475,7 +487,7 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
 
   it('isolates two bootstrapped subjects after workspace scope is established', async () => {
     await withAccountSchema(async ({ source }) => {
-      const store = new PostgresAccountStore(source);
+      const store = await accountStore(source);
       const accountA = await store.bootstrapSoloAccount({
         subject: SUBJECT_A,
         displayName: 'Human A',
@@ -512,7 +524,7 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
     async (table) => {
       await withAccountSchema(async ({ admin, source }) => {
         await installWriteFailure(admin, table);
-        const store = new PostgresAccountStore(source);
+        const store = await accountStore(source);
 
         await expect(
           store.bootstrapSoloAccount({

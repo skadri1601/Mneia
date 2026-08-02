@@ -16,12 +16,20 @@
 .wordmark {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-xs);
   min-height: var(--global-nav-height);
   color: var(--body-on-dark);
   font-family: var(--font-display);
   font-size: var(--size-nav-wordmark);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-body);
+}
+
+.mark {
+  width: 1.2em;
+  height: 1.2em;
+  color: var(--body-on-dark);
+  --mark-signal: var(--primary-on-dark);
 }
 
 .globalLinks {
