@@ -138,4 +138,7 @@ The chassis is Apple's two-row nav: a 44px `surface-black` global nav carrying t
 - Data-dense surfaces (the MNE-25 review queue, the MNE-133 conflict UI) need table, diff, and
   empty-state components neither file defines. Extend `apple.md`'s `store-utility-card` grammar there
   rather than improvising.
-- No logo exists. The wordmark is set in `tagline` as an interim treatment.
+- The lockup is two drawings, not one (MNE-220). `MneiaLetter` is the bare M that opens the wordmark —
+  tight bounds, stroke tuned to the type's weight, so `MNEIA` reads as one word. `MneiaMark` is the
+  boxed document glyph for standalone use: favicon, OG, app icon. **Do not put the boxed mark inline
+  beside the word** — its container draws a rule between the M and the N, which is the bug MNE-220 fixed.
