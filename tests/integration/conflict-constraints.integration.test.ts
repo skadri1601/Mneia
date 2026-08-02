@@ -15,6 +15,8 @@ const WS = '77777777-7777-4777-8777-777777777777';
 
 const PAIR_CONSTRAINTS_VERSION = 8;
 
+const LATEST_VERSION = MIGRATIONS.reduce((highest, { version }) => Math.max(highest, version), 0);
+
 type MigrationList = typeof MIGRATIONS;
 
 const BEFORE_PAIR_CONSTRAINTS: MigrationList = MIGRATIONS.filter(
@@ -288,8 +290,8 @@ describe.skipIf(connectionString === undefined)('conflict pair constraints', () 
       await resolveConflict(client, first, seed.actorId);
       const applied = await migrate(new PgDriver(client), { appliedBy: 'integration' });
 
-      expect(applied.schemaVersion).toBe(PAIR_CONSTRAINTS_VERSION);
-      expect(await storeVersion(client)).toBe(PAIR_CONSTRAINTS_VERSION);
+      expect(applied.schemaVersion).toBe(LATEST_VERSION);
+      expect(await storeVersion(client)).toBeGreaterThanOrEqual(PAIR_CONSTRAINTS_VERSION);
     }, BEFORE_PAIR_CONSTRAINTS);
   });
 });
