@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { SupersedeNotAllowedError } from '../../policy/index.js';
 import type { SqlResult, SqlValue } from '../driver.js';
+import { RLS_POSTURE_SQL } from '../rls-guard.js';
 import type { ActorKind } from '../schema.js';
 import type { PostgresConnectionSource, PostgresSession } from './postgres.js';
 import { PostgresStoreAdapter, type StoreError } from './postgres.js';
@@ -11,18 +12,38 @@ const SCOPE = {
   actorId: '22222222-2222-4222-8222-222222222222',
 };
 
+const isPostureQuery = (sql: string): boolean => sql.includes('pg_catalog.pg_roles');
+
+const postureRows = (bypassesRls = false): Record<string, unknown>[] => [
+  {
+    role_name: bypassesRls ? 'neondb_owner' : 'mneia_app',
+    session_role_name: bypassesRls ? 'neondb_owner' : 'mneia_app',
+    role_is_superuser: false,
+    role_bypasses_rls: bypassesRls,
+    granting_role: null,
+    granting_is_superuser: false,
+    granting_bypasses_rls: false,
+  },
+];
+
 class FakeSession implements PostgresSession {
   readonly calls: string[] = [];
   releaseCount = 0;
   discardCount = 0;
 
-  constructor(private readonly rollbackFailure: Error | null = null) {}
+  constructor(
+    private readonly rollbackFailure: Error | null = null,
+    private readonly bypassesRls = false,
+  ) {}
 
   async execute<TRow = Record<string, unknown>>(
     sql: string,
     _params: readonly SqlValue[] = [],
   ): Promise<SqlResult<TRow>> {
     this.calls.push(sql);
+    if (isPostureQuery(sql)) {
+      return { rows: postureRows(this.bypassesRls) as TRow[] };
+    }
     if (sql === 'ROLLBACK' && this.rollbackFailure !== null) {
       throw this.rollbackFailure;
     }
@@ -58,6 +79,9 @@ class ArchivedProjectSession implements PostgresSession {
     _params: readonly SqlValue[] = [],
   ): Promise<SqlResult<TRow>> {
     this.calls.push(sql);
+    if (isPostureQuery(sql)) {
+      return { rows: postureRows() as TRow[] };
+    }
     if (sql.includes('FROM project') && !sql.includes('archived_at IS NULL')) {
       return {
         rows: [
@@ -131,6 +155,10 @@ class SupersedeSession implements PostgresSession {
   ): Promise<SqlResult<TRow>> {
     this.calls.push(sql);
     this.params.push(params);
+
+    if (isPostureQuery(sql)) {
+      return { rows: postureRows() as TRow[] };
+    }
 
     if (sql.includes('FROM actor')) {
       if (this.actorKind === null) return { rows: [] };
@@ -340,7 +368,12 @@ describe('PostgresStoreAdapter transaction cleanup', () => {
       }),
     ).rejects.toBe(failure);
 
-    expect(session.calls).toEqual(['BEGIN', 'SELECT set_config($1, $2, true)', 'ROLLBACK']);
+    expect(session.calls).toEqual([
+      RLS_POSTURE_SQL,
+      'BEGIN',
+      'SELECT set_config($1, $2, true)',
+      'ROLLBACK',
+    ]);
     expect(session.releaseCount).toBe(1);
     expect(session.discardCount).toBe(0);
   });
@@ -362,6 +395,34 @@ describe('PostgresStoreAdapter transaction cleanup', () => {
     } satisfies Partial<StoreError>);
     expect(session.releaseCount).toBe(0);
     expect(session.discardCount).toBe(1);
+  });
+});
+
+describe('PostgresStoreAdapter row-level security guard', () => {
+  it('refuses a connection that bypasses row-level security before it opens a transaction', async () => {
+    const session = new FakeSession(null, true);
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+    let ran = false;
+
+    const error = await adapter
+      .withScope(SCOPE, async () => {
+        ran = true;
+      })
+      .catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ name: 'RlsGuardError', code: 'bypasses_rls' });
+    expect(ran).toBe(false);
+    expect(session.calls).toEqual([RLS_POSTURE_SQL]);
+  });
+
+  it('releases the session after refusing a bypassing connection', async () => {
+    const session = new FakeSession(null, true);
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    await expect(adapter.withScope(SCOPE, async () => undefined)).rejects.toThrow(/bypasses it/);
+
+    expect(session.releaseCount).toBe(1);
+    expect(session.discardCount).toBe(0);
   });
 });
 

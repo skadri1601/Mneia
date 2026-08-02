@@ -5,6 +5,13 @@ export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://mneia.dev'
   '',
 );
 
+export const APP_URL = (process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.mneia.dev').replace(
+  /\/+$/,
+  '',
+);
+
+export const SIGN_IN_URL = `${APP_URL}/sign-in`;
+
 export const SITE_NAME = 'MNEIA';
 
 export const SITE_TITLE = 'MNEIA: shared memory and handoffs for AI-assisted teams';

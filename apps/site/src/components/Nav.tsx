@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { SIGN_IN_URL } from '../lib/site';
 import { ButtonPrimary } from './Button';
 import { MneiaLetter } from './MneiaMark';
 import styles from './Nav.module.css';
@@ -51,6 +52,9 @@ export function Nav() {
         <div className={styles.subInner}>
           <span className={styles.subName}>{pageName}</span>
           <span className={styles.subCta}>
+            <a className={styles.signIn} href={SIGN_IN_URL}>
+              Sign in
+            </a>
             <ButtonPrimary href="/#waitlist">Request access</ButtonPrimary>
           </span>
         </div>

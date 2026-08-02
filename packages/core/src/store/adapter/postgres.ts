@@ -12,6 +12,7 @@ import type {
 } from '../../domain/types.js';
 import { assertSupersedeAllowed } from '../../policy/index.js';
 import type { SqlExecutor, SqlValue } from '../driver.js';
+import { assertConnectionEnforcesRls } from '../rls-guard.js';
 import { EMBEDDING_DIMENSIONS, WORKSPACE_SETTING } from '../schema.js';
 import { visibilityPredicate } from '../scope.js';
 import type { SqlRow } from './rows.js';
@@ -805,6 +806,7 @@ export class PostgresStoreAdapter implements StoreAdapter {
     let discardSession = false;
 
     try {
+      await assertConnectionEnforcesRls(session);
       await session.execute('BEGIN');
       try {
         await session.execute('SELECT set_config($1, $2, true)', [
