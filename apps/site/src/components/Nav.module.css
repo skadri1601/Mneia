@@ -16,7 +16,7 @@
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-xs);
+  gap: 0;
   min-height: var(--global-nav-height);
   color: var(--body-on-dark);
   font-family: var(--font-display);
