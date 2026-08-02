@@ -19,7 +19,8 @@
     "format:check": "biome format .",
     "check:tests": "node scripts/check-test-integrity.mjs",
     "check:policy": "node scripts/check-git-policy.mjs",
-    "db:migrate": "node scripts/db-migrate.mjs"
+    "db:migrate": "node scripts/db-migrate.mjs",
+    "waitlist:notify": "node scripts/waitlist-notify.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",
