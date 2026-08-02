@@ -1,10 +1,10 @@
 # Stack
 
-> **Status: proposed, partly unresolved.** Two forks remain open: Vercel vs Fly.io and Sentry in the
-> CLI vs server-side only. They are tracked as Linear decision tickets; Clerk and the inference payer
-> are resolved. The extraction model tier remains open within the closed inference-payer ruling.
-> Last updated 2026-08-01 — Clerk selected; fork 4 (inference payer) closed; Stripe and the web app
-> pulled into M1.
+> **Status: proposed, partly unresolved.** One fork remains open: Sentry in the CLI vs server-side
+> only. It is tracked as a Linear decision ticket; hosting, Clerk, and the inference payer are
+> resolved. The extraction model tier remains open within the closed inference-payer ruling.
+> Last updated 2026-08-02 — fork 1 (hosting) closed: Cloudflare for the site, DigitalOcean for
+> `apps/web` and the API.
 
 ## Selection criterion
 
@@ -23,7 +23,8 @@ That criterion outweighs marginal feature differences between otherwise-similar 
 | Need | Pick | Why |
 |---|---|---|
 | Repo + CI/CD | **GitHub + Actions** | `gh` is fully agent-operable. Also required for §16 — the claude-code compaction threads *are* the distribution channel. |
-| Hosting | **Vercel** | MCP connected: deploy, build logs, runtime errors, rollback without a dashboard. |
+| Hosting — site | **Cloudflare Workers** | MNE-195. `mneia.dev` was already on Cloudflare nameservers; one platform for DNS, proxy, and the static-ish marketing app. MCP connected. |
+| Hosting — web + API | **DigitalOcean droplets** | **Resolved 2026-08-02 (MNE-165).** `apps/web` needs `pg`, `clerkMiddleware`, and a bundle bigger than the 3 MiB Worker ceiling — all three run unmodified on plain Node. SSH covers operability. |
 | Database | **Neon Postgres** | §11 already ruled Postgres + pgvector. Branching gives every PR an isolated database. |
 | ~~Local store~~ | **None** | Resolved by §11.1 — hosted-only, one engine. MNE-152 closed, MNE-46 cancelled. |
 | Errors | **Sentry** | MCP connected — issues can be pulled and triaged without relaying stack traces. |
@@ -42,7 +43,8 @@ That criterion outweighs marginal feature differences between otherwise-similar 
 - **No Redis, no separate vector DB, no Temporal/Inngest.** §19 rules out the vector DB; §11 defers
   durable execution to month 6+. And §10.3's own worked example has the team rejecting Redis on the
   critical path, which would be a slightly funny way to start.
-- **No Datadog/Grafana.** Sentry plus Vercel logs covers it until there is real traffic.
+- **No Datadog/Grafana.** Sentry plus `journalctl` on the droplet and Cloudflare's Workers logs covers
+  it until there is real traffic.
 
 ## Adoption sequence
 
@@ -52,7 +54,7 @@ write MNE-42.
 | Milestone | Adopt | Monthly |
 |---|---|---|
 | **M0** | GitHub, Actions, Vitest, Biome, changesets, Postgres in CI services | **$0** |
-| **M1** | Vercel, Neon, Clerk — pulled forward from M2 by §11.1: nothing works without the API. **Plus Stripe and an Anthropic account**, pulled forward from M4 by the 2026-07-29 web-and-billing ruling | ~$20–50 + inference + fees |
+| **M1** | Cloudflare, DigitalOcean, Neon, Clerk — pulled forward from M2 by §11.1: nothing works without the API. **Plus Stripe and an Anthropic account**, pulled forward from M4 by the 2026-07-29 web-and-billing ruling | ~$20–50 + inference + fees |
 | **M2** | Sentry | ~$0–20 |
 | **M3** | PostHog (funnel only) | ~$20 |
 | **M4** | — | + fees |
@@ -67,10 +69,28 @@ M0 needs no account beyond GitHub.
 
 Each is a Linear decision ticket. Do not drift into them (§20).
 
-**1. Vercel vs Fly.io.** Vercel wins on agent operability — a measurable difference in how much runs
-unattended. Fly is better if the hosted API ever needs long-lived connections or websockets. Every M1
-call is request/response, so Vercel is fine, but the M4 multiplayer design may change that. **More urgent
-than it was:** M1 now hosts the web app too, not just the API. Tracked as MNE-165.
+**1. ~~Vercel vs Fly.io.~~ RESOLVED 2026-08-02 (MNE-165): neither.** Cloudflare Workers keeps the
+marketing site and fronts everything as DNS and proxy; **DigitalOcean droplets host `apps/web` and the
+hosted API.**
+
+Vercel's case here was never technical — it was the connected MCP server. MNE-195 retired Vercel for
+`apps/site` the day before, and Cloudflare has an MCP server too, so that advantage moved with the
+site. What decided the backend was `apps/web`: it opens a TCP pool with `pg`, its whole auth model is
+`clerkMiddleware`, and it would sit above the 3 MiB Worker ceiling that MNE-196 and MNE-198 already
+fought on a *static* site. On plain Node none of those exist. The API follows it so there is one
+deploy path and one log stream rather than two of each.
+
+This also retires the Fly.io reservation rather than deferring it: the M4 realtime concern was
+long-lived connections, and a droplet has them.
+
+**The cost, named:** we own OS patching and a reverse proxy; secrets sit on a box rather than in a
+platform vault; deploys must run through GitHub Actions rather than by hand over SSH, so there is an
+audit trail; and the droplet region must match the Neon project's, because standing rule 4 is a 300ms
+p95 and a cross-region hop spends it before any query runs.
+
+**Against the selection criterion above:** DigitalOcean has no MCP server. SSH more than covers it —
+a shell beats a fixed tool surface, and the criterion exists so the agent is not blocked on a human
+being the hands.
 
 **2. ~~Clerk vs WorkOS vs Neon Auth.~~ RESOLVED 2026-08-01: Clerk.** Clerk is Mneia's single identity
 provider for web, CLI, and MCP. Mneia's Postgres model remains the authorization source of truth, so
