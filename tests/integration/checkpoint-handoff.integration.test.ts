@@ -473,20 +473,22 @@ describe.skipIf(connectionString === undefined)('checkpoint, handoff and conflic
       const unresolved = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
       const resolved = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
-      for (const id of [unresolved, resolved]) {
+      const openConflict = async (id: string): Promise<void> => {
         await client.query(
           `INSERT INTO conflict (id, workspace_id, project_id, item_a, item_b, detected_at)
            VALUES ($1, $2, $3, $4, $5, '2026-03-03T10:00:00Z')`,
           [id, WS_A, seed.projectId, seed.itemA, seed.itemB],
         );
-      }
+      };
 
+      await openConflict(resolved);
       await client.query(
         `UPDATE conflict
             SET resolved_at = '2026-03-05T12:00:00Z', resolved_by = $1, resolution = 'a_wins'
           WHERE id = $2`,
         [seed.actorId, resolved],
       );
+      await openConflict(unresolved);
 
       const open = (await client.query('SELECT * FROM conflict WHERE id = $1', [unresolved]))
         .rows[0];
