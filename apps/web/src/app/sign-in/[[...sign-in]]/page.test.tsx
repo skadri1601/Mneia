@@ -11,5 +11,10 @@ test('renders the single Clerk sign-in surface', () => {
   const html = renderToStaticMarkup(<SignInPage />);
 
   expect(html).toContain('data-sign-in="true"');
-  expect(html).toContain('Sign in to Mneia');
+});
+
+test('leaves the heading to Clerk so the title is not shown twice', () => {
+  const html = renderToStaticMarkup(<SignInPage />);
+
+  expect(html).not.toContain('<h1');
 });
