@@ -68,6 +68,11 @@ rewriting a `notFound()` for signed-out visitors. Prefer deriving the value in c
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key. Inlined at build time, so it is a build arg **and** a CI secret; the copy here is for parity only. |
 | `CLERK_SECRET_KEY` | Clerk secret key. Runtime only. **Never a build arg** — build args are readable in image history. |
 | `SENTRY_DSN` | Error reporting. Optional; absent means no reporting, not a crash. |
+| `MNEIA_SUPER_ADMIN_SUBJECTS` | Comma-separated Clerk user IDs allowed into `/admin`. **Unset admits nobody**, which is safe but makes the waitlist queue unreachable. There is no way to grant this from inside the product — that is the point. |
+| `RESEND_API_KEY` | Sends the access email on approval. Absent means approve is refused rather than approving someone we cannot reach. |
+| `MNEIA_WAITLIST_FROM` | The `From` address on that email, e.g. `Mneia <hello@mneia.dev>`. |
+| `NEXT_PUBLIC_APP_URL` | Origin used to build the invitation's `/welcome` redirect. Defaults to `https://app.mneia.dev`. Read at runtime on the server, so it does **not** need to be a build arg. |
+| `NEXT_PUBLIC_SITE_URL` | Marketing origin used to build unsubscribe links in the access email. Defaults to `https://mneia.dev`. Runtime, server-side, same caveat. |
 
 GitHub Actions secrets, for `deploy-web.yml`:
 
