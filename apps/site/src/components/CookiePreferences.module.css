@@ -1,0 +1,78 @@
+.panel {
+  margin: 0 auto;
+  max-width: var(--width-text);
+}
+
+.heading {
+  margin: 0 0 var(--space-sm);
+  color: var(--tile-ink);
+  font-family: var(--font-display);
+  font-size: var(--size-display-md);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-display-md);
+}
+
+.status {
+  margin: 0 0 var(--space-lg);
+  color: var(--tile-muted);
+  font-family: var(--font-text);
+  font-size: var(--size-caption);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+}
+
+.status strong {
+  color: var(--tile-ink);
+  font-weight: var(--weight-semibold);
+}
+
+.choices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.choice {
+  display: flex;
+  gap: var(--space-sm);
+  align-items: flex-start;
+  min-height: var(--target-min);
+  color: var(--tile-muted);
+  font-family: var(--font-text);
+  font-size: var(--size-caption);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+  cursor: pointer;
+}
+
+.choice input {
+  margin-top: 4px;
+  width: 20px;
+  height: 20px;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+
+.choice input:disabled {
+  cursor: not-allowed;
+}
+
+.choice input:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+
+.choice strong {
+  display: block;
+  color: var(--tile-ink);
+  font-weight: var(--weight-semibold);
+}
+
+.detail {
+  display: block;
+  margin-top: var(--space-xxs);
+  font-size: var(--size-fine-print);
+  line-height: var(--leading-fine-print);
+  letter-spacing: var(--tracking-fine-print);
+}
