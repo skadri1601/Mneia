@@ -42,15 +42,31 @@ Expect `mneia_app | off | f`. Anything else and RLS is inert.
 ## Environment
 
 Names and purposes belong in this repo. **Values never do.** They live in `/etc/mneia/web.env` on the
-droplet, mode `600`, owned by root, and in GitHub Actions secrets.
+droplet and in GitHub Actions secrets.
+
+**Ownership and mode matter, and `600 root:root` does not work.** `docker compose` reads `env_file`
+as the invoking user, not inside the container, so the `deploy` user must be able to read it. The
+first deploy failed with `open /etc/mneia/web.env: permission denied` for exactly this reason:
+
+```
+/etc/mneia           750  root:deploy    deploy needs to traverse the directory, not only read the file
+/etc/mneia/web.env   640  root:deploy    compose reads it as deploy; nobody else can
+/etc/mneia/tls       700  root:root      Caddy runs as root inside its container and mounts this
+/etc/mneia/tls/origin.key  600  root:root
+```
+
+**`NEXT_PUBLIC_*` variables cannot be set here.** Next inlines them at build time, so a value in this
+file is read at runtime and has no effect — it looks configured and does nothing. Anything
+`NEXT_PUBLIC_` has to be a Docker build arg *and* a CI secret. This cost us a live 404 on `/projects`:
+`NEXT_PUBLIC_CLERK_SIGN_IN_URL` was in this file, was never in the bundle, and Clerk fell back to
+rewriting a `notFound()` for signed-out visitors. Prefer deriving the value in code, as
+`middleware.ts` now does, over adding another build arg.
 
 | Variable | Purpose |
 |---|---|
 | `DATABASE_URL` | Neon, as `mneia_app`. Use the **direct** endpoint, not `-pooler`. |
-| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key. Baked at build time — it is a build arg as well as a runtime variable. |
-| `CLERK_SECRET_KEY` | Clerk secret key. Runtime only. Never a build arg. |
-| `NEXT_PUBLIC_CLERK_SIGN_IN_URL` | `/sign-in` |
-| `NEXT_PUBLIC_CLERK_SIGN_UP_URL` | `/sign-up` |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk publishable key. Inlined at build time, so it is a build arg **and** a CI secret; the copy here is for parity only. |
+| `CLERK_SECRET_KEY` | Clerk secret key. Runtime only. **Never a build arg** — build args are readable in image history. |
 | `SENTRY_DSN` | Error reporting. Optional; absent means no reporting, not a crash. |
 
 GitHub Actions secrets, for `deploy-web.yml`:
@@ -92,16 +108,57 @@ install -d -m 700 /etc/mneia
 ```
 
 Put the deploy user's public key in `/home/deploy/.ssh/authorized_keys`, write `/etc/mneia/web.env`,
-then disable password and root SSH login in `/etc/ssh/sshd_config`:
+then disable password and root SSH login — `/etc/ssh/sshd_config.d/99-mneia.conf`:
 
 ```
 PermitRootLogin no
 PasswordAuthentication no
+KbdInteractiveAuthentication no
 ```
 
-Firewall: allow `22` and `80` only. **TLS terminates at Cloudflare**, so the droplet never serves 443
-directly and Caddy runs with `auto_https off`. Restrict port 80 to Cloudflare's published ranges once
-the DNS record is proxied, or the origin is reachable directly and Cloudflare becomes decorative.
+**Do this last.** Reloading sshd ends root access immediately, and `deploy` has no `sudo`.
+
+**`deploy` is in the `docker` group, and that is already root-equivalent** — anyone who can run
+`docker` can bind-mount `/` into a privileged container. So `DEPLOY_SSH_KEY` in GitHub Actions
+effectively holds root on this box. That is inherent to shipping containers over SSH, not something
+this setup added, but do not mistake "the deploy user has no sudo" for a boundary. It is also the
+mechanism for root-owned edits after hardening:
+
+```
+docker run --rm -v /etc/mneia:/m -i alpine sh -c 'umask 077; cat > /m/web.env'
+```
+
+Firewall: `22` from anywhere, and `80`/`443` **only from Cloudflare's published v4 ranges**:
+
+```
+curl -s https://www.cloudflare.com/ips-v4 -o /tmp/cf-v4
+ufw default deny incoming && ufw default allow outgoing && ufw allow 22/tcp
+while read -r cidr; do
+  ufw allow from "$cidr" to any port 80 proto tcp
+  ufw allow from "$cidr" to any port 443 proto tcp
+done < /tmp/cf-v4
+ufw --force enable
+```
+
+Verify it took: `curl -m 8 http://<droplet-ip>/api/health` must time out. If it answers, the origin
+is reachable directly and Cloudflare is decorative.
+
+**TLS does not stop at Cloudflare.** Caddy serves 443 with a Cloudflare Origin CA certificate and
+`:80` only redirects. The zone is **Full (strict)**, which validates that certificate rather than
+accepting anything the origin presents. Generate the CSR **on the droplet** so the private key is
+created there and never travels:
+
+```
+openssl req -new -newkey rsa:2048 -nodes \
+  -keyout /etc/mneia/tls/origin.key -out /tmp/origin.csr -subj "/CN=app.mneia.dev"
+```
+
+Then issue against it via the Cloudflare API and write the result to `/etc/mneia/tls/origin.pem`.
+The certificate runs to 2041; the zone-level SSL mode is what enforces validation.
+
+An earlier version of this runbook said TLS terminated at Cloudflare and Caddy served plain HTTP.
+That was wrong for an app carrying a session cookie: the Cloudflare-to-origin leg crosses the public
+internet, and the browser padlock describes the visitor's leg only.
 
 ### DNS
 
