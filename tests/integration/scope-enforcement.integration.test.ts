@@ -245,7 +245,6 @@ describe.skipIf(connectionString === undefined)('scope enforcement at the query 
       expect(visible).toEqual(
         [
           'private-by-b',
-          'project-by-a',
           'project-by-b',
           'restricted-by-b',
           'team-by-b',
@@ -253,6 +252,51 @@ describe.skipIf(connectionString === undefined)('scope enforcement at the query 
           'workspace-by-b',
         ].sort(),
       );
+      expect(visible).not.toContain('team-by-a');
+      expect(visible).not.toContain('project-by-a');
+    });
+  });
+
+  it('hides a project-scoped item in one team from an actor on another, through every read path', async () => {
+    await withSeededSchema(async (client) => {
+      const inProject = await visibleInProject(client, READER_B, PROJECT_ALPHA);
+      const acrossProjects = await visibleAcrossProjects(client, READER_B, PROJECT_ALPHA);
+      const rowByRow = (await itemsInProject(client, PROJECT_ALPHA))
+        .filter((item) => canRead(item, READER_B))
+        .map((item) => item.title);
+
+      for (const path of [inProject, acrossProjects, rowByRow]) {
+        expect(path).not.toContain('project-by-a');
+      }
+    });
+  });
+
+  it('makes that same item visible through every read path once it is raised to workspace', async () => {
+    await withSeededSchema(async (client) => {
+      await client.query(
+        "UPDATE context_item SET access_scope = 'workspace'::access_scope WHERE title = $1",
+        ['project-by-a'],
+      );
+
+      const inProject = await visibleInProject(client, READER_B, PROJECT_ALPHA);
+      const acrossProjects = await visibleAcrossProjects(client, READER_B, PROJECT_ALPHA);
+      const rowByRow = (await itemsInProject(client, PROJECT_ALPHA))
+        .filter((item) => canRead(item, READER_B))
+        .map((item) => item.title);
+
+      for (const path of [inProject, acrossProjects, rowByRow]) {
+        expect(path).toContain('project-by-a');
+      }
+    });
+  });
+
+  it('keeps a project-scoped item readable when the owning project has no team at all', async () => {
+    await withSeededSchema(async (client) => {
+      await client.query('UPDATE project SET team_id = NULL WHERE id = $1', [PROJECT_ALPHA]);
+
+      const visible = await visibleInProject(client, READER_B, PROJECT_ALPHA);
+
+      expect(visible).toContain('project-by-a');
       expect(visible).not.toContain('team-by-a');
     });
   });
@@ -283,7 +327,7 @@ describe.skipIf(connectionString === undefined)('scope enforcement at the query 
     });
   });
 
-  it('builds a valid query for an actor who belongs to no team, and shows them no team-scoped item', async () => {
+  it('builds a valid query for an actor who belongs to no team, and shows them neither team- nor project-scoped items owned by a team', async () => {
     await withSeededSchema(async (client) => {
       const teamless: VisibilityViewer = {
         actorId: ACTOR_B,
@@ -295,7 +339,6 @@ describe.skipIf(connectionString === undefined)('scope enforcement at the query 
       expect(visible).toEqual(
         [
           'private-by-b',
-          'project-by-a',
           'project-by-b',
           'restricted-by-b',
           'team-by-b',
@@ -303,6 +346,8 @@ describe.skipIf(connectionString === undefined)('scope enforcement at the query 
           'workspace-by-b',
         ].sort(),
       );
+      expect(visible).not.toContain('project-by-a');
+      expect(visible).not.toContain('team-by-a');
     });
   });
 
