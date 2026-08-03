@@ -57,7 +57,6 @@ const SUBPROCESSORS: LegalBlock = {
     ],
     ['Neon Inc.', 'Managed Postgres, the single store for all Service data', 'United States'],
     ['Functional Software, Inc. (Sentry)', 'Error reporting for this website', 'United States'],
-    ['Honeybadger Industries LLC', 'Error reporting for this website', 'United States'],
     ['Resend (Plus Five Five, Inc.)', 'Sends the waitlist confirmation email', 'United States'],
     ['Stripe, Inc.', 'Payment processing and subscription billing', 'United States'],
     ['Anthropic PBC', 'Extraction and contradiction detection on checkpoint', 'United States'],
