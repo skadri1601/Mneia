@@ -1,3 +1,11 @@
 packages:
   - packages/*
   - apps/*
+
+onlyBuiltDependencies:
+  - '@biomejs/biome'
+  - '@clerk/shared'
+  - '@sentry/cli'
+  - esbuild
+  - sharp
+  - workerd
