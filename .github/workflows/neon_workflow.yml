@@ -3,9 +3,16 @@ name: Neon
 on:
   pull_request:
     types: [opened, reopened, synchronize, closed]
+    paths:
+      - 'packages/core/src/store/**'
+      - 'tests/integration/**'
+      - 'scripts/db-migrate.mjs'
+      - 'scripts/db-provision-app-role.mjs'
+      - '.github/workflows/neon_workflow.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
