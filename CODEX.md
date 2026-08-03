@@ -92,6 +92,20 @@ plain markdown and none of them depend on Claude-specific tooling.
 
 `SKILLS.md` is the index.
 
+## Code review
+
+Codex code review is enabled through **Codex settings**, not through a workflow in this repo — there
+is deliberately no `codex-review.yml`, because a second reviewer configured differently from the
+built-in one is worse than either alone.
+
+What it checks lives in **`## Code Review Rules`** at the bottom of `AGENTS.md`, plus nested copies
+in `packages/core/AGENTS.md` and `apps/site/AGENTS.md` that apply to the code beside them. Both the
+root rules and the nearest nested file apply to a changed path.
+
+**Add rules there, not to a prompt file.** A rule earns its place by being consequential and
+specific to this repository — CI already covers formatting, lint, the build, and git-lane policy,
+and a review that repeats them trains people to skim.
+
 ## Before you start
 
 Claude Code has a plan mode and is told to use it for schema changes, anything touching the §17

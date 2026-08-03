@@ -57,7 +57,7 @@ MNE-44 (the store adapter) and MNE-169 (scope enforcement). **RLS is currently i
 | `ROADMAP.md` | Milestones, the 132-item checklist, standing rules, Linear workflow |
 | `CLAUDE.md` / `CODEX.md` | Harness-specific instructions. Same rules, different tooling. |
 | `SKILLS.md` | Index of available skills |
-| `.github/codex/pr-review.md` | The brief the automated PR review follows. Edit it there. |
+| `AGENTS.md` §Code Review Rules | What Codex code review checks. Nested copies in `packages/core/` and `apps/site/`. |
 | `docs/STACK.md` | Tooling choices and the ones still open |
 | `.claude/rules/` | Topic rules, mostly path-scoped so they load only when relevant |
 | `.claude/skills/` | Multi-step procedures, loaded on demand |
@@ -197,3 +197,87 @@ Run the `scope-check` skill before building anything that touches this list.
 2. Check `vision.md` for whether the question is already ruled on
 3. Check the Linear ticket for its *Done when* clause
 4. If it is a genuine fork with no default, **stop and ask** — do not guess and proceed
+
+---
+
+## Code Review Rules
+
+Read by Codex code review, enabled in Codex settings. Nested `AGENTS.md` files add to this for the
+code they sit beside — `packages/core/AGENTS.md` and `apps/site/AGENTS.md` today.
+
+**CI already checks formatting, lint, the build, and git-lane policy. Do not repeat any of it.**
+A review that suggests extracting a helper has cost more than it returned. Report only what you can
+point at, with the file, the line, and a concrete failure — inputs or state, then the wrong outcome.
+If you are unsure, say so in one clause. A confident wrong finding costs more than a missed one,
+because the next review gets skimmed. Finding nothing is a result; say it in one line.
+
+### Never let an agent overwrite a human
+
+`human_confirmed` and `asserted_by` decide who is allowed to overrule whom, so a write path that
+accepts either from its caller hands that decision to the caller. Actor kind is read from the
+database, never from the payload. The supersede arbiter is the only place that decides.
+
+Unsafe: a new store method taking `humanConfirmed` or `assertedBy` straight from an input object and
+writing it. Safe: resolve the actor from the scope, read its kind from `actor`, and derive the flag.
+
+### Never drop a load-bearing constraint from a slice
+
+Any new filter, `LIMIT`, ranking change, or truncation step in the rehydration path must exempt
+active constraints with `load_bearing = true`. They appear regardless of score or budget pressure —
+a dropped constraint is how an agent redoes the approach a human already rejected.
+
+### Every write path emits its §17 event
+
+A new write with no event is a defect even when every test passes. The arbitration dataset is the
+moat and it is not retrofittable — see `docs/BUSINESS.md`. Flag any store or service method that
+creates, supersedes, rejects, or resolves without a corresponding emit.
+
+### Do not restate promises we revoked
+
+Self-hostability, offline operation, and "content never leaves your machine" were revoked as claims
+on 2026-07-28 when the product became hosted-only (§11.1, §15). Flag any of them reappearing in a
+README, a package description, marketing copy, a registry listing, or a comment. Privacy here is
+enforced by controls — scope, retention, residency — not by locality.
+
+### Treat `apps/site/src/content/legal.ts` as published, not as code
+
+It renders the live Privacy Policy, Terms, and subprocessor table. If a diff changes a retention
+period, a data-sharing statement, or that table, say so prominently and say whether it is now
+accurate. **If the change adds a third party that touches user data and the subprocessor table is
+untouched, that is a finding.**
+
+The waitlist is not a newsletter: the policy commits the address to one use, telling people when
+access opens, and the confirmation email promises "one more email … nothing else." Any new send
+path, campaign, or removed send guard is a finding.
+
+### Keep row-level security load-bearing
+
+Every tenant row carries `workspace_id` and RLS is mandatory (§11.3). Flag a query that reads or
+writes a tenant table without workspace scoping, a store method that bypasses `withScope`,
+`MNEIA_ALLOW_RLS_BYPASS` anywhere outside a migration path, and anything that could cause the
+application to connect as a role holding `BYPASSRLS` or `SUPERUSER`.
+
+### Watch the 300ms budget
+
+`mneia_rehydrate` p95 stays under 300ms (§12.1) — if it is slow nobody calls it and the product
+fails. Flag added round trips in that path, N+1 queries, and `embedding` columns selected but never
+read.
+
+### Check the *Done when* clause, not the intent
+
+The PR body names an `MNE-nnn`. A ticket is done when its own clause is satisfied — not when the
+code is written and not when it should work. If the clause describes a journey a user can complete,
+ask whether anything in the diff demonstrates it, and say plainly when nothing does.
+
+### Scope
+
+`vision.md` §19 lists what we do not build: agent orchestration or a runtime, observability or
+evals, enterprise document search, a chat interface or an agent of our own, durable execution,
+model hosting, a vector database. If a diff starts building one, name which one.
+
+### Style, briefly
+
+No code comments unless the ticket asked for them — rationale belongs in the commit message where
+it is dated and searchable. No `any`, no non-null assertions, validate at trust boundaries. Domain
+terms match §9 exactly: `context_item`, `load_bearing`, `human_confirmed`, `asserted_by`,
+`valid_from`, `decay_after`. Errors name what was expected, what was received, and what to do.
