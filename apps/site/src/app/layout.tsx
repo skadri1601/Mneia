@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
+import { ConsentBanner } from '@/components/ConsentBanner';
+import { ConsentProvider } from '@/components/ConsentProvider';
 import { Footer } from '@/components/Footer';
 import { JsonLd } from '@/components/JsonLd';
 import { Nav } from '@/components/Nav';
+import { ConsentDefaults, Tags } from '@/components/Tags';
 import { organizationSchema, softwareApplicationSchema, websiteSchema } from '@/lib/schema';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, SITE_URL } from '@/lib/site';
 import { THEME_COLOR } from '@/styles/theme';
@@ -63,11 +66,18 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <head>
+        <ConsentDefaults />
+      </head>
       <body>
         <JsonLd nodes={[organizationSchema(), websiteSchema(), softwareApplicationSchema()]} />
-        <Nav />
-        <main id="main">{children}</main>
-        <Footer />
+        <ConsentProvider>
+          <Nav />
+          <main id="main">{children}</main>
+          <Footer />
+          <ConsentBanner />
+          <Tags />
+        </ConsentProvider>
       </body>
     </html>
   );

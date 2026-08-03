@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CookiePreferencesButton, DoNotSellButton } from './CookiePreferences';
 import styles from './Footer.module.css';
 import { MneiaLetter } from './MneiaMark';
 
@@ -23,6 +24,7 @@ const COLUMNS = [
     links: [
       { href: '/terms', label: 'Terms of Service' },
       { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/cookies', label: 'Cookie Policy' },
     ],
   },
 ];
@@ -57,6 +59,10 @@ export function Footer() {
       </div>
       <div className={styles.legal}>
         <p>© {new Date().getFullYear()} Mneia. All rights reserved.</p>
+        <div className={styles.controls}>
+          <CookiePreferencesButton className={styles.control} />
+          <DoNotSellButton className={styles.control} />
+        </div>
       </div>
     </footer>
   );

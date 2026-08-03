@@ -24,7 +24,8 @@ export type RoutePath =
   | '/pricing'
   | '/about'
   | '/terms'
-  | '/privacy';
+  | '/privacy'
+  | '/cookies';
 
 export type RouteEntry = {
   path: RoutePath;
@@ -95,6 +96,15 @@ export const ROUTES: readonly RouteEntry[] = [
     title: 'Privacy Policy',
     description:
       'What we collect, why, who else touches it, and your rights under GDPR, the CCPA and other US state laws, and India’s DPDP Act. We do not train models on your content.',
+    priority: 0.3,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/cookies',
+    name: 'Cookie Policy',
+    title: 'Cookie Policy',
+    description:
+      'Every cookie mneia.dev sets, what it is for, how long it lasts, and how to refuse it. Analytics and advertising are separate choices, and Global Privacy Control is honoured everywhere.',
     priority: 0.3,
     changeFrequency: 'monthly',
   },
