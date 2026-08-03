@@ -52,7 +52,7 @@ const RELATIONSHIPS: readonly Relationship[] = [
   {
     name: 'another actor reading the same project with no team',
     viewer: { actorId: ACTOR_READER, teamIds: [], projectTeamId: TEAM_OWNING },
-    expected: { private: false, project: true, team: false, workspace: true, restricted: false },
+    expected: { private: false, project: false, team: false, workspace: true, restricted: false },
   },
   {
     name: 'another actor on the owning team',
@@ -62,7 +62,7 @@ const RELATIONSHIPS: readonly Relationship[] = [
   {
     name: 'another actor on a different team',
     viewer: { actorId: ACTOR_READER, teamIds: [TEAM_OTHER], projectTeamId: TEAM_OWNING },
-    expected: { private: false, project: true, team: false, workspace: true, restricted: false },
+    expected: { private: false, project: false, team: false, workspace: true, restricted: false },
   },
   {
     name: 'another actor whose teams include the owning team among others',
@@ -158,6 +158,9 @@ function stripOuterParens(expression: string): string {
 const PARAM_COMPARISON = /^(\w+) = (\$\d+)$/;
 const LITERAL_COMPARISON = /^(\w+) = '([a-z_]+)'$/;
 const TEAM_SUBQUERY = /^(\w+) IN \(SELECT id FROM project WHERE team_id IN \(([^)]*)\)\)$/;
+const PROJECT_SUBQUERY =
+  /^(\w+) IN \(SELECT id FROM project WHERE team_id IS NULL OR team_id IN \(([^)]*)\)\)$/;
+const UNOWNED_SUBQUERY = /^(\w+) IN \(SELECT id FROM project WHERE team_id IS NULL\)$/;
 
 function columnValue(row: ItemRow, column: string): string {
   if (column === 'asserted_by') {
@@ -193,6 +196,23 @@ function evaluateAtom(atom: string, resolve: Resolve, world: World): boolean {
   const byLiteral = captures(LITERAL_COMPARISON, atom);
   if (byLiteral !== null) {
     return columnValue(world.item, byLiteral[0]) === byLiteral[1];
+  }
+
+  const byProject = captures(PROJECT_SUBQUERY, atom);
+  if (byProject !== null) {
+    const teamIds = byProject[1].split(', ').map(resolve);
+    const reachable = world.projects
+      .filter((project) => project.team_id === null || teamIds.includes(project.team_id))
+      .map((project) => project.id);
+    return reachable.includes(columnValue(world.item, byProject[0]));
+  }
+
+  const byUnowned = UNOWNED_SUBQUERY.exec(atom);
+  if (byUnowned !== null && byUnowned[1] !== undefined) {
+    const reachable = world.projects
+      .filter((project) => project.team_id === null)
+      .map((project) => project.id);
+    return reachable.includes(columnValue(world.item, byUnowned[1]));
   }
 
   const bySubquery = captures(TEAM_SUBQUERY, atom);
@@ -282,16 +302,17 @@ describe('visibilityPredicate parameters', () => {
       paramOffset,
     );
 
-    expect(fragment.params).toEqual([ACTOR_READER, PROJECT_ID, TEAM_OWNING, TEAM_OTHER]);
+    expect(fragment.params).toEqual([ACTOR_READER, TEAM_OWNING, TEAM_OTHER]);
     expect(placeholdersIn(fragment.sql)).toEqual([
       paramOffset + 1,
       paramOffset + 2,
       paramOffset + 3,
-      paramOffset + 4,
     ]);
     expect(fragment.sql).toContain(`asserted_by = $${paramOffset + 1}`);
-    expect(fragment.sql).toContain(`project_id = $${paramOffset + 2}`);
-    expect(fragment.sql).toContain(`team_id IN ($${paramOffset + 3}, $${paramOffset + 4})`);
+    expect(fragment.sql).toContain(
+      `team_id IS NULL OR team_id IN ($${paramOffset + 2}, $${paramOffset + 3})`,
+    );
+    expect(fragment.sql).toContain(`team_id IN ($${paramOffset + 2}, $${paramOffset + 3})`);
   });
 
   it('binds every parameter it returns and returns every parameter it binds', () => {
@@ -311,8 +332,9 @@ describe('visibilityPredicate parameters', () => {
       0,
     );
 
-    expect(fragment.params).toEqual([ACTOR_READER, PROJECT_ID]);
-    expect(fragment.sql).not.toContain('team_id');
+    expect(fragment.params).toEqual([ACTOR_READER]);
+    expect(fragment.sql).toContain('team_id IS NULL');
+    expect(fragment.sql).not.toContain('team_id IN');
     expect(fragment.sql).not.toContain('IN ()');
   });
 
@@ -326,8 +348,8 @@ describe('visibilityPredicate parameters', () => {
       0,
     );
 
-    expect(fragment.params).toEqual([ACTOR_READER, PROJECT_ID, TEAM_OWNING]);
-    expect(placeholdersIn(fragment.sql)).toEqual([1, 2, 3]);
+    expect(fragment.params).toEqual([ACTOR_READER, TEAM_OWNING]);
+    expect(placeholdersIn(fragment.sql)).toEqual([1, 2]);
   });
 
   it('never interpolates an identifier into the sql text', () => {

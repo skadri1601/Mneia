@@ -48,17 +48,21 @@ export function visibilityPredicate(input: VisibilityInput): VisibilityFragment 
   }
 
   const teamIds = identifiers(input.actorTeamIds);
-  const params: SqlValue[] = [scope.actorId, projectId, ...teamIds];
+  const params: SqlValue[] = [scope.actorId, ...teamIds];
   const placeholder = (index: number): string => `$${paramOffset + index + 1}`;
 
   const actorParam = placeholder(0);
-  const projectParam = placeholder(1);
-  const teamParams = teamIds.map((_, index) => placeholder(index + 2));
+  const teamParams = teamIds.map((_, index) => placeholder(index + 1));
+
+  const readableProjects =
+    teamParams.length > 0
+      ? `SELECT id FROM project WHERE team_id IS NULL OR team_id IN (${teamParams.join(', ')})`
+      : 'SELECT id FROM project WHERE team_id IS NULL';
 
   const disjuncts = [
     `asserted_by = ${actorParam}`,
     `access_scope = '${WORKSPACE}'`,
-    `(access_scope = '${PROJECT}' AND project_id = ${projectParam})`,
+    `(access_scope = '${PROJECT}' AND project_id IN (${readableProjects}))`,
   ];
 
   if (teamParams.length > 0) {
@@ -74,8 +78,11 @@ export function canRead(item: ContextItem, viewer: VisibilityViewer): boolean {
   if (item.assertedBy === viewer.actorId) {
     return true;
   }
-  if (item.accessScope === WORKSPACE || item.accessScope === PROJECT) {
+  if (item.accessScope === WORKSPACE) {
     return true;
+  }
+  if (item.accessScope === PROJECT) {
+    return viewer.projectTeamId === null || viewer.teamIds.includes(viewer.projectTeamId);
   }
   if (item.accessScope === TEAM) {
     return viewer.projectTeamId !== null && viewer.teamIds.includes(viewer.projectTeamId);
