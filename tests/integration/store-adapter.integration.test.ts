@@ -13,6 +13,7 @@ import type {
   WorkspaceScope,
 } from '../../packages/core/src/store/adapter/index.js';
 import { PostgresStoreAdapter } from '../../packages/core/src/store/adapter/index.js';
+import { APP_ROLE, ensureAppRole, grantSchemaToAppRole } from './app-role.js';
 import { PgDriver } from './pg-driver.js';
 
 const connectionString = process.env.DATABASE_URL;
@@ -68,6 +69,7 @@ class SchemaConnectionSource implements PostgresConnectionSource {
   async acquire(): Promise<PostgresSession> {
     const client = await connect();
     await client.query(`SET search_path TO "${this.schema}", public`);
+    await client.query(`SET ROLE ${APP_ROLE}`);
     this.clients.push(client);
     const session = new SchemaSession(client);
     this.last = session;
@@ -165,6 +167,8 @@ async function withAdapter(
     await setup.query(`CREATE SCHEMA "${schema}"`);
     await setup.query(`SET search_path TO "${schema}", public`);
     await migrate(new PgDriver(setup), { appliedBy: 'integration' });
+    await ensureAppRole(setup);
+    await grantSchemaToAppRole(setup, schema);
     await seed(setup);
 
     await run(new PostgresStoreAdapter(source), source, setup);

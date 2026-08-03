@@ -87,7 +87,26 @@
 }
 
 .subCta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
   margin-inline-start: auto;
+}
+
+.signIn {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  color: var(--primary);
+  font-family: var(--font-text);
+  font-size: var(--size-nav-link);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-fine-print);
+  letter-spacing: var(--tracking-fine-print);
+}
+
+.signIn:active {
+  color: var(--body-muted);
 }
 
 .skip {

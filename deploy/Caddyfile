@@ -1,0 +1,18 @@
+{
+	admin off
+	auto_https off
+}
+
+https://app.mneia.dev {
+	tls /etc/mneia/tls/origin.pem /etc/mneia/tls/origin.key
+
+	encode zstd gzip
+
+	reverse_proxy 127.0.0.1:3000 {
+		header_up X-Real-IP {http.request.header.CF-Connecting-IP}
+	}
+}
+
+:80 {
+	redir https://{host}{uri} permanent
+}

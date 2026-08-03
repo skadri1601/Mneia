@@ -48,8 +48,13 @@ const SUBPROCESSORS: LegalBlock = {
   kind: 'table',
   head: ['Provider', 'What it does', 'Where it processes'],
   rows: [
-    ['Cloudflare, Inc.', 'Hosts and serves this website', 'United States'],
-    ['Vercel Inc.', 'Hosts preview builds of this website and the hosted API', 'United States'],
+    ['Cloudflare, Inc.', 'Hosts and serves this website, and proxies the web app', 'United States'],
+    ['DigitalOcean, LLC', 'Hosts the web app and the hosted API', 'United States'],
+    [
+      'Clerk, Inc.',
+      'Authentication — holds your email, name, and sign-in records',
+      'United States',
+    ],
     ['Neon Inc.', 'Managed Postgres, the single store for all Service data', 'United States'],
     ['Functional Software, Inc. (Sentry)', 'Error reporting for this website', 'United States'],
     ['Resend (Plus Five Five, Inc.)', 'Sends the waitlist confirmation email', 'United States'],

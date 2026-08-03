@@ -1,14 +1,9 @@
 import * as Sentry from '@sentry/nextjs';
-import { initHoneybadger } from '../honeybadger.config';
-
-initHoneybadger(
-  process.env.NEXT_PUBLIC_HONEYBADGER_API_KEY,
-  process.env.NEXT_PUBLIC_VERCEL_ENV ?? 'development',
-);
+import { RUNTIME_ENVIRONMENT } from './lib/environment';
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  environment: process.env.NEXT_PUBLIC_VERCEL_ENV ?? 'development',
+  environment: RUNTIME_ENVIRONMENT,
   attachStacktrace: true,
   maxBreadcrumbs: 100,
   dataCollection: {

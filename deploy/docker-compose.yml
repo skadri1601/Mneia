@@ -1,0 +1,22 @@
+services:
+  web:
+    image: ${MNEIA_WEB_IMAGE}
+    restart: unless-stopped
+    env_file:
+      - /etc/mneia/web.env
+    ports:
+      - '127.0.0.1:3000:3000'
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /etc/mneia/tls:/etc/mneia/tls:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

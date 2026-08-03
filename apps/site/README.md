@@ -8,34 +8,19 @@ pnpm --filter @mneia/site build      # next build
 pnpm --filter @mneia/site typecheck  # tsc --noEmit
 ```
 
-## Deployment — do not "modernise" `vercel.json`
+## Deployment — Cloudflare Workers, via OpenNext
 
-The root `vercel.json` uses a **legacy `builds` array**, and that is deliberate. It looks like an
-obvious cleanup candidate. It is not, and replacing it breaks every deploy.
+`wrangler.jsonc` and `open-next.config.ts` are the whole story. MNE-195 ruled the host and MNE-165
+confirmed it: this site is a Worker, `apps/web` is a DigitalOcean droplet, and Cloudflare fronts both.
 
-The Vercel project's **Root Directory is `.`**, so the Git integration builds from the workspace root,
-where `package.json` has no `next` — `next` lives here, in `apps/site/package.json`. Framework
-detection then fails before any build runs:
+**Vercel is gone.** The root `vercel.json`, its legacy `builds` array, and the long explanation of why
+that array had to stay were removed on 2026-08-02 once the Vercel project was torn down. If you are
+reading this in a diff and wondering where that section went: it documented a workaround for a
+platform we no longer deploy to. `mneia.dev` is served by the Worker — `curl -I https://mneia.dev`
+answers `Server: cloudflare`.
 
-```
-Warning: Could not identify Next.js version, ensure it is defined as a project dependency.
-Error: No Next.js version detected.
-```
-
-**The supported `framework` + `buildCommand` + `outputDirectory` form does not fix this**, which is
-the counter-intuitive part. Framework detection runs *before* `buildCommand`, so the install command
-succeeds, the build command is never reached, and the deploy fails with the same error. This was
-tried and measured in MNE-192; the deployment log shows `pnpm install` completing and the Next.js
-check failing immediately after.
-
-A `builds` entry names the builder and its source explicitly, so detection is skipped. It is the only
-mechanism that fixes this **from inside the repo**.
-
-**The real fix is one dashboard click:** set Root Directory to `apps/site` in project settings. That
-is exposed by neither the `vercel` CLI (`vercel project` has no settings command) nor the Vercel MCP
-server, so it cannot be automated from here. Once it is set, **delete `vercel.json`** — keeping both
-is worse than either, because a `builds` array causes Vercel to ignore most project-level settings,
-including the Root Directory you just set.
+The environment tag on error reports comes from `src/lib/environment.ts`, **not** from `VERCEL_ENV`,
+which is undefined here and silently tagged every production error as `development` until MNE-212.
 
 ## Environment
 
@@ -91,10 +76,14 @@ with `pnpm exec wrangler deploy --dry-run` before adding any server-side depende
 **`@sentry/cloudflare` was evaluated on MNE-198 and rejected — do not swap to it.** It is genuinely
 smaller: routing the server and edge paths through it measured 2085 KiB gzipped, another 418 KiB
 below where we are now. It was rejected on correctness, not size. It has no `init()`, so it only
-initialises by wrapping the Worker's `fetch` export via `withSentry` — and this site also deploys to
-**Vercel**, where that entry point does not exist, so every server-side `captureException` would
-become a silent no-op there. It also has no `captureRequestError`, which is what gives `onRequestError`
-its Next-specific context. 418 KiB is not worth it against 569 KiB of headroom.
+initialises by wrapping the Worker's `fetch` export via `withSentry` — and at the time this site also
+deployed to **Vercel**, where that entry point does not exist, so every server-side `captureException`
+would have become a silent no-op there. It also has no `captureRequestError`, which is what gives
+`onRequestError` its Next-specific context. 418 KiB was not worth it against 569 KiB of headroom.
+
+**That rejection is now worth revisiting**, and MNE-212 asks for exactly this note: the Vercel half of
+the argument died with the Vercel project on 2026-08-02. Only the `captureRequestError` objection
+survives. Re-measure before deciding.
 
 **`includeLocalVariables` was removed on MNE-198 because it never worked on `workerd`.** It is a
 `@sentry/node` option that needs `node:inspector`. Under `nodejs_compat` that module *imports* — which

@@ -1,8 +1,9 @@
 import * as Sentry from '@sentry/nextjs';
+import { RUNTIME_ENVIRONMENT } from './src/lib/environment';
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
-  environment: process.env.VERCEL_ENV ?? 'development',
+  environment: RUNTIME_ENVIRONMENT,
   attachStacktrace: true,
   maxBreadcrumbs: 100,
   dataCollection: {
