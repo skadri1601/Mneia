@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 10
+-- schema version: 11
 
 -- extensions
 
@@ -274,11 +274,18 @@ CREATE TABLE waitlist_signup (
   source text DEFAULT 'site'::text NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   notified_at timestamp with time zone,
-  unsubscribe_token uuid DEFAULT gen_random_uuid() NOT NULL
+  unsubscribe_token uuid DEFAULT gen_random_uuid() NOT NULL,
+  status text DEFAULT 'pending'::text NOT NULL,
+  approved_at timestamp with time zone,
+  approved_by text,
+  invitation_ref text
 );
+ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_approval_is_attributed CHECK (((status = 'approved'::text) = ((approved_at IS NOT NULL) AND (approved_by IS NOT NULL))));
 ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_email_check CHECK ((email <> ''::text));
 ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_pkey PRIMARY KEY (id);
+ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'declined'::text])));
 CREATE UNIQUE INDEX waitlist_signup_email_key ON public.waitlist_signup USING btree (lower(email));
+CREATE INDEX waitlist_signup_pending_idx ON public.waitlist_signup USING btree (created_at, id) WHERE (status = 'pending'::text);
 CREATE UNIQUE INDEX waitlist_signup_unsubscribe_token_key ON public.waitlist_signup USING btree (unsubscribe_token);
 
 CREATE TABLE workspace (
@@ -291,10 +298,12 @@ CREATE TABLE workspace (
   seats_purchased integer,
   checkpoint_allowance integer,
   trial_ends_at timestamp with time zone,
-  created_at timestamp with time zone DEFAULT now() NOT NULL
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  company_size text
 );
 ALTER TABLE workspace ADD CONSTRAINT workspace_billing_status_check CHECK ((billing_status = ANY (ARRAY['active'::text, 'trialing'::text, 'past_due'::text, 'canceled'::text])));
 ALTER TABLE workspace ADD CONSTRAINT workspace_checkpoint_allowance_check CHECK (((checkpoint_allowance IS NULL) OR (checkpoint_allowance >= 0)));
+ALTER TABLE workspace ADD CONSTRAINT workspace_company_size_check CHECK (((company_size IS NULL) OR (company_size = ANY (ARRAY['1-9'::text, '10-49'::text, '50-199'::text, '200-499'::text, '500+'::text]))));
 ALTER TABLE workspace ADD CONSTRAINT workspace_pkey PRIMARY KEY (id);
 ALTER TABLE workspace ADD CONSTRAINT workspace_plan_check CHECK ((plan = ANY (ARRAY['solo'::text, 'team'::text, 'enterprise'::text])));
 ALTER TABLE workspace ADD CONSTRAINT workspace_seats_purchased_check CHECK (((seats_purchased IS NULL) OR (seats_purchased > 0)));
