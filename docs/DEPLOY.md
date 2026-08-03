@@ -62,8 +62,11 @@ GitHub Actions secrets, for `deploy-web.yml`:
 | `DEPLOY_SSH_KEY` | Private key for that user |
 | `DEPLOY_KNOWN_HOSTS` | Output of `ssh-keyscan <host>`. Pinning this is what stops the runner trusting a host it has never met. |
 | `DEPLOY_PUBLIC_HOST` | `app.mneia.dev`, for the post-deploy health check |
-| `GHCR_READ_TOKEN` | A PAT with `read:packages`, so the droplet can pull the image |
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Needed at build time in CI |
+
+There is deliberately **no long-lived registry PAT**. The `ship` job requests `packages: read` and
+pipes its own `GITHUB_TOKEN` into `docker login` on the droplet — a token that expires with the job,
+rather than a personal access token sitting in a secret store until someone remembers to rotate it.
 
 ## Droplet
 

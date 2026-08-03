@@ -55,6 +55,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -73,7 +76,7 @@ jobs:
       - name: Pull and restart
         run: |
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
-            "echo '${{ secrets.GHCR_READ_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin \
+            "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin \
              && cd /opt/mneia \
              && MNEIA_WEB_IMAGE='${{ needs.build.outputs.image }}' docker compose pull \
              && MNEIA_WEB_IMAGE='${{ needs.build.outputs.image }}' docker compose up -d --remove-orphans \
