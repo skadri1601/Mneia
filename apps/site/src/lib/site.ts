@@ -30,6 +30,14 @@ export type RoutePath =
   | '/features'
   | '/pricing'
   | '/about'
+  | '/docs'
+  | '/docs/quickstart'
+  | '/docs/concepts'
+  | '/docs/cli'
+  | '/docs/mcp'
+  | '/faq'
+  | '/help'
+  | '/contact'
   | '/terms'
   | '/privacy';
 
@@ -85,6 +93,78 @@ export const ROUTES: readonly RouteEntry[] = [
     description:
       'Why Mneia exists, who it is built for, and how it is licensed. The context layer is permanent, and nobody has built it for teams working with AI agents.',
     priority: 0.6,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/docs',
+    name: 'Documentation',
+    title: 'Documentation',
+    description:
+      'How Mneia works and how to run it: the quickstart, the concepts, the CLI reference, and the MCP server reference.',
+    priority: 0.9,
+    changeFrequency: 'weekly',
+  },
+  {
+    path: '/docs/quickstart',
+    name: 'Quickstart',
+    title: 'Quickstart',
+    description:
+      'Install the Mneia CLI, authenticate, bind a repository to a project, connect an MCP client, and run your first checkpoint and rehydration.',
+    priority: 0.8,
+    changeFrequency: 'weekly',
+  },
+  {
+    path: '/docs/concepts',
+    name: 'Concepts',
+    title: 'Concepts',
+    description:
+      'The three operations, the vocabulary Mneia uses for a context item, how provenance and superseding work, and why conflicts between a human and an agent are resolved the way they are.',
+    priority: 0.8,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/docs/cli',
+    name: 'CLI reference',
+    title: 'CLI reference',
+    description:
+      'Every Mneia CLI command — init, brief, checkpoint, log, and status — with flags, environment variables, JSON output, and exit codes.',
+    priority: 0.7,
+    changeFrequency: 'weekly',
+  },
+  {
+    path: '/docs/mcp',
+    name: 'MCP server reference',
+    title: 'MCP server reference',
+    description:
+      'The four Mneia MCP tools — mneia_rehydrate, mneia_assert, mneia_checkpoint, and mneia_search — how to configure the server, and when to call each one.',
+    priority: 0.7,
+    changeFrequency: 'weekly',
+  },
+  {
+    path: '/faq',
+    name: 'FAQ',
+    title: 'Frequently asked questions',
+    description:
+      'What Mneia is, how it differs from an AI memory tool, what it costs, what happens to your data, and what is actually built today.',
+    priority: 0.7,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/help',
+    name: 'Help',
+    title: 'Help',
+    description:
+      'Common tasks, the errors people actually hit with the Mneia CLI and MCP server, and how to reach a person when the documentation does not cover it.',
+    priority: 0.6,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/contact',
+    name: 'Contact',
+    title: 'Contact',
+    description:
+      'How to reach Mneia: privacy and data rights, security reports, legal and licensing, and the DPDP grievance officer.',
+    priority: 0.5,
     changeFrequency: 'monthly',
   },
   {

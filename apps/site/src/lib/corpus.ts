@@ -1,3 +1,6 @@
+import type { DocBlock, DocPage } from '@/content/docs';
+import { DOC_PAGES, DOCS_INTRO, DOCS_STATUS } from '@/content/docs';
+import { FAQ_GROUPS, FAQ_INTRO } from '@/content/faq';
 import type { Block, Faq, Intro, Paragraph } from '@/content/pages';
 import {
   ABOUT_AUDIENCE,
@@ -32,6 +35,17 @@ import {
   THESIS_QUOTE,
   TIERS,
 } from '@/content/pages';
+import {
+  CONTACT_ACCESS,
+  CONTACT_CHANNELS,
+  CONTACT_INTRO,
+  CONTACT_NOT_YET,
+  HELP_ESCALATION,
+  HELP_INTRO,
+  HELP_PATHS,
+  HELP_SYMPTOMS,
+  HELP_TASKS,
+} from '@/content/support';
 import { absoluteUrl, ROUTES, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from './site';
 
 function paragraphs(value: readonly Paragraph[]): string {
@@ -54,6 +68,37 @@ function faqSection(title: string, faqs: readonly Faq[]): string {
 
 function page(path: string, title: string, parts: readonly string[]): string {
   return `## ${title}\n\nURL: ${absoluteUrl(path)}\n\n${parts.join('\n\n')}`;
+}
+
+function docBlock(block: DocBlock): string {
+  if (block.kind === 'text') {
+    return block.paragraphs.join('\n\n');
+  }
+  if (block.kind === 'bullets') {
+    return block.items.map((item) => `- ${item}`).join('\n');
+  }
+  if (block.kind === 'steps') {
+    return block.items.map((item, index) => `${index + 1}. ${item.title}: ${item.body}`).join('\n');
+  }
+  if (block.kind === 'code') {
+    return `\`\`\`${block.label}\n${block.lines.join('\n')}\n\`\`\``;
+  }
+  if (block.kind === 'note') {
+    return `Note: ${block.text}`;
+  }
+  return [
+    `| ${block.head.join(' | ')} |`,
+    `| ${block.head.map(() => '---').join(' | ')} |`,
+    ...block.rows.map((row) => `| ${row.join(' | ')} |`),
+  ].join('\n');
+}
+
+function docPageText(doc: DocPage): string {
+  const body = doc.sections
+    .map((section) => `#### ${section.heading}\n\n${section.blocks.map(docBlock).join('\n\n')}`)
+    .join('\n\n');
+
+  return page(`/docs/${doc.slug}`, doc.name, [`### ${doc.heading}\n\n${doc.lead}`, body]);
 }
 
 const HOME = page('/', 'Home', [
@@ -110,6 +155,43 @@ const ABOUT = page('/about', 'About', [
   blockSection(ABOUT_SCOPE),
 ]);
 
+const FAQ = page('/faq', 'Frequently asked questions', [
+  section(FAQ_INTRO),
+  ...FAQ_GROUPS.map((group) => faqSection(`${group.heading} — ${group.blurb}`, group.items)),
+]);
+
+const HELP = page('/help', 'Help', [
+  section(HELP_INTRO),
+  `### Where to start\n\n${HELP_PATHS.map(
+    (path) => `${path.title}: ${path.body} See ${absoluteUrl(path.href)}`,
+  ).join('\n\n')}`,
+  faqSection(
+    'Common tasks',
+    HELP_TASKS.map((task) => ({ question: task.question, answer: task.answer })),
+  ),
+  `### Troubleshooting\n\n${HELP_SYMPTOMS.map(
+    (row) => `Symptom: ${row.symptom}\nWhy: ${row.cause}\nFix: ${row.fix}`,
+  ).join('\n\n')}`,
+  blockSection(HELP_ESCALATION),
+]);
+
+const CONTACT_PAGE = page('/contact', 'Contact', [
+  section(CONTACT_INTRO),
+  CONTACT_CHANNELS.map(
+    (channel) => `${channel.label} — ${channel.address}\n${channel.what}\n${channel.note}`,
+  ).join('\n\n'),
+  blockSection(CONTACT_ACCESS),
+  blockSection(CONTACT_NOT_YET),
+]);
+
+const DOCS_INDEX = page('/docs', 'Documentation', [
+  section(DOCS_INTRO),
+  DOCS_STATUS,
+  DOC_PAGES.map(
+    (doc) => `- [${doc.name}](${absoluteUrl(`/docs/${doc.slug}`)}): ${doc.description}`,
+  ).join('\n'),
+]);
+
 const PREAMBLE = `# ${SITE_NAME}
 
 > ${SITE_TAGLINE}
@@ -142,6 +224,17 @@ export function llmsFullTxt(): string {
 
 Everything below is the full text of every page on ${absoluteUrl('/')}, in one file.
 
-${[HOME, HANDOFF, FEATURES_PAGE, PRICING, ABOUT].join('\n\n')}
+${[
+  HOME,
+  HANDOFF,
+  FEATURES_PAGE,
+  PRICING,
+  ABOUT,
+  DOCS_INDEX,
+  ...DOC_PAGES.map(docPageText),
+  FAQ,
+  HELP,
+  CONTACT_PAGE,
+].join('\n\n')}
 `;
 }

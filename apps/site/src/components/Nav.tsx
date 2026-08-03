@@ -11,6 +11,7 @@ const ROUTES = [
   { href: '/handoff', label: 'Handoff' },
   { href: '/features', label: 'Features' },
   { href: '/pricing', label: 'Pricing' },
+  { href: '/docs', label: 'Docs' },
   { href: '/about', label: 'About' },
 ];
 
@@ -20,11 +21,22 @@ const PAGE_NAMES: Record<string, string> = {
   '/features': 'Features',
   '/pricing': 'Pricing',
   '/about': 'About',
+  '/docs': 'Documentation',
+  '/faq': 'FAQ',
+  '/help': 'Help',
+  '/contact': 'Contact',
 };
+
+function pageNameFor(pathname: string): string {
+  if (pathname.startsWith('/docs/')) {
+    return 'Documentation';
+  }
+  return PAGE_NAMES[pathname] ?? 'Mneia';
+}
 
 export function Nav() {
   const pathname = usePathname();
-  const pageName = PAGE_NAMES[pathname] ?? 'Mneia';
+  const pageName = pageNameFor(pathname);
 
   return (
     <>

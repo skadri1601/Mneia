@@ -1,16 +1,3 @@
-import type { Paragraph } from './pages';
-
-export function rich(text: string): Paragraph {
-  return text
-    .split(/(\*\*[^*]+\*\*)/)
-    .filter((part) => part.length > 0)
-    .map((part) =>
-      part.startsWith('**') && part.endsWith('**')
-        ? { text: part.slice(2, -2), strong: true }
-        : { text: part },
-    );
-}
-
 export type LegalBlock =
   | { kind: 'text'; paragraphs: readonly string[] }
   | { kind: 'bullets'; items: readonly string[] }

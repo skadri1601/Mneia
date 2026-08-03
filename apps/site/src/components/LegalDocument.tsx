@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 import type { LegalBlock, LegalDoc } from '@/content/legal';
-import { rich } from '@/content/legal';
+import { rich } from '@/content/pages';
 import styles from './LegalDocument.module.css';
 
 function Inline({ text }: { text: string }) {

@@ -12,6 +12,23 @@ const COLUMNS = [
     ],
   },
   {
+    heading: 'Documentation',
+    links: [
+      { href: '/docs/quickstart', label: 'Quickstart' },
+      { href: '/docs/concepts', label: 'Concepts' },
+      { href: '/docs/cli', label: 'CLI reference' },
+      { href: '/docs/mcp', label: 'MCP server' },
+    ],
+  },
+  {
+    heading: 'Support',
+    links: [
+      { href: '/faq', label: 'FAQ' },
+      { href: '/help', label: 'Help' },
+      { href: '/contact', label: 'Contact' },
+    ],
+  },
+  {
     heading: 'Company',
     links: [
       { href: '/about', label: 'About' },

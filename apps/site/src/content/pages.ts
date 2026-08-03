@@ -24,6 +24,17 @@ export function plain(text: string): Paragraph {
   return [{ text }];
 }
 
+export function rich(text: string): Paragraph {
+  return text
+    .split(/(\*\*[^*]+\*\*)/)
+    .filter((part) => part.length > 0)
+    .map((part) =>
+      part.startsWith('**') && part.endsWith('**')
+        ? { text: part.slice(2, -2), strong: true }
+        : { text: part },
+    );
+}
+
 export const HOME_INTRO: Intro = {
   eyebrow: 'Project memory and handoff',
   heading: 'Your agent forgets.',
