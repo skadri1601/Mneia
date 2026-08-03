@@ -238,14 +238,13 @@ describe.skipIf(connectionString === undefined)('scope enforcement at the query 
     });
   });
 
-  it('hides team-scoped items from an actor on a different team', async () => {
+  it('hides team-scoped and project-scoped items from an actor on a different team', async () => {
     await withSeededSchema(async (client) => {
       const visible = await visibleInProject(client, READER_B, PROJECT_ALPHA);
 
       expect(visible).toEqual(
         [
           'private-by-b',
-          'project-by-a',
           'project-by-b',
           'restricted-by-b',
           'team-by-b',
@@ -254,6 +253,41 @@ describe.skipIf(connectionString === undefined)('scope enforcement at the query 
         ].sort(),
       );
       expect(visible).not.toContain('team-by-a');
+      expect(visible).not.toContain('project-by-a');
+    });
+  });
+
+  it('keeps a project-scoped item inside its owning team, and releases it when raised to workspace', async () => {
+    await withSeededSchema(async (client) => {
+      const owner = await visibleInProject(client, READER_A, PROJECT_ALPHA);
+      const outsider = await visibleInProject(client, READER_B, PROJECT_ALPHA);
+
+      expect(owner).toContain('project-by-a');
+      expect(outsider).not.toContain('project-by-a');
+
+      const [itemA] = (await itemsInProject(client, PROJECT_ALPHA)).filter(
+        (item) => item.title === 'project-by-a',
+      );
+      if (itemA === undefined) {
+        throw new Error('the seed no longer contains project-by-a');
+      }
+      expect(canRead(itemA, READER_B)).toBe(false);
+
+      await client.query('UPDATE context_item SET access_scope = $1 WHERE title = $2', [
+        'workspace' satisfies AccessScope,
+        'project-by-a',
+      ]);
+
+      const raised = await visibleInProject(client, READER_B, PROJECT_ALPHA);
+      expect(raised).toContain('project-by-a');
+
+      const [promoted] = (await itemsInProject(client, PROJECT_ALPHA)).filter(
+        (item) => item.title === 'project-by-a',
+      );
+      if (promoted === undefined) {
+        throw new Error('the promoted item disappeared');
+      }
+      expect(canRead(promoted, READER_B)).toBe(true);
     });
   });
 
@@ -295,7 +329,6 @@ describe.skipIf(connectionString === undefined)('scope enforcement at the query 
       expect(visible).toEqual(
         [
           'private-by-b',
-          'project-by-a',
           'project-by-b',
           'restricted-by-b',
           'team-by-b',
@@ -303,6 +336,7 @@ describe.skipIf(connectionString === undefined)('scope enforcement at the query 
           'workspace-by-b',
         ].sort(),
       );
+      expect(visible).not.toContain('project-by-a');
     });
   });
 

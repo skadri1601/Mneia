@@ -50,9 +50,9 @@ const RELATIONSHIPS: readonly Relationship[] = [
     expected: { private: true, project: true, team: true, workspace: true, restricted: true },
   },
   {
-    name: 'another actor reading the same project with no team',
+    name: 'another actor on no team at all, reading a team-owned project',
     viewer: { actorId: ACTOR_READER, teamIds: [], projectTeamId: TEAM_OWNING },
-    expected: { private: false, project: true, team: false, workspace: true, restricted: false },
+    expected: { private: false, project: false, team: false, workspace: true, restricted: false },
   },
   {
     name: 'another actor on the owning team',
@@ -62,7 +62,7 @@ const RELATIONSHIPS: readonly Relationship[] = [
   {
     name: 'another actor on a different team',
     viewer: { actorId: ACTOR_READER, teamIds: [TEAM_OTHER], projectTeamId: TEAM_OWNING },
-    expected: { private: false, project: true, team: false, workspace: true, restricted: false },
+    expected: { private: false, project: false, team: false, workspace: true, restricted: false },
   },
   {
     name: 'another actor whose teams include the owning team among others',
@@ -158,6 +158,9 @@ function stripOuterParens(expression: string): string {
 const PARAM_COMPARISON = /^(\w+) = (\$\d+)$/;
 const LITERAL_COMPARISON = /^(\w+) = '([a-z_]+)'$/;
 const TEAM_SUBQUERY = /^(\w+) IN \(SELECT id FROM project WHERE team_id IN \(([^)]*)\)\)$/;
+const OWNING_TEAM_SUBQUERY =
+  /^(\w+) IN \(SELECT id FROM project WHERE team_id IS NULL OR team_id IN \(([^)]*)\)\)$/;
+const UNOWNED_PROJECT_SUBQUERY = /^(\w+) IN \(SELECT id FROM project WHERE team_id IS NULL\)$/;
 
 function columnValue(row: ItemRow, column: string): string {
   if (column === 'asserted_by') {
@@ -193,6 +196,24 @@ function evaluateAtom(atom: string, resolve: Resolve, world: World): boolean {
   const byLiteral = captures(LITERAL_COMPARISON, atom);
   if (byLiteral !== null) {
     return columnValue(world.item, byLiteral[0]) === byLiteral[1];
+  }
+
+  const byOwningTeam = captures(OWNING_TEAM_SUBQUERY, atom);
+  if (byOwningTeam !== null) {
+    const teamIds = byOwningTeam[1].split(', ').map(resolve);
+    const reachable = world.projects
+      .filter((project) => project.team_id === null || teamIds.includes(project.team_id))
+      .map((project) => project.id);
+    return reachable.includes(columnValue(world.item, byOwningTeam[0]));
+  }
+
+  const byUnowned = UNOWNED_PROJECT_SUBQUERY.exec(atom);
+  const unownedColumn = byUnowned?.[1];
+  if (unownedColumn !== undefined) {
+    const reachable = world.projects
+      .filter((project) => project.team_id === null)
+      .map((project) => project.id);
+    return reachable.includes(columnValue(world.item, unownedColumn));
   }
 
   const bySubquery = captures(TEAM_SUBQUERY, atom);
@@ -305,15 +326,22 @@ describe('visibilityPredicate parameters', () => {
     }
   });
 
-  it('emits no team membership test when the actor belongs to no team', () => {
+  it('binds no team membership test when the actor belongs to no team', () => {
     const fragment = fragmentFor(
       { actorId: ACTOR_READER, teamIds: [], projectTeamId: TEAM_OWNING },
       0,
     );
 
     expect(fragment.params).toEqual([ACTOR_READER, PROJECT_ID]);
-    expect(fragment.sql).not.toContain('team_id');
+    expect(fragment.sql).not.toContain('team_id IN (');
     expect(fragment.sql).not.toContain('IN ()');
+    expect(fragment.sql).not.toContain(`access_scope = '${'team'}'`);
+  });
+
+  it('still reaches unowned projects when the actor belongs to no team', () => {
+    const fragment = fragmentFor({ actorId: ACTOR_READER, teamIds: [], projectTeamId: null }, 0);
+
+    expect(fragment.sql).toContain('team_id IS NULL');
   });
 
   it('collapses duplicate and empty team ids rather than binding them twice', () => {

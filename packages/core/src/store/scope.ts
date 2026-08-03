@@ -55,10 +55,15 @@ export function visibilityPredicate(input: VisibilityInput): VisibilityFragment 
   const projectParam = placeholder(1);
   const teamParams = teamIds.map((_, index) => placeholder(index + 2));
 
+  const owningTeam =
+    teamParams.length > 0
+      ? `team_id IS NULL OR team_id IN (${teamParams.join(', ')})`
+      : 'team_id IS NULL';
+
   const disjuncts = [
     `asserted_by = ${actorParam}`,
     `access_scope = '${WORKSPACE}'`,
-    `(access_scope = '${PROJECT}' AND project_id = ${projectParam})`,
+    `(access_scope = '${PROJECT}' AND project_id = ${projectParam} AND project_id IN (SELECT id FROM project WHERE ${owningTeam}))`,
   ];
 
   if (teamParams.length > 0) {
@@ -74,8 +79,11 @@ export function canRead(item: ContextItem, viewer: VisibilityViewer): boolean {
   if (item.assertedBy === viewer.actorId) {
     return true;
   }
-  if (item.accessScope === WORKSPACE || item.accessScope === PROJECT) {
+  if (item.accessScope === WORKSPACE) {
     return true;
+  }
+  if (item.accessScope === PROJECT) {
+    return viewer.projectTeamId === null || viewer.teamIds.includes(viewer.projectTeamId);
   }
   if (item.accessScope === TEAM) {
     return viewer.projectTeamId !== null && viewer.teamIds.includes(viewer.projectTeamId);
