@@ -1,0 +1,135 @@
+.page {
+  width: min(100% - (2 * var(--space-lg)), var(--width-text));
+  margin-inline: auto;
+  padding-block: var(--space-section);
+}
+
+.pageHeader {
+  display: grid;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-xxl);
+}
+
+.pageHeader h1 {
+  font-family: var(--font-display);
+  font-size: var(--size-display-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-display-lg);
+  letter-spacing: var(--tracking-display-lg);
+}
+
+.pageHeader p,
+.empty {
+  color: var(--tile-muted);
+}
+
+.notice,
+.error {
+  border-radius: var(--rounded-sm);
+  padding: var(--space-md);
+  margin-block-end: var(--space-lg);
+}
+
+.notice {
+  background: var(--surface-pearl);
+}
+
+.error {
+  border: 1px solid var(--tile-hairline);
+}
+
+.queue {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: start;
+}
+
+.queue caption {
+  color: var(--tile-faint);
+  font-size: var(--size-fine-print);
+  text-align: start;
+  margin-block-end: var(--space-md);
+}
+
+.queue th,
+.queue td {
+  border-block-end: 1px solid var(--tile-hairline);
+  padding-block: var(--space-sm);
+  padding-inline-end: var(--space-md);
+  text-align: start;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.queue th {
+  font-weight: var(--weight-semibold);
+}
+
+.queue td:last-child {
+  text-align: end;
+  padding-inline-end: 0;
+}
+
+.queue button {
+  min-height: var(--target-min);
+  width: fit-content;
+  border: 0;
+  border-radius: var(--rounded-pill);
+  background: var(--primary);
+  color: var(--on-primary);
+  padding-inline: var(--space-lg);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.queue button:active {
+  transform: scale(var(--press-scale));
+}
+
+.queue button:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .queue,
+  .queue thead,
+  .queue tbody,
+  .queue tr,
+  .queue th,
+  .queue td {
+    display: block;
+  }
+
+  .queue thead {
+    display: none;
+  }
+
+  .queue tr {
+    border-block-end: 1px solid var(--tile-hairline);
+    padding-block: var(--space-md);
+  }
+
+  .queue td {
+    border-block-end: 0;
+    padding-block: var(--space-xxs);
+  }
+
+  .queue td:last-child {
+    text-align: start;
+    padding-block-start: var(--space-sm);
+  }
+}
