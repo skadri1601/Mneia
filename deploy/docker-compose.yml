@@ -13,6 +13,7 @@ services:
     network_mode: host
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - /etc/mneia/tls:/etc/mneia/tls:ro
       - caddy_data:/data
       - caddy_config:/config
 

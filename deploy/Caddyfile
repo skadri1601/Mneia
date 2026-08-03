@@ -3,17 +3,16 @@
 	auto_https off
 }
 
-:80 {
+https://app.mneia.dev {
+	tls /etc/mneia/tls/origin.pem /etc/mneia/tls/origin.key
+
 	encode zstd gzip
 
-	handle /api/health {
-		reverse_proxy 127.0.0.1:3000
+	reverse_proxy 127.0.0.1:3000 {
+		header_up X-Real-IP {http.request.header.CF-Connecting-IP}
 	}
+}
 
-	handle {
-		reverse_proxy 127.0.0.1:3000 {
-			header_up X-Real-IP {http.request.header.CF-Connecting-IP}
-			header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
-		}
-	}
+:80 {
+	redir https://{host}{uri} permanent
 }
