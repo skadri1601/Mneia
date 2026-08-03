@@ -13,3 +13,10 @@ test('renders the single Clerk sign-up surface', () => {
   expect(html).toContain('data-sign-up="true"');
   expect(html).toContain('Create your Mneia account');
 });
+
+test('offers a way out to the marketing site', () => {
+  const html = renderToStaticMarkup(<SignUpPage />);
+
+  expect(html).toContain('href="https://mneia.dev"');
+  expect(html).toContain('Back to mneia.dev');
+});
