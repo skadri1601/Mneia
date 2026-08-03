@@ -6,6 +6,8 @@ on:
       - 'packages/core/src/store/**'
       - 'tests/integration/**'
       - 'scripts/db-migrate.mjs'
+      - 'db/structure.sql'
+      - 'scripts/db-snapshot.mjs'
       - 'scripts/db-provision-app-role.mjs'
       - '.github/workflows/database.yml'
   push:
@@ -14,6 +16,8 @@ on:
       - 'packages/core/src/store/**'
       - 'tests/integration/**'
       - 'scripts/db-migrate.mjs'
+      - 'db/structure.sql'
+      - 'scripts/db-snapshot.mjs'
       - 'scripts/db-provision-app-role.mjs'
       - '.github/workflows/database.yml'
 
@@ -67,6 +71,9 @@ jobs:
 
       - name: migrate the throwaway database
         run: pnpm db:migrate
+
+      - name: the committed schema snapshot matches the migrations
+        run: pnpm db:snapshot --check
 
       - name: run the suite against it
         run: npx vitest run

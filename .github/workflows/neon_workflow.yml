@@ -6,6 +6,7 @@ on:
     paths:
       - 'packages/core/src/store/migrations/**'
       - 'scripts/db-migrate.mjs'
+      - 'db/structure.sql'
       - '.github/workflows/neon_workflow.yml'
 
 concurrency:

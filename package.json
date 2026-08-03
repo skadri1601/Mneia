@@ -22,7 +22,8 @@
     "check:policy": "node scripts/check-git-policy.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",
     "db:provision-app-role": "node scripts/db-provision-app-role.mjs",
-    "waitlist:notify": "node scripts/waitlist-notify.mjs"
+    "waitlist:notify": "node scripts/waitlist-notify.mjs",
+    "db:snapshot": "node scripts/db-snapshot.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",

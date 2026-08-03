@@ -80,6 +80,8 @@ pnpm check:tests      # rejects committed .only / .skip / .todo — local only
 pnpm format           # biome format --write
 pnpm lint             # biome check — everything, warnings included
 pnpm db:migrate       # apply pending migrations to DATABASE_URL — local and the Neon workflow
+pnpm db:snapshot      # regenerate db/structure.sql from DATABASE_URL — run it with every migration
+pnpm db:snapshot --check  # fail if db/structure.sql and the migrations disagree — CI runs this
 pnpm waitlist:notify  # preview or send a waitlist campaign — local only, see below
 ```
 
@@ -126,6 +128,14 @@ in `DATABASE_URL` — `.env` is gitignored, and both `pnpm db:migrate` and `pnpm
 **Use the direct connection string, not the `-pooler` one.** The migration runner holds a session-level
 `pg_advisory_lock` across the whole run, and Neon's pooled endpoint is PgBouncer in transaction mode,
 where the server connection can change between statements. `.env.example` shows both.
+
+**`db/structure.sql` is the schema the migrations add up to** (MNE-227) — generated, checked in, and
+never edited by hand. It exists so a reviewer sees the resulting shape instead of replaying ten
+migration files, and so a migration cannot land without the schema change being visible in the diff.
+`database.yml` runs `pnpm db:snapshot --check` against a fresh container and **fails if the two
+disagree**, which is also what catches an edited migration that has already been applied somewhere.
+
+Write a migration, run `pnpm db:snapshot`, and commit both in the same commit.
 
 A PR that **changes a migration** gets its own Neon branch — `.github/workflows/neon_workflow.yml`
 creates `preview/pr-<n>`, applies migrations to it, posts a schema diff to the PR, and deletes the
