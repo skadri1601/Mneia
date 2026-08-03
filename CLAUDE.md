@@ -49,6 +49,12 @@ and again by the `policy` job in CI on every PR (MNE-36). Both read one definiti
 No ticket yet? Create one first — `linear-ticket`. The hook rejects a commit with no `MNE-nnn`.
 Genuine exception (revert, scaffolding): prefix `MNEIA_GIT_GUARD=off` and justify it in the commit body.
 
+## Business context
+
+`docs/BUSINESS.md`. Read it before touching pricing, the waitlist, published copy, legal content, or
+telemetry — it is the subset of `vision.md` that stops a technically correct change from being a
+commercially wrong one. It is shared with Codex; `CODEX.md` is the Codex-side twin of this file.
+
 ## Skills
 
 Load these rather than improvising the procedure. Index and full descriptions: `SKILLS.md`.

@@ -3,6 +3,18 @@
 Shared context for any coding agent in this repo: Claude Code, Cursor, Codex, Gemini CLI.
 Claude Code loads this through the `@AGENTS.md` import at the top of `CLAUDE.md`.
 
+**Then read the file for your harness, because this one deliberately does not carry it:**
+
+| You are | Read next |
+|---|---|
+| Claude Code | `CLAUDE.md` — loaded for you |
+| Codex | **`CODEX.md`** — including its warning that `.claude/rules/` does not auto-load for you |
+| Cursor, Gemini CLI, anything else | `CODEX.md`, which is the harness-neutral of the two |
+
+**And read `docs/BUSINESS.md`** before touching pricing, the waitlist, published copy, legal content,
+or telemetry. `vision.md` is the authority but runs to 870 lines; `BUSINESS.md` is the subset that
+stops a technically correct change from being a commercially wrong one.
+
 <!-- Keep this file under ~150 lines. It loads into every session. Detail belongs in
      .claude/rules/ (path-scoped) or .claude/skills/ (on demand), never here. -->
 
@@ -41,8 +53,11 @@ MNE-44 (the store adapter) and MNE-169 (scope enforcement). **RLS is currently i
 | Path | What it is |
 |---|---|
 | `vision.md` | Founding brief. The **why**. Sections are cited everywhere as §n. |
+| `docs/BUSINESS.md` | Who pays, what the money is, and what we may never claim. Short, and binding. |
 | `ROADMAP.md` | Milestones, the 132-item checklist, standing rules, Linear workflow |
+| `CLAUDE.md` / `CODEX.md` | Harness-specific instructions. Same rules, different tooling. |
 | `SKILLS.md` | Index of available skills |
+| `.github/codex/pr-review.md` | The brief the automated PR review follows. Edit it there. |
 | `docs/STACK.md` | Tooling choices and the ones still open |
 | `.claude/rules/` | Topic rules, mostly path-scoped so they load only when relevant |
 | `.claude/skills/` | Multi-step procedures, loaded on demand |
