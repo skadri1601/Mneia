@@ -1,0 +1,43 @@
+.shell {
+  background-color: var(--canvas);
+  color: var(--ink);
+  --tile-ink: var(--ink);
+  --tile-muted: var(--ink-muted-80);
+  --tile-faint: var(--ink-muted-48);
+  --tile-link: var(--primary);
+  --tile-hairline: var(--hairline);
+  --tile-card: var(--canvas-parchment);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  gap: var(--space-xxl);
+  max-width: var(--width-grid);
+  margin-inline: auto;
+  padding-inline: var(--space-lg);
+}
+
+.rail {
+  border-inline-end: 1px solid var(--tile-hairline);
+}
+
+.content {
+  min-width: 0;
+  padding-block: var(--space-xxl) var(--space-section);
+}
+
+@media (max-width: 1068px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .rail {
+    border-inline-end: 0;
+  }
+
+  .content {
+    padding-block: var(--space-xl) var(--space-section);
+  }
+}

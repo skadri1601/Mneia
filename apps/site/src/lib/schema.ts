@@ -1,10 +1,13 @@
 import type { Faq } from '@/content/pages';
 import { TIERS } from '@/content/pages';
+import type { DocPage } from '@/content/docs';
+import { CONTACT } from '@/content/legal';
 import {
   absoluteUrl,
   REPO_URL,
   type RoutePath,
   routeFor,
+  ROUTES,
   SITE_DESCRIPTION,
   SITE_NAME,
   SITE_TAGLINE,
@@ -31,6 +34,29 @@ export function organizationSchema(): JsonLdNode {
       'AI-assisted software teams',
       'Agent handoffs',
       'Context rehydration',
+    ],
+    contactPoint: [
+      {
+        '@type': 'ContactPoint',
+        contactType: 'privacy',
+        email: CONTACT.privacy,
+        url: absoluteUrl('/contact'),
+        availableLanguage: 'en',
+      },
+      {
+        '@type': 'ContactPoint',
+        contactType: 'security',
+        email: CONTACT.security,
+        url: absoluteUrl('/contact'),
+        availableLanguage: 'en',
+      },
+      {
+        '@type': 'ContactPoint',
+        contactType: 'legal',
+        email: CONTACT.legal,
+        url: absoluteUrl('/contact'),
+        availableLanguage: 'en',
+      },
     ],
   };
 }
@@ -90,10 +116,21 @@ export function faqSchema(faqs: readonly Faq[]): JsonLdNode {
   };
 }
 
+function ancestorPaths(path: RoutePath): readonly RoutePath[] {
+  const segments = path.split('/').filter((segment) => segment.length > 0);
+
+  return segments
+    .map((_, index) => `/${segments.slice(0, index + 1).join('/')}`)
+    .filter((candidate): candidate is RoutePath =>
+      ROUTES.some((route) => route.path === candidate),
+    );
+}
+
 export function breadcrumbSchema(path: RoutePath): JsonLdNode {
-  const route = routeFor(path);
   const items = [{ name: 'Home', url: absoluteUrl('/') }];
-  if (path !== '/') {
+
+  for (const ancestor of ancestorPaths(path)) {
+    const route = routeFor(ancestor);
     items.push({ name: route.name, url: absoluteUrl(route.path) });
   }
 
@@ -119,6 +156,89 @@ export function webPageSchema(path: RoutePath): JsonLdNode {
     inLanguage: 'en',
     isPartOf: { '@id': WEBSITE_ID },
     about: { '@id': SOFTWARE_ID },
+  };
+}
+
+export function contactPageSchema(): JsonLdNode {
+  const route = routeFor('/contact');
+  return {
+    '@type': 'ContactPage',
+    '@id': `${absoluteUrl(route.path)}#webpage`,
+    url: absoluteUrl(route.path),
+    name: route.title,
+    description: route.description,
+    inLanguage: 'en',
+    isPartOf: { '@id': WEBSITE_ID },
+    about: { '@id': ORGANIZATION_ID },
+  };
+}
+
+export function techArticleSchema(page: DocPage, path: RoutePath): JsonLdNode {
+  return {
+    '@type': 'TechArticle',
+    '@id': `${absoluteUrl(path)}#article`,
+    url: absoluteUrl(path),
+    headline: page.heading,
+    name: page.title,
+    description: page.description,
+    inLanguage: 'en',
+    isPartOf: { '@id': WEBSITE_ID },
+    about: { '@id': SOFTWARE_ID },
+    publisher: { '@id': ORGANIZATION_ID },
+    articleSection: page.sections.map((section) => section.heading),
+    timeRequired: `PT${page.minutes}M`,
+    proficiencyLevel: 'Beginner',
+  };
+}
+
+const NUMBERED_HEADING = /^(\d+)\.\s+(.*)$/;
+
+export function howToSchema(page: DocPage, path: RoutePath): JsonLdNode | null {
+  const steps = page.sections.flatMap((section) => {
+    const match = NUMBERED_HEADING.exec(section.heading);
+    return match?.[2] === undefined
+      ? []
+      : [
+          {
+            '@type': 'HowToStep',
+            position: Number(match[1]),
+            name: match[2],
+            url: `${absoluteUrl(path)}#${section.id}`,
+          },
+        ];
+  });
+
+  if (steps.length === 0) {
+    return null;
+  }
+
+  return {
+    '@type': 'HowTo',
+    '@id': `${absoluteUrl(path)}#howto`,
+    name: page.title,
+    description: page.description,
+    inLanguage: 'en',
+    totalTime: `PT${page.minutes}M`,
+    step: steps,
+  };
+}
+
+export function itemListSchema(name: string, paths: readonly RoutePath[]): JsonLdNode {
+  return {
+    '@type': 'ItemList',
+    name,
+    itemListOrder: 'https://schema.org/ItemListOrderAscending',
+    numberOfItems: paths.length,
+    itemListElement: paths.map((path, index) => {
+      const route = routeFor(path);
+      return {
+        '@type': 'ListItem',
+        position: index + 1,
+        name: route.name,
+        description: route.description,
+        url: absoluteUrl(route.path),
+      };
+    }),
   };
 }
 

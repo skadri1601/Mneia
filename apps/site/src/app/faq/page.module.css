@@ -1,0 +1,24 @@
+.jump {
+  margin-top: var(--space-xl);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.jumpLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--target-min);
+  padding: 0 var(--space-md);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-pill);
+  font-size: var(--size-caption);
+  line-height: var(--leading-caption);
+  letter-spacing: var(--tracking-caption);
+  color: var(--tile-link);
+  text-decoration: none;
+}
+
+.jumpLink:active {
+  transform: scale(var(--press-scale));
+}
