@@ -25,15 +25,20 @@ extend the spec through implementation.
 2. **Forward-only and versioned.** No down migrations. Because we operate the only database, a
    migration must also be **safe to apply while old clients are still running** — old CLI versions
    stay in the wild for weeks. Add columns nullable, backfill separately, drop in a later release.
-3. **Update the seed harness** (MNE-47) so fixtures cover the new shape — humans and agents,
+3. **Regenerate the schema snapshot.** `pnpm db:snapshot` rewrites `db/structure.sql`, and it
+   belongs in the *same commit* as the migration. CI runs `pnpm db:snapshot --check` against a
+   fresh container and fails when the two disagree, so a forgotten regeneration is a red build
+   rather than silent drift. Never hand-edit it — the diff on that file is how a reviewer sees
+   what your migration actually did to the schema.
+4. **Update the seed harness** (MNE-47) so fixtures cover the new shape — humans and agents,
    superseded chains, disputed items, load-bearing constraints.
-4. **Round-trip test.** Write and read back every new column. `embedding`, `valid_to`, and
+5. **Round-trip test.** Write and read back every new column. `embedding`, `valid_to`, and
    `supersedes_id` are the ones that break quietly.
-5. **Scope test if the change touches reads.** Every query is tenant- and scope-filtered (MNE-169).
+6. **Scope test if the change touches reads.** Every query is tenant- and scope-filtered (MNE-169).
    A new index or join that bypasses the filter is a cross-workspace data leak, not a perf detail.
-6. **Telemetry.** A new write path needs its §17 event in the same PR — the coverage test (MNE-51)
+7. **Telemetry.** A new write path needs its §17 event in the same PR — the coverage test (MNE-51)
    will fail otherwise, and that is the test doing its job.
-7. `pnpm test` green before the PR.
+8. `pnpm test` green before the PR.
 
 ## Things that will bite
 

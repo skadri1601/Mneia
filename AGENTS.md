@@ -80,6 +80,8 @@ pnpm check:tests      # rejects committed .only / .skip / .todo — local only
 pnpm format           # biome format --write
 pnpm lint             # biome check — everything, warnings included
 pnpm db:migrate       # apply pending migrations to DATABASE_URL — local and the Neon workflow
+pnpm db:snapshot      # regenerate db/structure.sql from DATABASE_URL — run it with every migration
+pnpm db:snapshot --check  # fail if db/structure.sql and the migrations disagree — CI runs this
 pnpm waitlist:notify  # preview or send a waitlist campaign — local only, see below
 ```
 
@@ -87,10 +89,29 @@ pnpm waitlist:notify  # preview or send a waitlist campaign — local only, see 
 noise. That job is format, lint errors, build, and git policy. `pnpm build` is `tsc --build`, so a
 type error still fails as a build failure.
 
-**But the Neon workflow does run them** (MNE-203, approved 2026-08-01 as a narrow exception). On
-every non-fork PR, `neon_workflow.yml` migrates `preview/pr-<n>` and then runs the full suite
-against it with `MNEIA_REQUIRE_DB=1` — which turns a skipped integration suite into a failure
+**But `database.yml` does run them** (MNE-203, approved 2026-08-01 as a narrow exception). It runs
+the full suite with `MNEIA_REQUIRE_DB=1` — which turns a skipped integration suite into a failure
 rather than a silent green. That is what makes the GUARD invariants real instead of decorative.
+
+**Restructured 2026-08-02 by MNE-226**, after the project went over its Neon storage allowance —
+0.53 of 0.5 GB against a database holding 17 MB of actual rows. The cause was this workflow: it ran
+the whole suite *against a Neon branch*, and every integration file creates a schema, applies all
+ten migrations, and drops it. Neon retains that change history and bills it as storage. On
+2026-08-02 it happened 34 times, mostly for documentation PRs.
+
+Two workflows now, each doing only what it is for:
+
+| Workflow | Runs when | Against | Does |
+|---|---|---|---|
+| `database.yml` | the store, integration tests, or migration scripts change | a throwaway `pgvector/pgvector:pg17` **service container** | the full suite, `MNEIA_REQUIRE_DB=1` |
+| `neon_workflow.yml` | **`packages/core/src/store/migrations/**` changes** | a real Neon branch | applies migrations, posts a schema diff |
+
+So the GUARD invariants no longer touch Neon at all — a service container is free and ephemeral, and
+nothing is retained. Neon is reserved for what only Neon can do: applying a migration to a branch of
+production and showing you the resulting diff.
+
+A docs-only or `apps/site` PR now runs neither. **If you add code that can reach the store, add its
+path to `database.yml`**, or the invariants stop being enforced for it.
 
 Still run `pnpm test` yourself before opening a PR — the PR run is a backstop, not your first
 feedback loop. It needs `DATABASE_URL`; without one the integration suites skip themselves.
@@ -108,9 +129,18 @@ in `DATABASE_URL` — `.env` is gitignored, and both `pnpm db:migrate` and `pnpm
 `pg_advisory_lock` across the whole run, and Neon's pooled endpoint is PgBouncer in transaction mode,
 where the server connection can change between statements. `.env.example` shows both.
 
-Every PR gets its own Neon branch — `.github/workflows/neon_workflow.yml` creates `preview/pr-<n>`,
-applies migrations to it, posts a schema diff to the PR, and deletes the branch when the PR closes.
-It skips fork PRs, which cannot see `NEON_API_KEY`. **That workflow is the only thing that runs
+**`db/structure.sql` is the schema the migrations add up to** (MNE-227) — generated, checked in, and
+never edited by hand. It exists so a reviewer sees the resulting shape instead of replaying ten
+migration files, and so a migration cannot land without the schema change being visible in the diff.
+`database.yml` runs `pnpm db:snapshot --check` against a fresh container and **fails if the two
+disagree**, which is also what catches an edited migration that has already been applied somewhere.
+
+Write a migration, run `pnpm db:snapshot`, and commit both in the same commit.
+
+A PR that **changes a migration** gets its own Neon branch — `.github/workflows/neon_workflow.yml`
+creates `preview/pr-<n>`, applies migrations to it, posts a schema diff to the PR, and deletes the
+branch when the PR closes. It skips fork PRs, which cannot see `NEON_API_KEY`, and since MNE-226 it
+skips every PR that does not change a migration. **That workflow is the only thing that runs
 migrations automatically; nothing migrates production.** Applying to production is a deliberate
 `pnpm db:migrate` against the production `DATABASE_URL`, and `CLAUDE.md` requires asking first.
 
