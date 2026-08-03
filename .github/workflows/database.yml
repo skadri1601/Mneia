@@ -62,8 +62,11 @@ jobs:
       - name: reject committed .only / .skip / .todo
         run: pnpm check:tests
 
+      - name: build
+        run: pnpm build
+
       - name: migrate the throwaway database
         run: pnpm db:migrate
 
       - name: run the suite against it
-        run: pnpm build && npx vitest run
+        run: npx vitest run
