@@ -20,6 +20,7 @@ export type LegalDoc = {
 
 export const LEGAL_ENTITY = 'Saad Kadri, trading as Mneia';
 export const LEGAL_EFFECTIVE = '1 August 2026';
+export const PRIVACY_UPDATED = '3 August 2026';
 
 export const CONTACT = {
   privacy: 'privacy@mneia.dev',
@@ -44,7 +45,11 @@ const SUBPROCESSORS: LegalBlock = {
     ],
     ['Neon Inc.', 'Managed Postgres, the single store for all Service data', 'United States'],
     ['Functional Software, Inc. (Sentry)', 'Error reporting for this website', 'United States'],
-    ['Resend (Plus Five Five, Inc.)', 'Sends the waitlist confirmation email', 'United States'],
+    [
+      'Resend (Plus Five Five, Inc.)',
+      'Sends the waitlist confirmation email and the invitation when your access opens',
+      'United States',
+    ],
     ['Stripe, Inc.', 'Payment processing and subscription billing', 'United States'],
     ['Anthropic PBC', 'Extraction and contradiction detection on checkpoint', 'United States'],
   ],
@@ -53,7 +58,7 @@ const SUBPROCESSORS: LegalBlock = {
 export const PRIVACY: LegalDoc = {
   title: 'Privacy Policy',
   effective: LEGAL_EFFECTIVE,
-  updated: LEGAL_EFFECTIVE,
+  updated: PRIVACY_UPDATED,
   lead: 'What we collect, why we collect it, who else touches it, and what you can make us do about it. Written to be read, not to be survived.',
   sections: [
     {
@@ -105,7 +110,7 @@ export const PRIVACY: LegalDoc = {
             ],
             [
               'The hosted Service',
-              'Not yet generally available',
+              'Open by invitation',
               'Checkpoint, rehydrate, and handoff, through the CLI, the MCP server, and the web app',
             ],
           ],
@@ -113,7 +118,7 @@ export const PRIVACY: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            '**Today, the only personal data we hold is a work email address if you joined the waitlist, plus the technical diagnostics described in section 4.** Everything this policy says about the Service describes what will happen when you use it. We are telling you now so the terms are not a surprise later, not because it is already happening.',
+            '**Access to the Service is opening in stages, by invitation from the waitlist.** If you have not been invited yet, the only personal data we hold about you is the work email address you gave the waitlist, plus the technical diagnostics described in section 4. If you have accepted an invitation, you have an account, and sections 5 onward describe what we hold in the present tense: your identity, the details you gave us about yourself and your company, and whatever you put into your workspace.',
             'This policy does not cover third-party websites we link to, or the AI coding tools you use Mneia alongside. Claude Code, Cursor, Codex, and the rest each have their own policies and their own relationship with you.',
           ],
         },
@@ -180,7 +185,7 @@ export const PRIVACY: LegalDoc = {
     },
     {
       id: 'service-data',
-      heading: '5. What the Service will collect when you use it',
+      heading: '5. What the Service collects when you use it',
       blocks: [
         {
           kind: 'text',
@@ -196,6 +201,11 @@ export const PRIVACY: LegalDoc = {
               'Account and identity',
               'Email, display name, external references such as a GitHub handle, authentication records',
               'You, and your identity provider',
+            ],
+            [
+              'Company details',
+              'Company name, rough company size, and the function your team works in',
+              'You, when you set up your workspace',
             ],
             [
               'Organisation structure',
