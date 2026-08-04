@@ -24,7 +24,7 @@ const required = (variable: string): string => {
 };
 
 export const appOrigin = (): string =>
-  (process.env.NEXT_PUBLIC_APP_URL ?? 'https://app.mneia.dev').replace(/\/+$/, '');
+  (process.env.MNEIA_APP_ORIGIN ?? 'https://app.mneia.dev').replace(/\/+$/, '');
 
 export const welcomeUrl = (): string => `${appOrigin()}/welcome`;
 

@@ -4,7 +4,7 @@ export const ACCESS_GRANTED_CAMPAIGN = 'access-granted';
 
 const RESEND_ENDPOINT = 'https://api.resend.com/emails';
 
-export const siteOrigin = (raw: string | undefined = process.env.NEXT_PUBLIC_SITE_URL): string =>
+export const siteOrigin = (raw: string | undefined = process.env.MNEIA_SITE_ORIGIN): string =>
   (raw ?? 'https://mneia.dev').replace(/\/+$/, '');
 
 export const unsubscribePostUrl = (token: string, origin = siteOrigin()): string =>
