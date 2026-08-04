@@ -15,9 +15,11 @@
   --tile-faint: var(--ink-muted-48);
   --tile-link: var(--primary);
   --tile-hairline: var(--hairline);
-  --font-display: "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-text: "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display:
+    "SF Pro Display", system-ui, -apple-system, BlinkMacSystemFont, var(--font-inter), sans-serif;
+  --font-text:
+    "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, var(--font-inter), sans-serif;
+  --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   --size-display-lg: calc(46px * var(--type-scale));
   --size-tagline: calc(28px * var(--type-scale));
   --size-body: calc(21px * var(--type-scale));
