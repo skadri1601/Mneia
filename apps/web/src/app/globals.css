@@ -10,6 +10,8 @@ html {
 
 body {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   margin: 0;
   background: var(--canvas-parchment);
   color: var(--tile-ink);
@@ -18,6 +20,10 @@ body {
   font-weight: var(--weight-regular);
   line-height: var(--leading-body);
   letter-spacing: var(--tracking-body);
+}
+
+body > main {
+  flex: 1;
 }
 
 h1,
