@@ -12,6 +12,25 @@
   gap: var(--space-xl, 32px);
 }
 
+.backLink {
+  justify-self: start;
+  min-height: var(--target-min);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  color: var(--tile-link);
+  font-size: var(--size-fine-print);
+}
+
+.backLink:active {
+  transform: scale(var(--press-scale));
+}
+
+.backLink:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+
 .panel h1 {
   font-family: var(--font-display);
   font-size: var(--size-display-lg);

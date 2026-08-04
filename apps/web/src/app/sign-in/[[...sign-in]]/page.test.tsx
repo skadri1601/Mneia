@@ -18,3 +18,10 @@ test('leaves the heading to Clerk so the title is not shown twice', () => {
 
   expect(html).not.toContain('<h1');
 });
+
+test('offers a way out to the marketing site', () => {
+  const html = renderToStaticMarkup(<SignInPage />);
+
+  expect(html).toContain('href="https://mneia.dev"');
+  expect(html).toContain('Back to mneia.dev');
+});
