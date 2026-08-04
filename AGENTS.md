@@ -103,7 +103,7 @@ Two workflows now, each doing only what it is for:
 
 | Workflow | Runs when | Against | Does |
 |---|---|---|---|
-| `database.yml` | the store, integration tests, or migration scripts change | a throwaway `pgvector/pgvector:pg17` **service container** | the full suite, `MNEIA_REQUIRE_DB=1` |
+| `database.yml` | the store, integration tests, or migration scripts change | a throwaway `pgvector/pgvector:pg18` **service container** | the full suite, `MNEIA_REQUIRE_DB=1` |
 | `neon_workflow.yml` | **`packages/core/src/store/migrations/**` changes** | a real Neon branch | applies migrations, posts a schema diff |
 
 So the GUARD invariants no longer touch Neon at all — a service container is free and ephemeral, and
@@ -150,7 +150,7 @@ point at a Neon branch. A local container also works:
 
 ```
 docker run -d --name mneia-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=mneia \
-  -p 5433:5432 pgvector/pgvector:pg17
+  -p 5433:5432 pgvector/pgvector:pg18
 DATABASE_URL='postgres://postgres:postgres@localhost:5433/mneia' pnpm test
 ```
 

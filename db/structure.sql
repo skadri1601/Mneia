@@ -33,9 +33,14 @@ CREATE TABLE actor (
   external_ref text,
   created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE actor ADD CONSTRAINT actor_created_at_not_null NOT NULL created_at;
+ALTER TABLE actor ADD CONSTRAINT actor_display_name_not_null NOT NULL display_name;
+ALTER TABLE actor ADD CONSTRAINT actor_id_not_null NOT NULL id;
+ALTER TABLE actor ADD CONSTRAINT actor_kind_not_null NOT NULL kind;
 ALTER TABLE actor ADD CONSTRAINT actor_pkey PRIMARY KEY (id);
 ALTER TABLE actor ADD CONSTRAINT actor_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE actor ADD CONSTRAINT actor_workspace_id_id_key UNIQUE (workspace_id, id);
+ALTER TABLE actor ADD CONSTRAINT actor_workspace_id_not_null NOT NULL workspace_id;
 CREATE UNIQUE INDEX actor_human_external_ref_unique ON public.actor USING btree (external_ref) WHERE ((external_ref IS NOT NULL) AND (kind = 'human'::actor_kind));
 ALTER TABLE actor ENABLE ROW LEVEL SECURITY;
 ALTER TABLE actor FORCE ROW LEVEL SECURITY;
@@ -52,10 +57,16 @@ CREATE TABLE checkpoint (
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   summary text
 );
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_actor_id_not_null NOT NULL actor_id;
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_created_at_not_null NOT NULL created_at;
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_id_not_null NOT NULL id;
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_pkey PRIMARY KEY (id);
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_project_id_not_null NOT NULL project_id;
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_trigger_not_null NOT NULL trigger;
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_actor_id_fkey FOREIGN KEY (workspace_id, actor_id) REFERENCES actor(workspace_id, id);
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_id_key UNIQUE (workspace_id, id);
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_not_null NOT NULL workspace_id;
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_project_id_fkey FOREIGN KEY (workspace_id, project_id) REFERENCES project(workspace_id, id);
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_session_id_fkey FOREIGN KEY (workspace_id, session_id) REFERENCES session(workspace_id, id);
 CREATE INDEX checkpoint_workspace_id_project_id_created_at_idx ON public.checkpoint USING btree (workspace_id, project_id, created_at DESC);
@@ -70,10 +81,14 @@ CREATE TABLE checkpoint_item (
   item_id uuid NOT NULL,
   action checkpoint_action NOT NULL
 );
+ALTER TABLE checkpoint_item ADD CONSTRAINT checkpoint_item_action_not_null NOT NULL action;
+ALTER TABLE checkpoint_item ADD CONSTRAINT checkpoint_item_checkpoint_id_not_null NOT NULL checkpoint_id;
+ALTER TABLE checkpoint_item ADD CONSTRAINT checkpoint_item_item_id_not_null NOT NULL item_id;
 ALTER TABLE checkpoint_item ADD CONSTRAINT checkpoint_item_pkey PRIMARY KEY (checkpoint_id, item_id);
 ALTER TABLE checkpoint_item ADD CONSTRAINT checkpoint_item_workspace_id_checkpoint_id_fkey FOREIGN KEY (workspace_id, checkpoint_id) REFERENCES checkpoint(workspace_id, id);
 ALTER TABLE checkpoint_item ADD CONSTRAINT checkpoint_item_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE checkpoint_item ADD CONSTRAINT checkpoint_item_workspace_id_item_id_fkey FOREIGN KEY (workspace_id, item_id) REFERENCES context_item(workspace_id, id);
+ALTER TABLE checkpoint_item ADD CONSTRAINT checkpoint_item_workspace_id_not_null NOT NULL workspace_id;
 CREATE INDEX checkpoint_item_item_id_idx ON public.checkpoint_item USING btree (item_id);
 ALTER TABLE checkpoint_item ENABLE ROW LEVEL SECURITY;
 ALTER TABLE checkpoint_item FORCE ROW LEVEL SECURITY;
@@ -90,13 +105,19 @@ CREATE TABLE conflict (
   resolved_by uuid,
   resolution conflict_resolution
 );
+ALTER TABLE conflict ADD CONSTRAINT conflict_detected_at_not_null NOT NULL detected_at;
+ALTER TABLE conflict ADD CONSTRAINT conflict_id_not_null NOT NULL id;
+ALTER TABLE conflict ADD CONSTRAINT conflict_item_a_not_null NOT NULL item_a;
+ALTER TABLE conflict ADD CONSTRAINT conflict_item_b_not_null NOT NULL item_b;
 ALTER TABLE conflict ADD CONSTRAINT conflict_items_distinct CHECK ((item_a <> item_b));
 ALTER TABLE conflict ADD CONSTRAINT conflict_pkey PRIMARY KEY (id);
+ALTER TABLE conflict ADD CONSTRAINT conflict_project_id_not_null NOT NULL project_id;
 ALTER TABLE conflict ADD CONSTRAINT conflict_resolution_is_whole CHECK ((((resolved_at IS NULL) AND (resolved_by IS NULL) AND (resolution IS NULL)) OR ((resolved_at IS NOT NULL) AND (resolved_by IS NOT NULL) AND (resolution IS NOT NULL))));
 ALTER TABLE conflict ADD CONSTRAINT conflict_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE conflict ADD CONSTRAINT conflict_workspace_id_id_key UNIQUE (workspace_id, id);
 ALTER TABLE conflict ADD CONSTRAINT conflict_workspace_id_item_a_fkey FOREIGN KEY (workspace_id, item_a) REFERENCES context_item(workspace_id, id);
 ALTER TABLE conflict ADD CONSTRAINT conflict_workspace_id_item_b_fkey FOREIGN KEY (workspace_id, item_b) REFERENCES context_item(workspace_id, id);
+ALTER TABLE conflict ADD CONSTRAINT conflict_workspace_id_not_null NOT NULL workspace_id;
 ALTER TABLE conflict ADD CONSTRAINT conflict_workspace_id_project_id_fkey FOREIGN KEY (workspace_id, project_id) REFERENCES project(workspace_id, id);
 ALTER TABLE conflict ADD CONSTRAINT conflict_workspace_id_resolved_by_fkey FOREIGN KEY (workspace_id, resolved_by) REFERENCES actor(workspace_id, id);
 CREATE UNIQUE INDEX conflict_open_pair_unique ON public.conflict USING btree (workspace_id, project_id, LEAST(item_a, item_b), GREATEST(item_a, item_b)) WHERE (resolved_at IS NULL);
@@ -131,11 +152,24 @@ CREATE TABLE context_item (
   access_scope access_scope DEFAULT 'project'::access_scope NOT NULL,
   embedding vector(1536)
 );
+ALTER TABLE context_item ADD CONSTRAINT context_item_access_scope_not_null NOT NULL access_scope;
+ALTER TABLE context_item ADD CONSTRAINT context_item_asserted_at_not_null NOT NULL asserted_at;
+ALTER TABLE context_item ADD CONSTRAINT context_item_asserted_by_not_null NOT NULL asserted_by;
 ALTER TABLE context_item ADD CONSTRAINT context_item_confidence_check CHECK (((confidence >= (0)::double precision) AND (confidence <= (1)::double precision)));
+ALTER TABLE context_item ADD CONSTRAINT context_item_confidence_not_null NOT NULL confidence;
+ALTER TABLE context_item ADD CONSTRAINT context_item_human_confirmed_not_null NOT NULL human_confirmed;
+ALTER TABLE context_item ADD CONSTRAINT context_item_id_not_null NOT NULL id;
+ALTER TABLE context_item ADD CONSTRAINT context_item_kind_not_null NOT NULL kind;
+ALTER TABLE context_item ADD CONSTRAINT context_item_load_bearing_not_null NOT NULL load_bearing;
 ALTER TABLE context_item ADD CONSTRAINT context_item_pkey PRIMARY KEY (id);
+ALTER TABLE context_item ADD CONSTRAINT context_item_project_id_not_null NOT NULL project_id;
+ALTER TABLE context_item ADD CONSTRAINT context_item_status_not_null NOT NULL status;
+ALTER TABLE context_item ADD CONSTRAINT context_item_title_not_null NOT NULL title;
+ALTER TABLE context_item ADD CONSTRAINT context_item_valid_from_not_null NOT NULL valid_from;
 ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_asserted_by_fkey FOREIGN KEY (workspace_id, asserted_by) REFERENCES actor(workspace_id, id);
 ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_id_key UNIQUE (workspace_id, id);
+ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_not_null NOT NULL workspace_id;
 ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_project_id_fkey FOREIGN KEY (workspace_id, project_id) REFERENCES project(workspace_id, id);
 ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_source_session_id_fkey FOREIGN KEY (workspace_id, source_session_id) REFERENCES session(workspace_id, id);
 ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_superseded_by_id_fkey FOREIGN KEY (workspace_id, superseded_by_id) REFERENCES context_item(workspace_id, id);
@@ -157,10 +191,17 @@ CREATE TABLE handoff (
   next_action text NOT NULL,
   rendered text NOT NULL
 );
+ALTER TABLE handoff ADD CONSTRAINT handoff_created_at_not_null NOT NULL created_at;
+ALTER TABLE handoff ADD CONSTRAINT handoff_from_actor_not_null NOT NULL from_actor;
+ALTER TABLE handoff ADD CONSTRAINT handoff_id_not_null NOT NULL id;
+ALTER TABLE handoff ADD CONSTRAINT handoff_next_action_not_null NOT NULL next_action;
 ALTER TABLE handoff ADD CONSTRAINT handoff_pkey PRIMARY KEY (id);
+ALTER TABLE handoff ADD CONSTRAINT handoff_project_id_not_null NOT NULL project_id;
+ALTER TABLE handoff ADD CONSTRAINT handoff_rendered_not_null NOT NULL rendered;
 ALTER TABLE handoff ADD CONSTRAINT handoff_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE handoff ADD CONSTRAINT handoff_workspace_id_from_actor_fkey FOREIGN KEY (workspace_id, from_actor) REFERENCES actor(workspace_id, id);
 ALTER TABLE handoff ADD CONSTRAINT handoff_workspace_id_id_key UNIQUE (workspace_id, id);
+ALTER TABLE handoff ADD CONSTRAINT handoff_workspace_id_not_null NOT NULL workspace_id;
 ALTER TABLE handoff ADD CONSTRAINT handoff_workspace_id_project_id_fkey FOREIGN KEY (workspace_id, project_id) REFERENCES project(workspace_id, id);
 ALTER TABLE handoff ADD CONSTRAINT handoff_workspace_id_to_actor_fkey FOREIGN KEY (workspace_id, to_actor) REFERENCES actor(workspace_id, id);
 CREATE INDEX handoff_workspace_id_project_id_idx ON public.handoff USING btree (workspace_id, project_id);
@@ -176,7 +217,11 @@ CREATE TABLE mneia_schema_migration (
   applied_at timestamp with time zone DEFAULT now() NOT NULL,
   applied_by text
 );
+ALTER TABLE mneia_schema_migration ADD CONSTRAINT mneia_schema_migration_applied_at_not_null NOT NULL applied_at;
+ALTER TABLE mneia_schema_migration ADD CONSTRAINT mneia_schema_migration_checksum_not_null NOT NULL checksum;
+ALTER TABLE mneia_schema_migration ADD CONSTRAINT mneia_schema_migration_name_not_null NOT NULL name;
 ALTER TABLE mneia_schema_migration ADD CONSTRAINT mneia_schema_migration_pkey PRIMARY KEY (version);
+ALTER TABLE mneia_schema_migration ADD CONSTRAINT mneia_schema_migration_version_not_null NOT NULL version;
 
 CREATE TABLE project (
   id uuid NOT NULL,
@@ -188,9 +233,14 @@ CREATE TABLE project (
   display_name text NOT NULL,
   archived_at timestamp with time zone
 );
+ALTER TABLE project ADD CONSTRAINT project_created_at_not_null NOT NULL created_at;
+ALTER TABLE project ADD CONSTRAINT project_display_name_not_null NOT NULL display_name;
+ALTER TABLE project ADD CONSTRAINT project_id_not_null NOT NULL id;
 ALTER TABLE project ADD CONSTRAINT project_pkey PRIMARY KEY (id);
+ALTER TABLE project ADD CONSTRAINT project_slug_not_null NOT NULL slug;
 ALTER TABLE project ADD CONSTRAINT project_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE project ADD CONSTRAINT project_workspace_id_id_key UNIQUE (workspace_id, id);
+ALTER TABLE project ADD CONSTRAINT project_workspace_id_not_null NOT NULL workspace_id;
 ALTER TABLE project ADD CONSTRAINT project_workspace_id_slug_key UNIQUE (workspace_id, slug);
 ALTER TABLE project ADD CONSTRAINT project_workspace_id_team_id_fkey FOREIGN KEY (workspace_id, team_id) REFERENCES team(workspace_id, id);
 CREATE INDEX project_active_workspace_display_name_idx ON public.project USING btree (workspace_id, display_name, id) WHERE (archived_at IS NULL);
@@ -208,10 +258,15 @@ CREATE TABLE session (
   started_at timestamp with time zone NOT NULL,
   ended_at timestamp with time zone
 );
+ALTER TABLE session ADD CONSTRAINT session_actor_id_not_null NOT NULL actor_id;
+ALTER TABLE session ADD CONSTRAINT session_id_not_null NOT NULL id;
 ALTER TABLE session ADD CONSTRAINT session_pkey PRIMARY KEY (id);
+ALTER TABLE session ADD CONSTRAINT session_project_id_not_null NOT NULL project_id;
+ALTER TABLE session ADD CONSTRAINT session_started_at_not_null NOT NULL started_at;
 ALTER TABLE session ADD CONSTRAINT session_workspace_id_actor_id_fkey FOREIGN KEY (workspace_id, actor_id) REFERENCES actor(workspace_id, id);
 ALTER TABLE session ADD CONSTRAINT session_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE session ADD CONSTRAINT session_workspace_id_id_key UNIQUE (workspace_id, id);
+ALTER TABLE session ADD CONSTRAINT session_workspace_id_not_null NOT NULL workspace_id;
 ALTER TABLE session ADD CONSTRAINT session_workspace_id_project_id_fkey FOREIGN KEY (workspace_id, project_id) REFERENCES project(workspace_id, id);
 CREATE INDEX session_workspace_id_actor_id_idx ON public.session USING btree (workspace_id, actor_id);
 CREATE INDEX session_workspace_id_project_id_idx ON public.session USING btree (workspace_id, project_id);
@@ -227,9 +282,15 @@ CREATE TABLE team (
   function team_function DEFAULT 'engineering'::team_function NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE team ADD CONSTRAINT team_created_at_not_null NOT NULL created_at;
+ALTER TABLE team ADD CONSTRAINT team_display_name_not_null NOT NULL display_name;
+ALTER TABLE team ADD CONSTRAINT team_function_not_null NOT NULL function;
+ALTER TABLE team ADD CONSTRAINT team_id_not_null NOT NULL id;
 ALTER TABLE team ADD CONSTRAINT team_pkey PRIMARY KEY (id);
+ALTER TABLE team ADD CONSTRAINT team_slug_not_null NOT NULL slug;
 ALTER TABLE team ADD CONSTRAINT team_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE team ADD CONSTRAINT team_workspace_id_id_key UNIQUE (workspace_id, id);
+ALTER TABLE team ADD CONSTRAINT team_workspace_id_not_null NOT NULL workspace_id;
 ALTER TABLE team ADD CONSTRAINT team_workspace_id_slug_key UNIQUE (workspace_id, slug);
 ALTER TABLE team ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team FORCE ROW LEVEL SECURITY;
@@ -242,9 +303,14 @@ CREATE TABLE team_member (
   role team_role DEFAULT 'member'::team_role NOT NULL,
   added_at timestamp with time zone DEFAULT now() NOT NULL
 );
+ALTER TABLE team_member ADD CONSTRAINT team_member_actor_id_not_null NOT NULL actor_id;
+ALTER TABLE team_member ADD CONSTRAINT team_member_added_at_not_null NOT NULL added_at;
 ALTER TABLE team_member ADD CONSTRAINT team_member_pkey PRIMARY KEY (team_id, actor_id);
+ALTER TABLE team_member ADD CONSTRAINT team_member_role_not_null NOT NULL role;
+ALTER TABLE team_member ADD CONSTRAINT team_member_team_id_not_null NOT NULL team_id;
 ALTER TABLE team_member ADD CONSTRAINT team_member_workspace_id_actor_id_fkey FOREIGN KEY (workspace_id, actor_id) REFERENCES actor(workspace_id, id);
 ALTER TABLE team_member ADD CONSTRAINT team_member_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE team_member ADD CONSTRAINT team_member_workspace_id_not_null NOT NULL workspace_id;
 ALTER TABLE team_member ADD CONSTRAINT team_member_workspace_id_team_id_fkey FOREIGN KEY (workspace_id, team_id) REFERENCES team(workspace_id, id);
 CREATE INDEX team_member_actor_id_idx ON public.team_member USING btree (actor_id);
 ALTER TABLE team_member ENABLE ROW LEVEL SECURITY;
@@ -261,10 +327,15 @@ CREATE TABLE waitlist_broadcast_send (
   delivered_at timestamp with time zone
 );
 ALTER TABLE waitlist_broadcast_send ADD CONSTRAINT waitlist_broadcast_send_campaign_check CHECK ((campaign <> ''::text));
+ALTER TABLE waitlist_broadcast_send ADD CONSTRAINT waitlist_broadcast_send_campaign_not_null NOT NULL campaign;
+ALTER TABLE waitlist_broadcast_send ADD CONSTRAINT waitlist_broadcast_send_claimed_at_not_null NOT NULL claimed_at;
 ALTER TABLE waitlist_broadcast_send ADD CONSTRAINT waitlist_broadcast_send_delivered_when_sent CHECK (((status = 'sent'::text) = (delivered_at IS NOT NULL)));
+ALTER TABLE waitlist_broadcast_send ADD CONSTRAINT waitlist_broadcast_send_id_not_null NOT NULL id;
 ALTER TABLE waitlist_broadcast_send ADD CONSTRAINT waitlist_broadcast_send_pkey PRIMARY KEY (id);
 ALTER TABLE waitlist_broadcast_send ADD CONSTRAINT waitlist_broadcast_send_signup_id_fkey FOREIGN KEY (signup_id) REFERENCES waitlist_signup(id) ON DELETE CASCADE;
+ALTER TABLE waitlist_broadcast_send ADD CONSTRAINT waitlist_broadcast_send_signup_id_not_null NOT NULL signup_id;
 ALTER TABLE waitlist_broadcast_send ADD CONSTRAINT waitlist_broadcast_send_status_check CHECK ((status = ANY (ARRAY['claimed'::text, 'sent'::text, 'unknown'::text])));
+ALTER TABLE waitlist_broadcast_send ADD CONSTRAINT waitlist_broadcast_send_status_not_null NOT NULL status;
 CREATE UNIQUE INDEX waitlist_broadcast_send_campaign_signup_key ON public.waitlist_broadcast_send USING btree (campaign, signup_id);
 CREATE INDEX waitlist_broadcast_send_unresolved_idx ON public.waitlist_broadcast_send USING btree (campaign, claimed_at) WHERE (status <> 'sent'::text);
 
@@ -281,9 +352,15 @@ CREATE TABLE waitlist_signup (
   invitation_ref text
 );
 ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_approval_is_attributed CHECK (((status = 'approved'::text) = ((approved_at IS NOT NULL) AND (approved_by IS NOT NULL))));
+ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_created_at_not_null NOT NULL created_at;
 ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_email_check CHECK ((email <> ''::text));
+ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_email_not_null NOT NULL email;
+ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_id_not_null NOT NULL id;
 ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_pkey PRIMARY KEY (id);
+ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_source_not_null NOT NULL source;
 ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'declined'::text])));
+ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_status_not_null NOT NULL status;
+ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_unsubscribe_token_not_null NOT NULL unsubscribe_token;
 CREATE UNIQUE INDEX waitlist_signup_email_key ON public.waitlist_signup USING btree (lower(email));
 CREATE INDEX waitlist_signup_pending_idx ON public.waitlist_signup USING btree (created_at, id) WHERE (status = 'pending'::text);
 CREATE UNIQUE INDEX waitlist_signup_unsubscribe_token_key ON public.waitlist_signup USING btree (unsubscribe_token);
@@ -302,12 +379,18 @@ CREATE TABLE workspace (
   company_size text
 );
 ALTER TABLE workspace ADD CONSTRAINT workspace_billing_status_check CHECK ((billing_status = ANY (ARRAY['active'::text, 'trialing'::text, 'past_due'::text, 'canceled'::text])));
+ALTER TABLE workspace ADD CONSTRAINT workspace_billing_status_not_null NOT NULL billing_status;
 ALTER TABLE workspace ADD CONSTRAINT workspace_checkpoint_allowance_check CHECK (((checkpoint_allowance IS NULL) OR (checkpoint_allowance >= 0)));
 ALTER TABLE workspace ADD CONSTRAINT workspace_company_size_check CHECK (((company_size IS NULL) OR (company_size = ANY (ARRAY['1-9'::text, '10-49'::text, '50-199'::text, '200-499'::text, '500+'::text]))));
+ALTER TABLE workspace ADD CONSTRAINT workspace_created_at_not_null NOT NULL created_at;
+ALTER TABLE workspace ADD CONSTRAINT workspace_display_name_not_null NOT NULL display_name;
+ALTER TABLE workspace ADD CONSTRAINT workspace_id_not_null NOT NULL id;
 ALTER TABLE workspace ADD CONSTRAINT workspace_pkey PRIMARY KEY (id);
 ALTER TABLE workspace ADD CONSTRAINT workspace_plan_check CHECK ((plan = ANY (ARRAY['solo'::text, 'team'::text, 'enterprise'::text])));
+ALTER TABLE workspace ADD CONSTRAINT workspace_plan_not_null NOT NULL plan;
 ALTER TABLE workspace ADD CONSTRAINT workspace_seats_purchased_check CHECK (((seats_purchased IS NULL) OR (seats_purchased > 0)));
 ALTER TABLE workspace ADD CONSTRAINT workspace_slug_key UNIQUE (slug);
+ALTER TABLE workspace ADD CONSTRAINT workspace_slug_not_null NOT NULL slug;
 ALTER TABLE workspace ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workspace FORCE ROW LEVEL SECURITY;
 CREATE POLICY workspace_workspace_isolation ON workspace USING ((id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
