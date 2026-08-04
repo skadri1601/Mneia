@@ -9,7 +9,7 @@
 .inner {
   width: min(100% - (2 * var(--space-lg)), var(--width-text));
   margin-inline: auto;
-  min-height: 52px;
+  min-height: 60px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -36,13 +36,13 @@
 }
 
 .mark {
-  width: 15px;
-  height: 16px;
+  width: 21px;
+  height: 23px;
 }
 
 .wordmark {
   font-family: var(--font-display);
-  font-size: var(--size-fine-print);
+  font-size: var(--size-wordmark);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.01em;
 }

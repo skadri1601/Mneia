@@ -20,10 +20,11 @@
   --font-text:
     "SF Pro Text", system-ui, -apple-system, BlinkMacSystemFont, var(--font-inter), sans-serif;
   --font-mono: var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-  --size-display-lg: calc(46px * var(--type-scale));
-  --size-tagline: calc(28px * var(--type-scale));
-  --size-body: calc(21px * var(--type-scale));
-  --size-fine-print: calc(16px * var(--type-scale));
+  --size-display-lg: calc(28px * var(--type-scale));
+  --size-tagline: calc(22px * var(--type-scale));
+  --size-body: calc(17px * var(--type-scale));
+  --size-fine-print: calc(15px * var(--type-scale));
+  --size-wordmark: calc(19px * var(--type-scale));
   --weight-regular: 400;
   --weight-semibold: 600;
   --leading-display-lg: 1.12;
@@ -55,7 +56,6 @@
 
 @media (max-width: 640px) {
   :root {
-    --size-display-lg: calc(32px * var(--type-scale));
-    --size-body: calc(19px * var(--type-scale));
+    --size-display-lg: calc(25px * var(--type-scale));
   }
 }
