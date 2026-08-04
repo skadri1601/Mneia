@@ -37,7 +37,7 @@ export const deliverAccessEmail = async (input: {
 }) =>
   sendAccessGranted({
     to: input.to,
-    from: required('MNEIA_WAITLIST_FROM'),
+    from: required('WAITLIST_FROM'),
     apiKey: required('RESEND_API_KEY'),
     idempotencyKey: input.idempotencyKey,
     email: { subject: input.subject, text: input.text, headers: input.headers },

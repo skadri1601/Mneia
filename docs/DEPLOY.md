@@ -70,7 +70,7 @@ rewriting a `notFound()` for signed-out visitors. Prefer deriving the value in c
 | `SENTRY_DSN` | Error reporting. Optional; absent means no reporting, not a crash. |
 | `MNEIA_SUPER_ADMIN_SUBJECTS` | Comma-separated Clerk user IDs allowed into `/admin`. **Unset admits nobody**, which is safe but makes the waitlist queue unreachable. There is no way to grant this from inside the product — that is the point. |
 | `RESEND_API_KEY` | Sends the access email on approval. Absent means approve is refused rather than approving someone we cannot reach. |
-| `MNEIA_WAITLIST_FROM` | The `From` address on that email, e.g. `Mneia <hello@mneia.dev>`. |
+| `WAITLIST_FROM` | The `From` address on that email. **Use `Mneia <saad@mneia.dev>`, not `hello@`** — Cloudflare Email Routing forwards `saad@` and drops everything unrouted, so replies to `hello@` vanish. Same variable name `apps/site` and `waitlist:notify` already use. |
 | `MNEIA_APP_ORIGIN` | Origin used to build the invitation's `/welcome` redirect. Defaults to `https://app.mneia.dev`. Deliberately **not** `NEXT_PUBLIC_` — see the warning above; a public-prefixed name would be inlined at build time and ignored here. |
 | `MNEIA_SITE_ORIGIN` | Marketing origin used to build unsubscribe links in the access email. Defaults to `https://mneia.dev`. Same reasoning. |
 
