@@ -69,7 +69,8 @@ These are real as of MNE-34/35/36. Keep this section current — a stale command
 
 ```
 pnpm install          # deps
-pnpm build            # tsc --build across packages — CI runs this
+pnpm build            # tsc --build across packages ONLY — does not typecheck apps/web or apps/site
+pnpm -r build         # every workspace member, including next build for both apps — CI runs this
 pnpm format:check     # CI runs this
 pnpm lint:ci          # biome lint, errors only — CI runs this
 pnpm check:policy     # branch, commit, and lane policy — CI runs this
@@ -86,8 +87,14 @@ pnpm waitlist:notify  # preview or send a waitlist campaign — local only, see 
 ```
 
 **`ci.yml` does not run tests or typecheck.** Ruled by the founder 2026-07-30: both were judged
-noise. That job is format, lint errors, build, and git policy. `pnpm build` is `tsc --build`, so a
-type error still fails as a build failure.
+noise. That job is format, lint errors, build, and git policy. It builds with `pnpm -r --if-present
+build`, which runs `next build` for both apps as well as `tsc --build` for the packages, so a type
+error anywhere still fails as a build failure.
+
+**But the bare `pnpm build` does not.** The root script is `tsc --build`, and the root `tsconfig.json`
+references only the three packages — so `pnpm build` typechecks zero app code and will happily go
+green on a branch with type errors in `apps/web`. Run `pnpm -r build`, or `next build` in the app you
+touched, before assuming the apps compile.
 
 **But `database.yml` does run them** (MNE-203, approved 2026-08-01 as a narrow exception). It runs
 the full suite with `MNEIA_REQUIRE_DB=1` — which turns a skipped integration suite into a failure
