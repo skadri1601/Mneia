@@ -8,6 +8,7 @@ import { migration as actorIdentity } from './0007-actor-identity.js';
 import { migration as conflictPairConstraints } from './0008-conflict-pair-constraints.js';
 import { migration as projectManagement } from './0009-project-management.js';
 import { migration as waitlistBroadcast } from './0010-waitlist-broadcast.js';
+import { migration as waitlistAdmission } from './0011-waitlist-admission.js';
 import type { Migration } from './migration.js';
 
 export type { AppliedMigration, Migration } from './migration.js';
@@ -23,4 +24,5 @@ export const MIGRATIONS: readonly Migration[] = [
   conflictPairConstraints,
   projectManagement,
   waitlistBroadcast,
+  waitlistAdmission,
 ];
