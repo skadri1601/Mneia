@@ -1,0 +1,89 @@
+name: configure-web-env
+
+on:
+  workflow_dispatch:
+    inputs:
+      restart:
+        description: Recreate the web container after writing
+        type: boolean
+        default: true
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Refuse to run with an unset value
+        env:
+          SUPER_ADMIN_SUBJECTS: ${{ vars.MNEIA_SUPER_ADMIN_SUBJECTS }}
+          WAITLIST_FROM: ${{ vars.WAITLIST_FROM }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          missing=""
+          [ -n "$SUPER_ADMIN_SUBJECTS" ] || missing="$missing MNEIA_SUPER_ADMIN_SUBJECTS(variable)"
+          [ -n "$WAITLIST_FROM" ] || missing="$missing WAITLIST_FROM(variable)"
+          [ -n "$RESEND_API_KEY" ] || missing="$missing RESEND_API_KEY(secret)"
+          if [ -n "$missing" ]; then
+            echo "Refusing to write a partial environment. Missing:$missing" >&2
+            echo "Set them under Settings > Secrets and variables > Actions, then re-run." >&2
+            exit 1
+          fi
+
+      - name: Authorize the runner against the droplet
+        run: |
+          install -d -m 700 ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Merge the values into /etc/mneia/web.env
+        env:
+          SUPER_ADMIN_SUBJECTS: ${{ vars.MNEIA_SUPER_ADMIN_SUBJECTS }}
+          WAITLIST_FROM: ${{ vars.WAITLIST_FROM }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          printf '%s\n' \
+            "MNEIA_SUPER_ADMIN_SUBJECTS=$SUPER_ADMIN_SUBJECTS" \
+            "WAITLIST_FROM=$WAITLIST_FROM" \
+            "RESEND_API_KEY=$RESEND_API_KEY" \
+          | ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+              "docker run --rm -i -v /etc/mneia:/m alpine sh -c '
+                 set -e
+                 umask 077
+                 incoming=\$(cat)
+                 keys=\$(printf \"%s\n\" \"\$incoming\" | cut -d= -f1 | paste -sd\"|\" -)
+                 { grep -vE \"^(\$keys)=\" /m/web.env || true; printf \"%s\n\" \"\$incoming\"; } > /m/.web.env.next
+                 cat /m/.web.env.next > /m/web.env
+                 rm -f /m/.web.env.next
+               '"
+
+      - name: Report which keys are present, never their values
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "docker run --rm -v /etc/mneia:/m alpine sh -c '
+               ls -l /m/web.env
+               cut -d= -f1 /m/web.env | sort
+             '"
+
+      - name: Recreate the web container
+        if: ${{ inputs.restart }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
+            "cd /opt/mneia && docker compose up -d --force-recreate web"
+
+      - name: Wait for the app to answer
+        if: ${{ inputs.restart }}
+        run: |
+          for attempt in $(seq 1 20); do
+            if curl -fsS --max-time 10 "https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health" > /dev/null; then
+              echo "healthy after ${attempt} attempt(s)"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "app did not become healthy" >&2
+          exit 1

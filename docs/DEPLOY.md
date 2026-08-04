@@ -74,6 +74,21 @@ rewriting a `notFound()` for signed-out visitors. Prefer deriving the value in c
 | `MNEIA_APP_ORIGIN` | Origin used to build the invitation's `/welcome` redirect. Defaults to `https://app.mneia.dev`. Deliberately **not** `NEXT_PUBLIC_` — see the warning above; a public-prefixed name would be inlined at build time and ignored here. |
 | `MNEIA_SITE_ORIGIN` | Marketing origin used to build unsubscribe links in the access email. Defaults to `https://mneia.dev`. Same reasoning. |
 
+### Setting these without SSH
+
+`configure-web-env.yml` writes `MNEIA_SUPER_ADMIN_SUBJECTS`, `WAITLIST_FROM`, and `RESEND_API_KEY`
+into `/etc/mneia/web.env` using the same deploy key `deploy-web.yml` already holds, then recreates
+the container. Run it from the Actions tab; it is `workflow_dispatch` only and gated on the
+`production` environment.
+
+Values come from **Settings → Secrets and variables → Actions** — the two non-secret ones as
+*variables*, the API key as a *secret*. The job refuses to run if any is unset rather than writing a
+partial environment, and it merges rather than overwrites, so the keys already in the file survive.
+It prints the key names present afterwards and never a value.
+
+This exists because the deploy key lives only in GitHub. Anyone without it cannot reach the droplet,
+so the alternative was pasting an API key into a chat window or a terminal transcript.
+
 GitHub Actions secrets, for `deploy-web.yml`:
 
 | Secret | Purpose |
