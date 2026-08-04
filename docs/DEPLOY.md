@@ -78,8 +78,9 @@ rewriting a `notFound()` for signed-out visitors. Prefer deriving the value in c
 
 `configure-web-env.yml` writes `MNEIA_SUPER_ADMIN_SUBJECTS`, `WAITLIST_FROM`, and `RESEND_API_KEY`
 into `/etc/mneia/web.env` using the same deploy key `deploy-web.yml` already holds, then recreates
-the container. Run it from the Actions tab; it is `workflow_dispatch` only and gated on the
-`production` environment.
+the container. Run it from the Actions tab; it is `workflow_dispatch` only and bound to the
+`Production` environment. **That environment carries no protection rules today**, so binding it
+buys an audit trail and a place to add required reviewers later, not an approval step now.
 
 Values come from **Settings → Secrets and variables → Actions** — the two non-secret ones as
 *variables*, the API key as a *secret*. The job refuses to run if any is unset rather than writing a
