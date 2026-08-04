@@ -25,11 +25,21 @@ These are token specs, not mood boards, and they carry do/don't rules that are e
 accident. **If you find yourself picking a colour, you have gone wrong** — check `apple.md` first,
 because it almost certainly already has one.
 
+> **Type sizes are the one exception, ruled 2026-08-03 (MNE-238).** **Never take a font size from
+> `apple.md`, or from this file's earlier ladder.** Apple's sizes are built for a landing page: 21px
+> body, 46px display. Applied to `apps/web` they produced a heading filling a third of the viewport
+> and the founder's verdict was *"not professional at all"*. Everything else in `apple.md` still
+> applies verbatim — colours, spacing, radii, the one shadow, press states, touch targets.
+>
+> **The scale is compact, and it lives in the two `tokens.css` files, not here:** body 15px,
+> secondary 13px, page heading 24px, section heading 18px. `apps/site` keeps a larger hero because a
+> landing page needs one; its ratios were preserved and only the anchor moved.
+
 The two deviations, both one token:
 
-- **Type is scaled by `--type-scale` (1.15).** Apple's absolute sizes read too small on a developer's
-  monitor. Every size is `calc(Npx * var(--type-scale))`, so **every ratio in the ladder is preserved
-  exactly**. To retune, change the multiplier — never an individual size, which re-ramps the ladder.
+- **Type is scaled by `--type-scale`, currently 1.** Every size is `calc(Npx * var(--type-scale))`, so
+  **every ratio in the ladder is preserved exactly**. To retune globally, change the multiplier —
+  never an individual size, which re-ramps the ladder.
 - **The artifact is set in JetBrains Mono.** `apple.md` defines no monospace face because Apple ships
   no code content.
 
@@ -79,7 +89,8 @@ iteration.
 - **Surface-colour change is the section divider.** No borders between sections, no gradients anywhere.
 - **Default and active/pressed states only.** Never document hover.
 - **`transform: scale(0.95)` is the press state** on every button — Apple's system-wide micro-interaction.
-- **Body copy at 17px, not 16px**, and the weight ladder is 300 / 400 / 600 / 700 with 500 absent.
+- **Body copy at 15px** (MNE-238), and the weight ladder is 300 / 400 / 600 / 700 with 500 absent.
+  Ignore any size `apple.md` states — that ladder is rejected for type and type only.
 - **Minimum 44 × 44px touch targets.**
 - **Variants are separate component entries** (`-active`, `-focus`, `-dark-2`), not conditional props
   buried in one component.
