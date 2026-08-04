@@ -50,6 +50,15 @@ test('carries the published legal pages in the footer', () => {
   expect(markup).toContain('https://mneia.dev/terms');
 });
 
+test('offers a signed-in user support, not the marketing homepage', () => {
+  const markup = render();
+
+  expect(markup).toContain('https://mneia.dev/docs');
+  expect(markup).toContain('https://mneia.dev/help');
+  expect(markup).toContain('https://mneia.dev/contact');
+  expect(markup).not.toContain('href="https://mneia.dev"');
+});
+
 test('loads the webfonts rather than falling through to a generic sans', () => {
   const markup = render();
 
