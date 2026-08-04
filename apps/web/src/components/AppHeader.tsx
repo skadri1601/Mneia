@@ -1,7 +1,10 @@
-import { SignedIn, UserButton } from '@clerk/nextjs';
+import { SignedIn } from '@clerk/nextjs';
 import Link from 'next/link';
+import { AccountMenu } from './AccountMenu.js';
 import styles from './AppHeader.module.css';
 import { MneiaLetter } from './MneiaMark.js';
+
+const SITE = 'https://mneia.dev';
 
 export function AppHeader() {
   return (
@@ -11,11 +14,13 @@ export function AppHeader() {
           <MneiaLetter className={styles.mark} />
           <span className={styles.wordmark}>Mneia</span>
         </Link>
+        <nav className={styles.nav} aria-label="Resources">
+          <a href={`${SITE}/docs`}>Docs</a>
+          <a href={`${SITE}/help`}>Help</a>
+        </nav>
         <SignedIn>
           <div className={styles.account}>
-            <UserButton
-              appearance={{ elements: { avatarBox: { width: '32px', height: '32px' } } }}
-            />
+            <AccountMenu />
           </div>
         </SignedIn>
       </div>
