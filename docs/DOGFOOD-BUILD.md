@@ -39,6 +39,28 @@ preventing merge conflicts, because the work concentrates in very few files.
 **Codex:** `.claude/rules/` does not auto-load for you. Read `CODEX.md`, and for this work read
 `.claude/rules/typescript-style.md` and `.claude/rules/data-model.md` directly.
 
+### Branch off lane 1 until PR #59 lands
+
+The core re-export that lanes 2 and 3 need is in **PR #59**, not yet on `main`. Until it merges,
+branch from `feat/mne-44-local-store-binding` rather than `main`, or `import { PostgresStoreAdapter }
+from '@mneia/core'` will not resolve.
+
+### Run tests against a local container, not Neon
+
+`pnpm test` with the `DATABASE_URL` from `.env` runs the integration suite against Neon over the
+network — **645 seconds** for a full run, measured 2026-08-04. The same suite takes ~27s on a
+container. Three lanes iterating against Neon is also the storage problem MNE-226 fixed for CI and
+never fixed for local development.
+
+```
+docker run -d --name mneia-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=mneia \
+  -p 5433:5432 pgvector/pgvector:pg18
+DATABASE_URL='postgres://postgres:postgres@localhost:5433/mneia' pnpm test
+```
+
+An explicit prefix always wins over `.env` — `process.loadEnvFile` does not overwrite a variable the
+environment already set.
+
 ---
 
 ## Status board
@@ -49,7 +71,7 @@ Update the marker and add the PR or commit. `[ ]` not started · `[~]` in progre
 
 | | Item | Files | Notes |
 |---|---|---|---|
-| `[ ]` | Re-export `PostgresStoreAdapter` + `StoreError` | `packages/core/src/index.ts` | `index.ts:61` re-exports types only; `package.json` exports map is `"."` alone, so deep import is blocked |
+| `[x]` | Re-export `PostgresStoreAdapter` + `StoreError` | `packages/core/src/index.ts` | **PR #59.** Verified by resolving `@mneia/core` by package name from inside `packages/mcp-server`, not by relative path — the exports map was the blocker. Also fixed there: Biome rejecting in-repo worktrees as nested root configs, which broke `format:check` and `lint:ci` locally for every parallel session; and `.claude/worktrees/` now gitignored |
 | `[ ]` | `NewProject` + `ConfirmContextItemInput` types | `store/adapter/types.ts` | **Land first, alone.** Unblocks lanes 2 and 3 |
 | `[ ]` | `createProject` on `ScopedStore` + adapter | `store/adapter/types.ts`, `postgres.ts` | No path in shipped source creates a project row |
 | `[ ]` | `confirmContextItem` on `ScopedStore` + adapter | `store/adapter/types.ts`, `postgres.ts` | No update method exists at all |
