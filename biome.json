@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!**/dist", "!**/node_modules", "!**/*.tsbuildinfo"]
+    "includes": ["**", "!**/dist", "!**/node_modules", "!**/*.tsbuildinfo", "!.claude/worktrees"]
   },
   "formatter": {
     "enabled": true,
