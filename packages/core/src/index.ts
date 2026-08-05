@@ -58,8 +58,16 @@ export type {
   PostgresConnectionSource,
   PostgresSession,
   SqlRow,
+  StoreErrorCode,
 } from './store/adapter/index.js';
-export { toActor, toTeam, toTeamMember, toWorkspace } from './store/adapter/index.js';
+export {
+  PostgresStoreAdapter,
+  StoreError,
+  toActor,
+  toTeam,
+  toTeamMember,
+  toWorkspace,
+} from './store/adapter/index.js';
 export type {
   CheckpointWrite,
   CheckpointWriteItem,
