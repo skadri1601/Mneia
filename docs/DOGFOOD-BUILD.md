@@ -4,7 +4,9 @@
 Cursor and Claude Desktop. That is M1's own success test — *"the founder uses it daily and does not
 turn it off."*
 
-**Status: nothing runs today.** Every CLI command rejects with *"the hosted Mneia API client is not
+**Status: the store binding landed in PR #60 (2026-08-05), verified green on a real Postgres 18 container — 1020 tests, none skipped.** The paragraph below describes the state before it.
+
+**Was: nothing ran.** Every CLI command rejects with *"the hosted Mneia API client is not
 wired into this build yet"*. The MCP server initialises, advertises all four tools with full schemas,
 then returns `store_unavailable` on every call. Verified by driving the checked-in builds over stdio,
 not by reading them.
@@ -72,22 +74,22 @@ Update the marker and add the PR or commit. `[ ]` not started · `[~]` in progre
 | | Item | Files | Notes |
 |---|---|---|---|
 | `[x]` | Re-export `PostgresStoreAdapter` + `StoreError` | `packages/core/src/index.ts` | **PR #59.** Verified by resolving `@mneia/core` by package name from inside `packages/mcp-server`, not by relative path — the exports map was the blocker. Also fixed there: Biome rejecting in-repo worktrees as nested root configs, which broke `format:check` and `lint:ci` locally for every parallel session; and `.claude/worktrees/` now gitignored |
-| `[ ]` | `NewProject` + `ConfirmContextItemInput` types | `store/adapter/types.ts` | **Land first, alone.** Unblocks lanes 2 and 3 |
-| `[ ]` | `createProject` on `ScopedStore` + adapter | `store/adapter/types.ts`, `postgres.ts` | No path in shipped source creates a project row |
-| `[ ]` | `confirmContextItem` on `ScopedStore` + adapter | `store/adapter/types.ts`, `postgres.ts` | No update method exists at all |
-| `[ ]` | `decay_after` in the INSERT column list | `postgres.ts:525-529` | Column exists (`structure.sql:147`), adapter omits it |
-| `[ ]` | Bootstrap script | `scripts/` (new) | workspace · human actor · **agent actor** · team · project · `~/.mneia/local.json` |
+| `[x]` | `NewProject` + `ConfirmContextItemInput` types | `store/adapter/types.ts` | **Land first, alone.** Unblocks lanes 2 and 3 |
+| `[x]` | `createProject` on `ScopedStore` + adapter | `store/adapter/types.ts`, `postgres.ts` | No path in shipped source creates a project row |
+| `[x]` | `confirmContextItem` on `ScopedStore` + adapter | `store/adapter/types.ts`, `postgres.ts` | No update method exists at all |
+| `[x]` | `decay_after` in the INSERT column list | `postgres.ts:525-529` | Column exists (`structure.sql:147`), adapter omits it |
+| `[x]` | Bootstrap script | `scripts/` (new) | workspace · human actor · **agent actor** · team · project · `~/.mneia/local.json` |
 
 ### Lane 2 — MCP surface (owner: Claude session 2, in a worktree)
 
 | | Item | Files | Notes |
 |---|---|---|---|
-| `[ ]` | Replace the throwing context provider | `mcp-server/src/bin.ts:97` | Build `PostgresStoreAdapter` from `~/.mneia/local.json`, return `withScope({workspaceId, actorId: <AGENT actor>})` |
-| `[ ]` | Local mode in config | `mcp-server/src/config.ts:148` | Currently exits 1 on missing `MNEIA_TOKEN` and tells the user to run `mneia login`, which does not exist |
-| `[ ]` | Thread `createJsonlSink` into `ToolContext` | `bin.ts`, `tools/types.ts` | **Not** `sinks: []` at `bin.ts:89` — that emitter is only used for flush/close at `server.ts:230`. Tools emit through `context.telemetry` |
-| `[ ]` | Call `createSession` when building the context | `bin.ts` | `createSession`/`endSession` have zero callers; every item lands with null session provenance |
-| `[ ]` | `sliceId` + `referencedItemIds` on `mneia_checkpoint` | `tools/checkpoint.ts` | Emits `item_referenced` / `item_ignored`. **Day 1 or the first week is unreconstructable** |
-| `[ ]` | Route load-bearing candidates somewhere real | `tools/checkpoint.ts:306` | Currently `pendingForLoadBearing`, returned in the response and written nowhere. See *Open decisions* |
+| `[x]` | Replace the throwing context provider | `mcp-server/src/bin.ts:97` | Build `PostgresStoreAdapter` from `~/.mneia/local.json`, return `withScope({workspaceId, actorId: <AGENT actor>})` |
+| `[x]` | Local mode in config | `mcp-server/src/config.ts:148` | Currently exits 1 on missing `MNEIA_TOKEN` and tells the user to run `mneia login`, which does not exist |
+| `[x]` | Thread `createJsonlSink` into `ToolContext` | `bin.ts`, `tools/types.ts` | **Not** `sinks: []` at `bin.ts:89` — that emitter is only used for flush/close at `server.ts:230`. Tools emit through `context.telemetry` |
+| `[x]` | Call `createSession` when building the context | `bin.ts` | `createSession`/`endSession` have zero callers; every item lands with null session provenance |
+| `[x]` | `sliceId` + `referencedItemIds` on `mneia_checkpoint` | `tools/checkpoint.ts` | Emits `item_referenced` / `item_ignored`. **Day 1 or the first week is unreconstructable** |
+| `[x]` | Route load-bearing candidates somewhere real | `tools/checkpoint.ts:306` | Currently `pendingForLoadBearing`, returned in the response and written nowhere. See *Open decisions* |
 
 ### Lane 3 — everything else (owner: Codex)
 
