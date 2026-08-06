@@ -1,5 +1,11 @@
 export const WORKSPACE_SETTING = 'mneia.workspace_id';
 export const IDENTITY_SUBJECT_SETTING = 'mneia.identity_subject';
+export const DEVICE_CODE_HASH_SETTING = 'mneia.device_code_hash';
+export const DEVICE_USER_CODE_SETTING = 'mneia.device_user_code';
+export const API_TOKEN_HASH_SETTING = 'mneia.api_token_hash';
+
+export const DEVICE_AUTHORIZATION_STATUSES = ['pending', 'approved', 'denied', 'redeemed'] as const;
+export type DeviceAuthorizationStatus = (typeof DEVICE_AUTHORIZATION_STATUSES)[number];
 
 export const ACTOR_KINDS = ['human', 'agent'] as const;
 export type ActorKind = (typeof ACTOR_KINDS)[number];

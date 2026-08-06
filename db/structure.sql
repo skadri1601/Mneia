@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 11
+-- schema version: 12
 
 -- extensions
 
@@ -46,6 +46,36 @@ ALTER TABLE actor ENABLE ROW LEVEL SECURITY;
 ALTER TABLE actor FORCE ROW LEVEL SECURITY;
 CREATE POLICY actor_identity_lookup ON actor FOR SELECT USING (((kind = 'human'::actor_kind) AND (external_ref = NULLIF(current_setting('mneia.identity_subject'::text, true), ''::text)) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
 CREATE POLICY actor_workspace_isolation ON actor USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE api_token (
+  id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  actor_id uuid NOT NULL,
+  token_hash text NOT NULL,
+  label text DEFAULT ''::text NOT NULL,
+  device_authorization_id uuid,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  last_used_at timestamp with time zone,
+  expires_at timestamp with time zone,
+  revoked_at timestamp with time zone
+);
+ALTER TABLE api_token ADD CONSTRAINT api_token_actor_id_not_null NOT NULL actor_id;
+ALTER TABLE api_token ADD CONSTRAINT api_token_created_at_not_null NOT NULL created_at;
+ALTER TABLE api_token ADD CONSTRAINT api_token_device_authorization_id_fkey FOREIGN KEY (device_authorization_id) REFERENCES device_authorization(id);
+ALTER TABLE api_token ADD CONSTRAINT api_token_id_not_null NOT NULL id;
+ALTER TABLE api_token ADD CONSTRAINT api_token_label_not_null NOT NULL label;
+ALTER TABLE api_token ADD CONSTRAINT api_token_pkey PRIMARY KEY (id);
+ALTER TABLE api_token ADD CONSTRAINT api_token_token_hash_not_null NOT NULL token_hash;
+ALTER TABLE api_token ADD CONSTRAINT api_token_workspace_id_actor_id_fkey FOREIGN KEY (workspace_id, actor_id) REFERENCES actor(workspace_id, id);
+ALTER TABLE api_token ADD CONSTRAINT api_token_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE api_token ADD CONSTRAINT api_token_workspace_id_id_key UNIQUE (workspace_id, id);
+ALTER TABLE api_token ADD CONSTRAINT api_token_workspace_id_not_null NOT NULL workspace_id;
+CREATE UNIQUE INDEX api_token_token_hash_key ON public.api_token USING btree (token_hash);
+CREATE INDEX api_token_workspace_actor_idx ON public.api_token USING btree (workspace_id, actor_id, created_at DESC);
+ALTER TABLE api_token ENABLE ROW LEVEL SECURITY;
+ALTER TABLE api_token FORCE ROW LEVEL SECURITY;
+CREATE POLICY api_token_bearer_lookup ON api_token FOR SELECT USING (((token_hash = NULLIF(current_setting('mneia.api_token_hash'::text, true), ''::text)) AND (revoked_at IS NULL) AND ((expires_at IS NULL) OR (expires_at > now())) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
+CREATE POLICY api_token_workspace_isolation ON api_token USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
 
 CREATE TABLE checkpoint (
   id uuid NOT NULL,
@@ -179,6 +209,67 @@ CREATE INDEX context_item_project_id_status_kind_idx ON public.context_item USIN
 ALTER TABLE context_item ENABLE ROW LEVEL SECURITY;
 ALTER TABLE context_item FORCE ROW LEVEL SECURITY;
 CREATE POLICY context_item_workspace_isolation ON context_item USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE device_approval_attempt (
+  workspace_id uuid NOT NULL,
+  actor_id uuid NOT NULL,
+  window_started_at timestamp with time zone DEFAULT now() NOT NULL,
+  failed_attempts integer DEFAULT 0 NOT NULL
+);
+ALTER TABLE device_approval_attempt ADD CONSTRAINT device_approval_attempt_actor_id_not_null NOT NULL actor_id;
+ALTER TABLE device_approval_attempt ADD CONSTRAINT device_approval_attempt_failed_attempts_check CHECK ((failed_attempts >= 0));
+ALTER TABLE device_approval_attempt ADD CONSTRAINT device_approval_attempt_failed_attempts_not_null NOT NULL failed_attempts;
+ALTER TABLE device_approval_attempt ADD CONSTRAINT device_approval_attempt_pkey PRIMARY KEY (workspace_id, actor_id);
+ALTER TABLE device_approval_attempt ADD CONSTRAINT device_approval_attempt_window_started_at_not_null NOT NULL window_started_at;
+ALTER TABLE device_approval_attempt ADD CONSTRAINT device_approval_attempt_workspace_id_actor_id_fkey FOREIGN KEY (workspace_id, actor_id) REFERENCES actor(workspace_id, id);
+ALTER TABLE device_approval_attempt ADD CONSTRAINT device_approval_attempt_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE device_approval_attempt ADD CONSTRAINT device_approval_attempt_workspace_id_not_null NOT NULL workspace_id;
+ALTER TABLE device_approval_attempt ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_approval_attempt FORCE ROW LEVEL SECURITY;
+CREATE POLICY device_approval_attempt_workspace_isolation ON device_approval_attempt USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE device_authorization (
+  id uuid NOT NULL,
+  device_code_hash text NOT NULL,
+  user_code text NOT NULL,
+  confirmation_code text NOT NULL,
+  client_label text DEFAULT ''::text NOT NULL,
+  status text DEFAULT 'pending'::text NOT NULL,
+  claimed_workspace_id uuid,
+  claimed_actor_id uuid,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  claimed_at timestamp with time zone,
+  redeemed_at timestamp with time zone
+);
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_claim_is_whole CHECK (((claimed_workspace_id IS NULL) = (claimed_actor_id IS NULL)));
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_claim_matches_status CHECK (((status = 'pending'::text) = (claimed_workspace_id IS NULL)));
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_claimed_at_matches_claim CHECK (((claimed_at IS NULL) = (claimed_workspace_id IS NULL)));
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_claimed_workspace_id_claimed_actor_id_fkey FOREIGN KEY (claimed_workspace_id, claimed_actor_id) REFERENCES actor(workspace_id, id);
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_claimed_workspace_id_fkey FOREIGN KEY (claimed_workspace_id) REFERENCES workspace(id);
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_client_label_not_null NOT NULL client_label;
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_confirmation_code_not_null NOT NULL confirmation_code;
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_created_at_not_null NOT NULL created_at;
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_device_code_hash_not_null NOT NULL device_code_hash;
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_expires_after_creation CHECK ((expires_at > created_at));
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_expires_at_not_null NOT NULL expires_at;
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_id_not_null NOT NULL id;
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_pkey PRIMARY KEY (id);
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_redeemed_at_matches_status CHECK (((status = 'redeemed'::text) = (redeemed_at IS NOT NULL)));
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'denied'::text, 'redeemed'::text])));
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_status_not_null NOT NULL status;
+ALTER TABLE device_authorization ADD CONSTRAINT device_authorization_user_code_not_null NOT NULL user_code;
+CREATE UNIQUE INDEX device_authorization_device_code_hash_key ON public.device_authorization USING btree (device_code_hash);
+CREATE INDEX device_authorization_expiry_idx ON public.device_authorization USING btree (expires_at);
+CREATE UNIQUE INDEX device_authorization_user_code_key ON public.device_authorization USING btree (user_code);
+ALTER TABLE device_authorization ENABLE ROW LEVEL SECURITY;
+ALTER TABLE device_authorization FORCE ROW LEVEL SECURITY;
+CREATE POLICY device_authorization_claim ON device_authorization FOR UPDATE USING (((user_code = NULLIF(current_setting('mneia.device_user_code'::text, true), ''::text)) AND (status = 'pending'::text) AND (claimed_workspace_id IS NULL) AND (expires_at > now()))) WITH CHECK (((status = ANY (ARRAY['approved'::text, 'denied'::text])) AND (user_code = NULLIF(current_setting('mneia.device_user_code'::text, true), ''::text)) AND (claimed_workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)));
+CREATE POLICY device_authorization_poll ON device_authorization FOR SELECT USING (((device_code_hash = NULLIF(current_setting('mneia.device_code_hash'::text, true), ''::text)) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
+CREATE POLICY device_authorization_redemption ON device_authorization FOR UPDATE USING (((device_code_hash = NULLIF(current_setting('mneia.device_code_hash'::text, true), ''::text)) AND (claimed_workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid) AND (status = 'approved'::text) AND (expires_at > now()))) WITH CHECK (((status = 'redeemed'::text) AND (claimed_workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)));
+CREATE POLICY device_authorization_start ON device_authorization FOR INSERT WITH CHECK (((status = 'pending'::text) AND (claimed_workspace_id IS NULL) AND (claimed_actor_id IS NULL) AND (redeemed_at IS NULL) AND (device_code_hash = NULLIF(current_setting('mneia.device_code_hash'::text, true), ''::text)) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
+CREATE POLICY device_authorization_user_code_lookup ON device_authorization FOR SELECT USING (((user_code = NULLIF(current_setting('mneia.device_user_code'::text, true), ''::text)) AND (status = 'pending'::text) AND (expires_at > now())));
+CREATE POLICY device_authorization_workspace_isolation ON device_authorization FOR SELECT USING ((claimed_workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
 
 CREATE TABLE handoff (
   id uuid NOT NULL,
