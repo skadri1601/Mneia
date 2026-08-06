@@ -5,6 +5,7 @@ on:
     paths:
       - 'packages/core/src/store/**'
       - 'packages/mcp-server/src/**'
+      - 'apps/web/src/server/**'
       - 'tests/integration/**'
       - 'scripts/db-migrate.mjs'
       - 'db/structure.sql'
@@ -16,6 +17,7 @@ on:
     paths:
       - 'packages/core/src/store/**'
       - 'packages/mcp-server/src/**'
+      - 'apps/web/src/server/**'
       - 'tests/integration/**'
       - 'scripts/db-migrate.mjs'
       - 'db/structure.sql'
