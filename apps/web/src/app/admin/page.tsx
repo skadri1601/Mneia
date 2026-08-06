@@ -1,5 +1,9 @@
 import { notFound } from 'next/navigation';
-import { admissionStore } from '../../server/admission-runtime.js';
+import {
+  ACCESS_EMAIL_FROM_VAR,
+  ACCESS_EMAIL_KEY_VAR,
+  admissionStore,
+} from '../../server/admission-runtime.js';
 import { currentUserIsSuperAdmin } from '../../server/super-admin.js';
 import { approveSignupAction } from './actions.js';
 import styles from './admin.module.css';
@@ -27,8 +31,7 @@ const ERRORS: Readonly<Record<string, string>> = {
   already_decided: 'That signup had already been decided.',
   signup_not_found: 'That signup no longer exists.',
   invitation_failed: 'Clerk refused to create the invitation. Nobody was emailed.',
-  email_not_configured:
-    'The access email is not configured, so nobody was approved. Set MNEIA_WAITLIST_FROM and RESEND_API_KEY.',
+  email_not_configured: `The access email is not configured, so nobody was approved. Set ${ACCESS_EMAIL_FROM_VAR} and ${ACCESS_EMAIL_KEY_VAR} in /etc/mneia/web.env.`,
   approve_failed: 'The approval did not complete. Nothing was sent.',
 };
 

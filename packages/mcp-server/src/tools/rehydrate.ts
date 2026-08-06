@@ -197,6 +197,8 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
 
     context.slices.record({ sliceId: slice.id, projectId: project.id, itemIds });
 
+    context.slices.record({ sliceId: slice.id, projectId: project.id, itemIds });
+
     await emitBestEffort(context, {
       name: 'rehydration.slice_shown',
       workspaceId: context.store.scope.workspaceId,
