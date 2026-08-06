@@ -6,6 +6,7 @@ import type {
   ContextItem,
   Embedding,
   Handoff,
+  IntervalMs,
   Project,
   Session,
   Uuid,
@@ -53,6 +54,24 @@ export interface NewContextItem {
   readonly accessScope?: AccessScope;
   readonly embedding?: Embedding | null;
   readonly supersedesId?: Uuid | null;
+  readonly decayAfter?: IntervalMs | null;
+}
+
+export interface NewProject {
+  readonly id?: Uuid;
+  readonly slug: string;
+  readonly displayName: string;
+  readonly teamId?: Uuid | null;
+  readonly repoUrl?: string | null;
+}
+
+export interface ConfirmContextItemInput {
+  readonly id: Uuid;
+  readonly confirmedBy: Uuid;
+  readonly loadBearing?: boolean;
+  readonly accessScope?: AccessScope;
+  readonly title?: string;
+  readonly body?: string | null;
 }
 
 export interface NewCheckpoint {
@@ -108,6 +127,7 @@ export interface ScopedStore {
   getActor(id: Uuid): Promise<Actor | null>;
   getProjectBySlug(slug: string): Promise<Project | null>;
   getProject(id: Uuid): Promise<Project | null>;
+  createProject(input: NewProject): Promise<Project>;
   createSession(projectId: Uuid, tool: string | null): Promise<Session>;
   endSession(id: Uuid): Promise<Session>;
 
@@ -116,6 +136,7 @@ export interface ScopedStore {
   searchContextItems(search: ContextItemSearch): Promise<readonly ContextItem[]>;
   insertContextItem(item: NewContextItem): Promise<ContextItem>;
   supersedeContextItem(previousId: Uuid, replacement: NewContextItem): Promise<ContextItem>;
+  confirmContextItem(input: ConfirmContextItemInput): Promise<ContextItem>;
 
   writeCheckpoint(write: CheckpointWrite): Promise<CheckpointWriteResult>;
   getCheckpoint(id: Uuid): Promise<Checkpoint | null>;

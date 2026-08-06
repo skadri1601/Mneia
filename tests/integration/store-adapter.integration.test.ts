@@ -638,6 +638,98 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
     });
   });
 
+  it('writes decay_after instead of silently dropping it', async () => {
+    await withAdapter(async (adapter) => {
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const withDecay = await store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'the staging key rotates weekly'),
+          kind: 'fact',
+          decayAfter: 604_800_000,
+        });
+        expect(withDecay.decayAfter).toBe(604_800_000);
+
+        const reread = await store.getContextItem(withDecay.id);
+        expect(reread?.decayAfter).toBe(604_800_000);
+
+        const without = await store.insertContextItem(
+          newItem(PROJECT_A, ACTOR_A, 'no decay on this one'),
+        );
+        expect(without.decayAfter).toBeNull();
+
+        await expect(
+          store.insertContextItem({
+            ...newItem(PROJECT_A, ACTOR_A, 'negative decay'),
+            decayAfter: -1,
+          }),
+        ).rejects.toThrow(/expected item.decayAfter to be a non-negative number of milliseconds/);
+      });
+    });
+  });
+
+  it('creates a project inside the scoped workspace, with display_name and a nullable repo', async () => {
+    await withAdapter(async (adapter) => {
+      const created = await adapter.withScope(SCOPE_A, async (store) =>
+        store.createProject({ slug: 'q3-enterprise-motion', displayName: 'Q3 enterprise motion' }),
+      );
+
+      expect(created.workspaceId).toBe(WS_A);
+      expect(created.slug).toBe('q3-enterprise-motion');
+      expect(created.repoUrl).toBeNull();
+      expect(created.teamId).toBeNull();
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        expect((await store.getProjectBySlug('q3-enterprise-motion'))?.id).toBe(created.id);
+      });
+
+      await adapter.withScope(SCOPE_B, async (store) => {
+        expect(await store.getProject(created.id)).toBeNull();
+      });
+    });
+  });
+
+  it('confirms an item only for a human actor, and never for an agent', async () => {
+    await withAdapter(async (adapter) => {
+      const item = await adapter.withScope(SCOPE_AGENT_A, async (store) =>
+        store.insertContextItem({
+          ...newItem(PROJECT_A, AGENT_A, 'we should drop the queue'),
+          kind: 'decision',
+        }),
+      );
+      expect(item.humanConfirmed).toBe(false);
+
+      await adapter.withScope(SCOPE_AGENT_A, async (store) => {
+        await expect(
+          store.confirmContextItem({ id: item.id, confirmedBy: AGENT_A }),
+        ).rejects.toThrow(/to be an actor of kind "human"; received "agent"/);
+      });
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const stillUnconfirmed = await store.getContextItem(item.id);
+        expect(stillUnconfirmed?.humanConfirmed).toBe(false);
+
+        const confirmed = await store.confirmContextItem({
+          id: item.id,
+          confirmedBy: ACTOR_A,
+          loadBearing: true,
+          accessScope: 'team',
+          title: 'we keep the queue, with a dead-letter path',
+        });
+
+        expect(confirmed.humanConfirmed).toBe(true);
+        expect(confirmed.loadBearing).toBe(true);
+        expect(confirmed.accessScope).toBe('team');
+        expect(confirmed.title).toBe('we keep the queue, with a dead-letter path');
+        expect(confirmed.lastVerifiedAt).not.toBeNull();
+      });
+
+      await adapter.withScope(SCOPE_B, async (store) => {
+        await expect(
+          store.confirmContextItem({ id: item.id, confirmedBy: ACTOR_B }),
+        ).rejects.toThrow(/found none/);
+      });
+    });
+  });
+
   it('refuses arguments that are not UUIDs before they reach SQL', async () => {
     await withAdapter(async (adapter) => {
       await adapter.withScope(SCOPE_A, async (store) => {
