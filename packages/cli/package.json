@@ -17,6 +17,10 @@
   },
   "dependencies": {
     "@mneia/core": "workspace:*",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10"
   }
 }

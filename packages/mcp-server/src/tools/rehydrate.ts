@@ -1,10 +1,4 @@
-import {
-  DEFAULT_KIND_QUOTAS,
-  DEFAULT_SCORING_WEIGHTS,
-  packSlice,
-  renderSlice,
-  scoreItems,
-} from '@mneia/core';
+import { assembleSlice, candidateLimitFor as coreCandidateLimitFor } from '@mneia/core';
 import type {
   ContextItem,
   ItemKind,
@@ -133,11 +127,6 @@ function toolError(code: string, summary: string, remedy: string): ToolResult {
   };
 }
 
-function candidateLimitFor(tokenBudget: number): number {
-  const scaled = Math.ceil((tokenBudget / 1000) * CANDIDATES_PER_1K_TOKENS);
-  return Math.min(MAX_CANDIDATES, Math.max(MIN_CANDIDATES, scaled));
-}
-
 function mergeCandidates(...groups: readonly (readonly ContextItem[])[]): readonly ContextItem[] {
   const byId = new Map<Uuid, ContextItem>();
   for (const group of groups) {
@@ -195,66 +184,16 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
       );
     }
 
-    const [candidates, mandatory, superseded] = await Promise.all([
-      fromStore('searchContextItems', () =>
-        context.store.searchContextItems({
-          projectId: project.id,
-          statuses: ACTIVE_STATUSES,
-          asOf: now,
-          limit: candidateLimitFor(input.tokenBudget),
-        }),
-      ),
-      fromStore('listContextItems for load-bearing constraints', () =>
-        context.store.listContextItems({
-          projectId: project.id,
-          kinds: MANDATORY_KINDS,
-          statuses: ACTIVE_STATUSES,
-          loadBearing: true,
-          asOf: now,
-          limit: MANDATORY_ITEM_LIMIT,
-        }),
-      ),
-      fromStore('listContextItems for recently superseded items', () =>
-        context.store.listContextItems({
-          projectId: project.id,
-          kinds: SUPERSEDED_KINDS,
-          statuses: SUPERSEDED_STATUSES,
-          limit: RECENT_SUPERSEDED_LIMIT,
-        }),
-      ),
-    ]);
-
-    const scored = scoreItems({
-      items: mergeCandidates(mandatory, superseded, candidates),
-      taskEmbedding: null,
-      now,
-      weights: DEFAULT_SCORING_WEIGHTS,
-    });
-
-    const packed = packSlice({
-      scored,
+    const { slice, mandatoryItemIds, droppedItemIds } = await assembleSlice({
+      store: context.store,
+      project,
+      task: input.task,
       tokenBudget: input.tokenBudget,
-      quotas: DEFAULT_KIND_QUOTAS,
+      now,
+      onStoreCall: fromStore,
     });
 
-    const renderedMarkdown = renderSlice({
-      task: input.task,
-      packed,
-      generatedAt: now,
-    });
-
-    const slice: Slice = {
-      id: randomUUID(),
-      projectId: project.id,
-      task: input.task,
-      items: packed.items,
-      tokensUsed: packed.tokensUsed,
-      tokenBudget: packed.tokenBudget,
-      renderedMarkdown,
-      generatedAt: now,
-    };
-
-    const itemIds = slice.items.map((scoredItem) => scoredItem.item.id);
+    const itemIds = slice.items.map((scored) => scored.item.id);
 
     context.slices.record({ sliceId: slice.id, projectId: project.id, itemIds });
 
@@ -278,8 +217,8 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
         sliceId: slice.id,
         projectId: project.id,
         itemIds,
-        mandatoryItemIds: packed.mandatoryItemIds,
-        droppedItemIds: packed.droppedItemIds,
+        mandatoryItemIds,
+        droppedItemIds,
         tokenBudget: slice.tokenBudget,
         tokensUsed: slice.tokensUsed,
       },

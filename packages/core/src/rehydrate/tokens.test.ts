@@ -5,11 +5,13 @@ import {
   TRUNCATION_MARKER,
   type TokenCounter,
   countItemTokens,
+  defaultTokenCounter,
   heuristicTokenCounter,
   truncateToTokens,
 } from './tokens.js';
 
 const count = (text: string): number => heuristicTokenCounter.count(text);
+const defaultCount = (text: string): number => defaultTokenCounter.count(text);
 
 const PROSE = 'The quick brown fox jumps over the lazy dog.';
 
@@ -153,9 +155,9 @@ describe('countItemTokens', () => {
     const withBody = item({ body: 'Rationale: we already page on Postgres.' });
     const bare = item({ body: null });
 
-    expect(countItemTokens(bare)).toBe(ITEM_MARKUP_TOKENS + count(bare.title));
+    expect(countItemTokens(bare)).toBe(ITEM_MARKUP_TOKENS + defaultCount(bare.title));
     expect(countItemTokens(withBody)).toBeGreaterThan(countItemTokens(bare));
-    expect(countItemTokens(withBody)).toBeGreaterThan(count(withBody.body ?? ''));
+    expect(countItemTokens(withBody)).toBeGreaterThan(defaultCount(withBody.body ?? ''));
   });
 
   it('grows with the body it will have to render', () => {
@@ -186,7 +188,7 @@ describe('truncateToTokens', () => {
     const text = `${PROSE} ${PROSE} ${PROSE}`;
 
     for (const budget of [1, 2, 3, 5, 8, 13, 21, 34]) {
-      expect(count(truncateToTokens(text, budget))).toBeLessThanOrEqual(budget);
+      expect(defaultCount(truncateToTokens(text, budget))).toBeLessThanOrEqual(budget);
     }
   });
 
@@ -211,7 +213,7 @@ describe('truncateToTokens', () => {
     const kept = truncated.slice(0, truncated.length - TRUNCATION_MARKER.length);
 
     expect(CODE.startsWith(kept)).toBe(true);
-    expect(count(truncated)).toBeLessThanOrEqual(40);
+    expect(defaultCount(truncated)).toBeLessThanOrEqual(40);
   });
 
   it('falls back to the marker alone rather than splitting an unbroken run', () => {
@@ -219,7 +221,7 @@ describe('truncateToTokens', () => {
     const truncated = truncateToTokens(unbroken, 8);
 
     expect(truncated).toBe(TRUNCATION_MARKER.trim());
-    expect(count(truncated)).toBeLessThanOrEqual(8);
+    expect(defaultCount(truncated)).toBeLessThanOrEqual(8);
   });
 
   it('honours an injected counter', () => {
@@ -227,5 +229,28 @@ describe('truncateToTokens', () => {
 
     expect(truncateToTokens(text, 4, wordCounter).startsWith('one two')).toBe(true);
     expect(wordCounter.count(truncateToTokens(text, 4, wordCounter))).toBeLessThanOrEqual(4);
+  });
+});
+
+describe('the default token counter is a real tokenizer (MNE-70)', () => {
+  it('is the BPE counter, not the heuristic', () => {
+    expect(defaultTokenCounter.name).toBe('cl100k_base');
+    expect(defaultTokenCounter).not.toBe(heuristicTokenCounter);
+  });
+
+  it('counts exactly, where the heuristic only bounded', () => {
+    const cases: readonly (readonly [string, number])[] = [
+      ['we retry with an idempotency key', 8],
+      ['Ελληνικά και 日本語 mixed with English text for good measure.', 14],
+    ];
+
+    for (const [text, expected] of cases) {
+      expect(defaultTokenCounter.count(text)).toBe(expected);
+      expect(heuristicTokenCounter.count(text)).toBeGreaterThan(expected);
+    }
+  });
+
+  it('counts the empty string as zero, like the heuristic', () => {
+    expect(defaultTokenCounter.count('')).toBe(0);
   });
 });

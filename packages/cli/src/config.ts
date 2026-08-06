@@ -33,8 +33,8 @@ export function configPathFor(cwd: string): string {
 export function notConfiguredError(cwd: string): CliError {
   return new CliError(
     'not_configured',
-    `no Mneia project is bound to ${resolve(cwd)} — expected ${configPathFor(cwd)}`,
-    'run mneia init',
+    `no Mneia project is bound to ${resolve(cwd)} — neither ${configPathFor(cwd)} nor ~/.mneia/local.json exists`,
+    'run pnpm bootstrap:local --apply to create a workspace and bind this machine to it',
   );
 }
 
@@ -102,10 +102,23 @@ export async function requireProjectConfig(
   env: Readonly<Record<string, string | undefined>> = process.env,
 ): Promise<ProjectConfig> {
   const config = await loadProjectConfig(cwd, env);
-  if (config === null) {
+  if (config !== null) {
+    return config;
+  }
+
+  const { loadLocalBinding, localConfigPath } = await import('./local-store.js');
+  const binding = await loadLocalBinding(env);
+  if (binding === null) {
     throw notConfiguredError(cwd);
   }
-  return config;
+
+  return {
+    workspace: binding.workspaceId,
+    project: binding.projectSlug ?? binding.projectId ?? '',
+    endpoint: env[ENDPOINT_ENV_VAR] ?? DEFAULT_ENDPOINT,
+    configPath: localConfigPath(env),
+    repoRoot: resolve(cwd),
+  };
 }
 
 export function credentialsPath(
