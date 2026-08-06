@@ -27,10 +27,17 @@ Events are written nowhere — not buffered, not queued for later.
 
 ## Where events go
 
-Events are appended as JSON Lines to `~/.mneia/events.jsonl` (or `telemetryPath` in
-`~/.mneia/local.json`). **There is no remote sink in the shipped build.** Nothing is transmitted off
-your machine by the telemetry path today; when a remote sink ships it will be additive and off until
-explicitly enabled, and this file will say so.
+**Locally, always.** Events are appended as JSON Lines to `~/.mneia/events.jsonl` (or
+`telemetryPath` in `~/.mneia/local.json`). That path involves no network.
+
+**Remotely, only if you ask.** Setting `MNEIA_TELEMETRY_ENDPOINT` adds a second sink that POSTs
+batches to that URL; `MNEIA_TELEMETRY_TOKEN` supplies a bearer token if the endpoint needs one. With
+the endpoint unset — which is the default, and the only state a fresh install is ever in — **nothing
+is transmitted off your machine.** The remote sink is additive: enabling it never stops the local
+JSONL from being written, so turning it off later does not cost you your own history.
+
+Transmission failures are reported, not swallowed. A rejected batch or an unreachable endpoint logs
+how many events were lost rather than failing silently.
 
 Read the file, delete it, or point it somewhere else. It is yours.
 
