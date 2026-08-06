@@ -4,8 +4,10 @@ import type { CommandIo } from './command.js';
 import { briefCommand } from './commands/brief.js';
 import { checkpointCommand } from './commands/checkpoint.js';
 import { initCommand } from './commands/init.js';
+import { loginCommand } from './commands/login.js';
 import { logCommand } from './commands/log.js';
 import { statusCommand } from './commands/status.js';
+import { whoamiCommand } from './commands/whoami.js';
 import { route } from './router.js';
 
 const io: CommandIo = {
@@ -22,7 +24,15 @@ const io: CommandIo = {
 async function main(): Promise<void> {
   process.exitCode = await route({
     argv: process.argv.slice(2),
-    commands: [initCommand, briefCommand, checkpointCommand, logCommand, statusCommand],
+    commands: [
+      initCommand,
+      briefCommand,
+      checkpointCommand,
+      logCommand,
+      statusCommand,
+      loginCommand,
+      whoamiCommand,
+    ],
     io,
     version: VERSION,
   });
