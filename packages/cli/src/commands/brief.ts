@@ -1,5 +1,6 @@
 import type { ItemKind, ItemStatus, ScoredItem, Slice } from '@mneia/core';
 import { callApi } from '../api.js';
+import { localBriefApi } from './local-api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 
 type ConfigModule = typeof import('../config.js');
@@ -154,23 +155,12 @@ export function createBriefCommand(deps: BriefDeps): CommandDefinition {
   };
 }
 
-const unwiredApi: BriefApi = {
-  rehydrate: () =>
-    Promise.reject(
-      new CliError(
-        'failed',
-        'the hosted Mneia API client is not wired into this build yet',
-        'the hosted API lands with MNE-101; there is nothing to fix locally',
-      ),
-    ),
-};
-
 const defaultLoadConfig: ProjectConfigLoader = async (cwd) => {
   const { requireProjectConfig } = await import('../config.js');
   return requireProjectConfig(cwd);
 };
 
 export const briefCommand: CommandDefinition = createBriefCommand({
-  api: unwiredApi,
+  api: localBriefApi,
   loadConfig: defaultLoadConfig,
 });

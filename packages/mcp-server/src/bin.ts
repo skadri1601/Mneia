@@ -1,9 +1,10 @@
 #!/usr/bin/env node
-import type { ScopedStore, TelemetryEmitter, Uuid } from '@mneia/core';
+import type { ScopedStore, TelemetryEmitter, TelemetrySink, Uuid } from '@mneia/core';
 import {
   createJsonlSink,
   createNoopEmitter,
   createTelemetryEmitter,
+  remoteSinkFromEnv,
   PostgresStoreAdapter,
   VERSION,
 } from '@mneia/core';
@@ -62,6 +63,10 @@ Hosted API:
 Telemetry:
   MNEIA_TELEMETRY        Set to off to opt out. In local mode events are appended
                          to ~/.mneia/events.jsonl unless telemetryPath says otherwise.
+  MNEIA_TELEMETRY_ENDPOINT
+                         Also transmit events to this URL. Unset means nothing
+                         leaves the machine. Events carry ids and outcomes only.
+  MNEIA_TELEMETRY_TOKEN  Bearer token for that endpoint, if it needs one.
 `;
 
 function describeCause(cause: unknown): string {
@@ -113,7 +118,7 @@ function createTelemetry(config: ServerConfig, logger: ServerLogger): TelemetryE
     return createNoopEmitter();
   }
 
-  const sinks =
+  const sinks: TelemetrySink[] =
     config.mode === 'local'
       ? [
           createJsonlSink({
@@ -126,6 +131,15 @@ function createTelemetry(config: ServerConfig, logger: ServerLogger): TelemetryE
           }),
         ]
       : [];
+
+  const remote = remoteSinkFromEnv(process.env, {
+    onError: (error) => {
+      logger.warn(`${error.lostEvents} telemetry event(s) were not transmitted: ${error.message}`);
+    },
+  });
+  if (remote !== null) {
+    sinks.push(remote);
+  }
 
   return createTelemetryEmitter({
     sinks,

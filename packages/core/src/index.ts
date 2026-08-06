@@ -40,6 +40,8 @@ export { DEFAULT_SCORING_WEIGHTS, scoreItems } from './rehydrate/score.js';
 export type { TokenCounter } from './rehydrate/tokens.js';
 export {
   countItemTokens,
+  bpeTokenCounter,
+  defaultTokenCounter,
   heuristicTokenCounter,
   truncateToTokens,
 } from './rehydrate/tokens.js';
@@ -85,6 +87,16 @@ export type {
   StoreAdapter,
   WorkspaceScope,
 } from './store/adapter/types.js';
+export {
+  assembleSlice,
+  candidateLimitFor,
+  mergeCandidates,
+  MAX_CANDIDATES,
+  MANDATORY_ITEM_LIMIT,
+  RECENT_SUPERSEDED_LIMIT,
+  resolveProject,
+} from './rehydrate/assemble.js';
+export type { AssembleSliceRequest } from './rehydrate/assemble.js';
 export type { MigrationDriver, SqlExecutor, SqlResult, SqlValue } from './store/driver.js';
 export type { MigrateOptions, MigrateResult } from './store/migrate.js';
 export {
@@ -152,14 +164,21 @@ export type {
   JsonlSinkOptions,
   MemorySinkOptions,
   MemoryTelemetrySink,
+  RemoteSinkOptions,
+  RemoteTelemetrySink,
   TelemetryEmitterOptions,
 } from './telemetry/index.js';
 export {
   createJsonlSink,
   createMemorySink,
   createNoopEmitter,
+  createRemoteSink,
   createTelemetryEmitter,
   redactEvent,
+  REMOTE_ENDPOINT_ENV_VAR,
+  REMOTE_TOKEN_ENV_VAR,
+  remoteSinkFromEnv,
+  TelemetryTransmitError,
   TelemetrySinkError,
   TelemetryValidationError,
   TelemetryWriteError,

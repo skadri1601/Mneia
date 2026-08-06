@@ -45,3 +45,4 @@ export {
   TelemetryWriteError,
   createJsonlSink,
 } from './sinks/jsonl.js';
+export * from './sinks/remote.js';

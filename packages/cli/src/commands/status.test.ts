@@ -384,7 +384,7 @@ describe('mneia status', () => {
     });
   });
 
-  it('tells an uninitialised repo to run mneia init', async () => {
+  it('points an unbound machine at the bootstrap script', async () => {
     const command = createStatusCommand({
       api: recordingApi(report(PROJECT_ITEMS)),
       loadConfig: (cwd) => requireProjectConfig(cwd),
@@ -397,7 +397,7 @@ describe('mneia status', () => {
 
     expect(error.kind).toBe('not_configured');
     expect(error.exitCode).toBe(EXIT_NOT_CONFIGURED);
-    expect(error.fix).toBe('run mneia init');
+    expect(error.fix).toContain('bootstrap:local');
   });
 
   it('separates an unreachable API, a rejected token, and a real failure by exit code', async () => {

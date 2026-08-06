@@ -1,6 +1,7 @@
 import type { ContextItem, IntervalMs, ItemKind, ItemStatus, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
+import { localStatusApi } from './local-api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
 
@@ -354,23 +355,12 @@ export function createStatusCommand(deps: StatusDeps): CommandDefinition {
   };
 }
 
-const unwiredApi: StatusApi = {
-  status: () =>
-    Promise.reject(
-      new CliError(
-        'failed',
-        'the hosted Mneia API client is not wired into this build yet',
-        'the hosted API lands with MNE-101; there is nothing to fix locally',
-      ),
-    ),
-};
-
 const defaultLoadConfig: ProjectConfigLoader = async (cwd) => {
   const { requireProjectConfig } = await import('../config.js');
   return requireProjectConfig(cwd);
 };
 
 export const statusCommand: CommandDefinition = createStatusCommand({
-  api: unwiredApi,
+  api: localStatusApi,
   loadConfig: defaultLoadConfig,
 });
