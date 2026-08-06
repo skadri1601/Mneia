@@ -7,7 +7,7 @@ import {
 } from '../../index.js';
 import { MIGRATIONS } from './index.js';
 
-const migration = MIGRATIONS.find(({ version }) => version === 11);
+const migration = MIGRATIONS.find(({ version }) => version === 12);
 const sql = migration?.sql.replace(/\s+/g, ' ').trim() ?? '';
 
 const policy = (name: string): string => {
@@ -19,7 +19,7 @@ const policy = (name: string): string => {
 };
 
 describe('device authorization migration', () => {
-  it('registers version 11 and the three secret settings', () => {
+  it('registers version 12 and the three secret settings', () => {
     expect(migration?.name).toBe('device-authorization');
     expect(DEVICE_CODE_HASH_SETTING).toBe('mneia.device_code_hash');
     expect(DEVICE_USER_CODE_SETTING).toBe('mneia.device_user_code');
