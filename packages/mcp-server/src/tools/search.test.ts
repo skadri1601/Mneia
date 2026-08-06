@@ -9,6 +9,8 @@ import type {
 } from '@mneia/core';
 import { createMemorySink, createTelemetryEmitter } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
+import { createNoopReviewQueue } from '../review-queue.js';
+import { createSliceLog } from '../slices.js';
 import { DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT, searchTool } from './search.js';
 import type { ToolContext, ToolResult } from './types.js';
 

@@ -111,6 +111,7 @@ function failure(code: string, message: string, details: Record<string, unknown>
 async function run(input: AssertInput, context: ToolContext): Promise<ToolResult> {
   const { store, telemetry, now } = context;
   const occurredAt = now();
+  const sessionId = input.sessionId ?? context.sessionIdFor(input.projectId);
 
   try {
     const actor = await store.getActor(store.scope.actorId);
@@ -188,7 +189,7 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
       title: input.title,
       body: input.body ?? null,
       assertedBy: actor.id,
-      sourceSessionId: input.sessionId ?? null,
+      sourceSessionId: sessionId,
       sourceRef: input.sourceRef ?? null,
       confidence: input.confidence,
       humanConfirmed: actor.kind === 'human',
@@ -200,7 +201,7 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
     const write = await store.writeCheckpoint({
       checkpoint: {
         projectId: input.projectId,
-        sessionId: input.sessionId ?? null,
+        sessionId,
         actorId: actor.id,
         trigger: 'manual',
         summary: null,
@@ -222,7 +223,7 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
       workspaceId: store.scope.workspaceId,
       projectId: input.projectId,
       actorId: actor.id,
-      sessionId: input.sessionId ?? null,
+      sessionId,
       occurredAt,
       checkpointId: write.checkpoint.id,
       itemId: written.id,
@@ -238,7 +239,7 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
         workspaceId: store.scope.workspaceId,
         projectId: input.projectId,
         actorId: actor.id,
-        sessionId: input.sessionId ?? null,
+        sessionId,
         occurredAt,
         previousItemId: supersedesId,
         nextItemId: written.id,

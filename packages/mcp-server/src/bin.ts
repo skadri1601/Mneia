@@ -1,16 +1,33 @@
 #!/usr/bin/env node
-import type { TelemetryEmitter } from '@mneia/core';
-import { createNoopEmitter, createTelemetryEmitter, VERSION } from '@mneia/core';
-import type { ServerConfig } from './config.js';
-import { ConfigError, describeConfigError, loadServerConfig } from './config.js';
+import type { ScopedStore, TelemetryEmitter, Uuid } from '@mneia/core';
+import {
+  createJsonlSink,
+  createNoopEmitter,
+  createTelemetryEmitter,
+  PostgresStoreAdapter,
+  VERSION,
+} from '@mneia/core';
+import type { HostedServerConfig, LocalBinding, ServerConfig } from './config.js';
+import {
+  ConfigError,
+  describeConfigError,
+  describeDatabaseTarget,
+  loadServerConfig,
+} from './config.js';
 import type { ErasedToolDefinition } from './registry.js';
 import { findToolDefinition, ToolRegistrationError, ToolRegistry } from './registry.js';
-import type { MneiaServer, ServerLogger, ToolContextProvider } from './server.js';
+import type { ReviewQueue } from './review-queue.js';
+import { createJsonlReviewQueue } from './review-queue.js';
+import type { MneiaServer, ServerLogger, ToolContextScope } from './server.js';
 import { createStderrLogger, redirectConsoleToStderr, startStdioServer } from './server.js';
+import type { SliceLog } from './slices.js';
+import { createSliceLog } from './slices.js';
+import { PoolConnectionSource } from './store.js';
 import { assertTool } from './tools/assert.js';
 import { checkpointTool } from './tools/checkpoint.js';
 import { rehydrateTool } from './tools/rehydrate.js';
 import { searchTool } from './tools/search.js';
+import type { ToolContext } from './tools/types.js';
 
 interface PendingTool {
   readonly toolName: string;
@@ -22,6 +39,8 @@ const TOOLS_DIRECTORY = './tools/';
 
 const PENDING_TOOLS: readonly PendingTool[] = [];
 
+const SESSION_TOOL = 'mcp';
+
 const HELP = `mneia-mcp — the Mneia MCP server (stdio transport)
 
 Usage:
@@ -29,12 +48,20 @@ Usage:
   mneia-mcp --version    print the version
   mneia-mcp --help       print this message
 
-Environment:
-  MNEIA_TOKEN            Mneia API token. Required in CI and any non-interactive
-                         environment; otherwise \`mneia login\` writes one to
-                         ~/.mneia/credentials.
+Local store (the mode that works today):
+  ~/.mneia/local.json    binds this server straight to a Postgres store. Requires
+                         workspaceId and agentActorId, and either a databaseUrl
+                         field or DATABASE_URL. agentActorId must be an actor of
+                         kind "agent" — the server refuses to write otherwise.
+  MNEIA_LOCAL_CONFIG     read the binding from this path instead.
+
+Hosted API:
+  MNEIA_TOKEN            Mneia API token, used when no local binding exists.
   MNEIA_API_URL          Mneia API endpoint. Defaults to https://api.mneia.dev.
-  MNEIA_TELEMETRY        Set to off to opt out of telemetry.
+
+Telemetry:
+  MNEIA_TELEMETRY        Set to off to opt out. In local mode events are appended
+                         to ~/.mneia/events.jsonl unless telemetryPath says otherwise.
 `;
 
 function describeCause(cause: unknown): string {
@@ -85,8 +112,23 @@ function createTelemetry(config: ServerConfig, logger: ServerLogger): TelemetryE
   if (!config.telemetryEnabled) {
     return createNoopEmitter();
   }
+
+  const sinks =
+    config.mode === 'local'
+      ? [
+          createJsonlSink({
+            filePath: config.local.telemetryPath,
+            onError: (error) => {
+              logger.warn(
+                `${error.lostEvents} telemetry event(s) were lost: ${error.message}. The reference signal for that stretch is unrecoverable.`,
+              );
+            },
+          }),
+        ]
+      : [];
+
   return createTelemetryEmitter({
-    sinks: [],
+    sinks,
     enabled: true,
     onError: (error) => {
       logger.warn(`telemetry sink ${error.sinkName} failed: ${error.message}`);
@@ -94,12 +136,134 @@ function createTelemetry(config: ServerConfig, logger: ServerLogger): TelemetryE
   });
 }
 
-function createContextProvider(config: ServerConfig): ToolContextProvider {
-  return () => {
-    throw new Error(
-      `the Mneia API client is not wired yet (MNE-101 — hosted API scaffold and auth), so no tool can reach ${config.endpoint}`,
+export class AgentActorError extends Error {
+  readonly actorId: Uuid;
+
+  constructor(actorId: Uuid, message: string) {
+    super(message);
+    this.name = 'AgentActorError';
+    this.actorId = actorId;
+  }
+}
+
+async function assertAgentActor(store: ScopedStore, actorId: Uuid): Promise<void> {
+  const actor = await store.getActor(actorId);
+  if (actor === null) {
+    throw new AgentActorError(
+      actorId,
+      `agentActorId ${actorId} names no actor in workspace ${store.scope.workspaceId}. Correct it in the local binding, or create the actor, before this server writes anything.`,
     );
+  }
+  if (actor.kind !== 'agent') {
+    throw new AgentActorError(
+      actorId,
+      `agentActorId ${actorId} is an actor of kind "${actor.kind}", not "agent". Every item written through this server would be recorded as human_confirmed, which lets an agent overrule a human (vision.md §10.1). Point agentActorId at an actor whose kind is agent.`,
+    );
+  }
+}
+
+interface LocalRuntime {
+  readonly scope: ToolContextScope;
+  readonly start: () => Promise<void>;
+  readonly close: () => Promise<void>;
+  readonly describe: () => string;
+}
+
+function createLocalRuntime(
+  binding: LocalBinding,
+  telemetry: TelemetryEmitter,
+  logger: ServerLogger,
+): LocalRuntime {
+  const adapter = new PostgresStoreAdapter(
+    new PoolConnectionSource({ databaseUrl: binding.databaseUrl }),
+  );
+  const workspaceScope = { workspaceId: binding.workspaceId, actorId: binding.agentActorId };
+  const slices: SliceLog = createSliceLog();
+  const reviewQueue: ReviewQueue = createJsonlReviewQueue({ filePath: binding.reviewQueuePath });
+
+  let session: { readonly id: Uuid; readonly projectId: Uuid } | null = null;
+  let actorVerified = false;
+
+  const sessionIdFor = (projectId: Uuid): Uuid | null =>
+    session !== null && session.projectId === projectId ? session.id : null;
+
+  const buildContext = (store: ScopedStore): ToolContext => ({
+    store,
+    telemetry,
+    now: () => new Date(),
+    slices,
+    reviewQueue,
+    sessionIdFor,
+  });
+
+  const scope: ToolContextScope = <T>(run: (context: ToolContext) => Promise<T>): Promise<T> =>
+    adapter.withScope(workspaceScope, async (store) => {
+      if (!actorVerified) {
+        await assertAgentActor(store, binding.agentActorId);
+        actorVerified = true;
+      }
+      return run(buildContext(store));
+    });
+
+  const start = async (): Promise<void> => {
+    const projectId = binding.projectId;
+    try {
+      await adapter.withScope(workspaceScope, async (store) => {
+        await assertAgentActor(store, binding.agentActorId);
+        actorVerified = true;
+        if (projectId !== null) {
+          const created = await store.createSession(projectId, SESSION_TOOL);
+          session = { id: created.id, projectId };
+        }
+      });
+    } catch (cause) {
+      if (actorVerified) {
+        logger.warn(
+          `no session row was opened: ${describeCause(cause)}. Items written this run carry no session provenance.`,
+        );
+        return;
+      }
+      logger.warn(
+        `the local store could not be reached at startup: ${describeCause(cause)}. Tool calls will retry it.`,
+      );
+    }
   };
+
+  const close = async (): Promise<void> => {
+    const open = session;
+    if (open !== null) {
+      try {
+        await adapter.withScope(workspaceScope, (store) => store.endSession(open.id));
+      } catch (cause) {
+        logger.warn(`session ${open.id} was not closed cleanly: ${describeCause(cause)}`);
+      }
+    }
+    await adapter.close();
+  };
+
+  const describe = (): string => {
+    const project =
+      binding.projectId ?? binding.projectSlug ?? 'no project bound, pass one per tool call';
+    return [
+      `local store ${describeDatabaseTarget(binding.databaseUrl)} (from ${binding.databaseUrlSource})`,
+      `workspace ${binding.workspaceId}`,
+      `agent actor ${binding.agentActorId}`,
+      `project ${project}`,
+      session === null ? 'no session row' : `session ${session.id}`,
+      `review queue ${reviewQueue.path ?? 'off'}`,
+    ].join(', ');
+  };
+
+  return { scope, start, close, describe };
+}
+
+function createHostedScope(config: HostedServerConfig): ToolContextScope {
+  return <T>(): Promise<T> =>
+    Promise.reject(
+      new Error(
+        `the hosted Mneia API client is not wired into this build (MNE-101), so no tool can reach ${config.endpoint}. Write ~/.mneia/local.json with databaseUrl, workspaceId and agentActorId to run this server against a Postgres store instead`,
+      ),
+    );
 }
 
 function installProcessHandlers(mneia: MneiaServer, logger: ServerLogger): void {
@@ -143,19 +307,36 @@ async function main(): Promise<void> {
   const registry = new ToolRegistry(await resolveTools(logger));
   const telemetry = createTelemetry(config, logger);
 
+  let scope: ToolContextScope;
+  let closeStore: (() => Promise<void>) | undefined;
+  let binding: string;
+  let telemetryTarget: string;
+
+  if (config.mode === 'local') {
+    const runtime = createLocalRuntime(config.local, telemetry, logger);
+    await runtime.start();
+    scope = runtime.scope;
+    closeStore = runtime.close;
+    binding = runtime.describe();
+    telemetryTarget = config.telemetryEnabled ? config.local.telemetryPath : 'off';
+  } else {
+    scope = createHostedScope(config);
+    binding = `endpoint ${config.endpoint}, hosted API client not wired`;
+    telemetryTarget = config.telemetryEnabled ? 'on, but no sink is configured' : 'off';
+  }
+
   const mneia = await startStdioServer({
     registry,
-    context: createContextProvider(config),
+    context: scope,
     telemetry,
+    closeStore,
     logger,
   });
 
   installProcessHandlers(mneia, logger);
 
-  const binding =
-    config.project === null ? 'no project bound' : `project ${config.project.project}`;
   logger.info(
-    `serving ${registry.names().join(', ')} on stdio — endpoint ${config.endpoint}, ${binding}, telemetry ${config.telemetryEnabled ? 'on' : 'off'}`,
+    `serving ${registry.names().join(', ')} on stdio — ${binding}, telemetry ${telemetryTarget}`,
   );
 }
 

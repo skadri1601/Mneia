@@ -10,7 +10,9 @@ import type {
   Uuid,
 } from '@mneia/core';
 import { ACCESS_SCOPES, CHECKPOINT_TRIGGERS, evaluateSupersede, ITEM_KINDS } from '@mneia/core';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
+import type { ReviewQueueEntry } from '../review-queue.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const KIND_ERROR = `kind must be one of: ${ITEM_KINDS.join(', ')}`;
@@ -18,6 +20,8 @@ const SCOPE_ERROR = `accessScope must be one of: ${ACCESS_SCOPES.join(', ')}`;
 const TRIGGER_ERROR = `trigger must be one of: ${CHECKPOINT_TRIGGERS.join(', ')}`;
 
 export const MAX_CANDIDATES = 50;
+
+export const MAX_REFERENCED_ITEMS = 200;
 
 const CandidateSchema = z.object({
   kind: z
@@ -93,6 +97,21 @@ const CheckpointInputSchema = z.object({
     .max(2000)
     .optional()
     .describe('One paragraph describing what happened in the session this checkpoint closes.'),
+  sliceId: z
+    .uuid()
+    .optional()
+    .describe(
+      'The sliceId returned by the mneia_rehydrate call this session worked from. Pass it whenever you rehydrated.',
+    ),
+  referencedItemIds: z
+    .array(z.uuid())
+    .max(MAX_REFERENCED_ITEMS, {
+      error: `referencedItemIds must contain at most ${MAX_REFERENCED_ITEMS} ids — a slice is never larger than that.`,
+    })
+    .optional()
+    .describe(
+      'Ids of the items in that slice that actually changed what you did: you cited one, followed it, or did not re-decide something because of it. Pass an empty array when the slice changed nothing. Every id you leave out is recorded as ignored, which is how the slice gets better — omitting the field entirely records nothing at all. Requires sliceId.',
+    ),
 });
 
 export type CheckpointCandidate = z.infer<typeof CandidateSchema>;
@@ -172,12 +191,19 @@ function describeIssues(error: z.ZodError): string {
 
 function parseCheckpointInput(raw: unknown): CheckpointInput {
   const parsed = CheckpointInputSchema.safeParse(raw);
-  if (parsed.success) {
-    return parsed.data;
+  if (!parsed.success) {
+    throw new Error(
+      `mneia_checkpoint rejected the input [invalid_input]. ${describeIssues(parsed.error)}. Correct the named fields and call the tool again.`,
+    );
   }
-  throw new Error(
-    `mneia_checkpoint rejected the input [invalid_input]. ${describeIssues(parsed.error)}. Correct the named fields and call the tool again.`,
-  );
+
+  if (parsed.data.referencedItemIds !== undefined && parsed.data.sliceId === undefined) {
+    throw new Error(
+      'mneia_checkpoint rejected the input [invalid_input]. referencedItemIds names items but sliceId is missing, so there is no slice to attribute them to. Pass the sliceId that mneia_rehydrate returned, or drop referencedItemIds.',
+    );
+  }
+
+  return parsed.data;
 }
 
 function messageOf(cause: unknown): string {
@@ -204,6 +230,7 @@ function newItem(
   candidate: CheckpointCandidate,
   input: CheckpointInput,
   actor: Actor,
+  sessionId: Uuid | null,
 ): NewContextItem {
   return {
     projectId: input.projectId,
@@ -211,7 +238,7 @@ function newItem(
     title: candidate.title,
     body: candidate.body ?? null,
     assertedBy: actor.id,
-    sourceSessionId: input.sessionId ?? null,
+    sourceSessionId: sessionId,
     sourceRef: candidate.sourceRef ?? null,
     confidence: candidate.confidence,
     humanConfirmed: actor.kind === 'human',
@@ -282,7 +309,12 @@ async function pendingForSupersede(triage: SupersedeTriage): Promise<PendingEntr
   };
 }
 
-async function triage(input: CheckpointInput, actor: Actor, store: ScopedStore): Promise<Triaged> {
+async function triage(
+  input: CheckpointInput,
+  actor: Actor,
+  store: ScopedStore,
+  sessionId: Uuid | null,
+): Promise<Triaged> {
   const writes: WriteCandidate[] = [];
   const pending: PendingEntry[] = [];
 
@@ -308,7 +340,7 @@ async function triage(input: CheckpointInput, actor: Actor, store: ScopedStore):
       continue;
     }
 
-    writes.push({ index, item: newItem(candidate, input, actor) });
+    writes.push({ index, item: newItem(candidate, input, actor, sessionId) });
   }
 
   return { writes, pending };
@@ -321,12 +353,13 @@ async function emitForWritten(
   checkpointId: Uuid,
   written: ContextItem,
   occurredAt: Date,
+  sessionId: Uuid | null,
 ): Promise<void> {
   const base = {
     workspaceId: context.store.scope.workspaceId,
     projectId: input.projectId,
     actorId: actor.id,
-    sessionId: input.sessionId ?? null,
+    sessionId,
     occurredAt,
   };
 
@@ -351,8 +384,202 @@ async function emitForWritten(
   }
 }
 
+interface ReferenceSignal {
+  readonly sliceId: Uuid | null;
+  readonly reported: boolean;
+  readonly sliceKnown: boolean;
+  readonly referenced: number;
+  readonly ignored: number;
+  readonly unrecognisedItemIds: readonly Uuid[];
+}
+
+const NO_REFERENCE_SIGNAL: ReferenceSignal = {
+  sliceId: null,
+  reported: false,
+  sliceKnown: false,
+  referenced: 0,
+  ignored: 0,
+  unrecognisedItemIds: [],
+};
+
+interface QueueOutcome {
+  readonly count: number;
+  readonly path: string | null;
+  readonly failed: boolean;
+}
+
+const NOTHING_QUEUED: QueueOutcome = { count: 0, path: null, failed: false };
+
+async function emitReferenceSignal(
+  context: ToolContext,
+  input: CheckpointInput,
+  actor: Actor,
+  occurredAt: Date,
+  sessionId: Uuid | null,
+): Promise<ReferenceSignal> {
+  const sliceId = input.sliceId;
+  if (sliceId === undefined) {
+    return NO_REFERENCE_SIGNAL;
+  }
+
+  const recorded = context.slices.get(sliceId);
+  const claimed = input.referencedItemIds;
+
+  if (claimed === undefined) {
+    return { ...NO_REFERENCE_SIGNAL, sliceId, sliceKnown: recorded !== null };
+  }
+
+  const shown = recorded === null ? null : new Set<Uuid>(recorded.itemIds);
+  const base = {
+    workspaceId: context.store.scope.workspaceId,
+    projectId: recorded?.projectId ?? input.projectId,
+    actorId: actor.id,
+    sessionId,
+    occurredAt,
+  };
+
+  const referenced = new Set<Uuid>();
+  const unrecognised = new Set<Uuid>();
+
+  for (const itemId of claimed) {
+    if (referenced.has(itemId) || unrecognised.has(itemId)) {
+      continue;
+    }
+    if (shown !== null && !shown.has(itemId)) {
+      unrecognised.add(itemId);
+      continue;
+    }
+    referenced.add(itemId);
+    await emitQuietly(context.telemetry, {
+      ...base,
+      name: 'rehydration.item_referenced',
+      sliceId,
+      itemId,
+    });
+  }
+
+  let ignored = 0;
+  for (const itemId of shown ?? []) {
+    if (referenced.has(itemId)) {
+      continue;
+    }
+    ignored += 1;
+    await emitQuietly(context.telemetry, {
+      ...base,
+      name: 'rehydration.item_ignored',
+      sliceId,
+      itemId,
+    });
+  }
+
+  return {
+    sliceId,
+    reported: true,
+    sliceKnown: recorded !== null,
+    referenced: referenced.size,
+    ignored,
+    unrecognisedItemIds: [...unrecognised],
+  };
+}
+
+function reviewEntry(
+  context: ToolContext,
+  input: CheckpointInput,
+  actor: Actor,
+  entry: PendingEntry,
+  occurredAt: Date,
+  sessionId: Uuid | null,
+): ReviewQueueEntry | null {
+  const candidate = input.items[entry.index];
+  if (candidate === undefined) {
+    return null;
+  }
+  return {
+    id: randomUUID(),
+    queuedAt: occurredAt.toISOString(),
+    source: 'mneia_checkpoint',
+    workspaceId: context.store.scope.workspaceId,
+    projectId: input.projectId,
+    assertedBy: actor.id,
+    sessionId,
+    checkpointTrigger: input.trigger,
+    outcome: entry.outcome,
+    reason: entry.reason,
+    kind: candidate.kind,
+    title: candidate.title,
+    body: candidate.body ?? null,
+    sourceRef: candidate.sourceRef ?? null,
+    confidence: candidate.confidence,
+    loadBearing: candidate.loadBearing,
+    accessScope: candidate.accessScope,
+    supersedesId: entry.supersedesId,
+  };
+}
+
+async function queuePending(
+  context: ToolContext,
+  input: CheckpointInput,
+  actor: Actor,
+  pending: readonly PendingEntry[],
+  occurredAt: Date,
+  sessionId: Uuid | null,
+): Promise<QueueOutcome> {
+  const path = context.reviewQueue.path;
+  if (pending.length === 0 || path === null) {
+    return NOTHING_QUEUED;
+  }
+
+  const entries = pending
+    .map((entry) => reviewEntry(context, input, actor, entry, occurredAt, sessionId))
+    .filter((entry): entry is ReviewQueueEntry => entry !== null);
+
+  try {
+    await context.reviewQueue.append(entries);
+    return { count: entries.length, path, failed: false };
+  } catch {
+    return { count: 0, path, failed: true };
+  }
+}
+
 function plural(count: number, noun: string): string {
   return count === 1 ? `1 ${noun}` : `${count} ${noun}s`;
+}
+
+function renderQueueOutcome(queue: QueueOutcome): string | null {
+  if (queue.failed) {
+    return `WARNING: the pending candidates could not be appended to the review queue at ${queue.path}. They exist only in this response — surface them now or they are gone.`;
+  }
+  if (queue.count === 0) {
+    return null;
+  }
+  return `Held for a human in ${queue.path} — ${plural(queue.count, 'candidate')} written there as well as returned here.`;
+}
+
+function renderReferenceSignal(signal: ReferenceSignal, sawSlice: boolean): string | null {
+  if (signal.sliceId === null) {
+    return sawSlice
+      ? 'No sliceId was passed, so nothing was recorded about which rehydrated items earned their place. Pass sliceId and referencedItemIds on the next checkpoint.'
+      : null;
+  }
+
+  if (!signal.reported) {
+    return `sliceId ${signal.sliceId} was passed without referencedItemIds, so no reference signal was recorded. Pass the ids you actually used — an empty array is a valid answer and still records the slice as unhelpful.`;
+  }
+
+  const parts = [
+    `Recorded ${plural(signal.referenced, 'referenced item')} and ${plural(signal.ignored, 'ignored item')} for slice ${signal.sliceId}.`,
+  ];
+  if (!signal.sliceKnown) {
+    parts.push(
+      'This server did not serve that slice, so the ignored items were not counted here; they are recoverable from the slice_shown event.',
+    );
+  }
+  if (signal.unrecognisedItemIds.length > 0) {
+    parts.push(
+      `${plural(signal.unrecognisedItemIds.length, 'id')} were not in that slice and were dropped: ${signal.unrecognisedItemIds.join(', ')}.`,
+    );
+  }
+  return parts.join(' ');
 }
 
 function renderPendingEntry(entry: PendingEntry): string {
@@ -380,6 +607,9 @@ function renderText(
   pending: readonly PendingEntry[],
   written: readonly WrittenItem[],
   checkpointId: Uuid | null,
+  queue: QueueOutcome,
+  signal: ReferenceSignal,
+  sawSlice: boolean,
 ): string {
   const blocks: string[] = [
     pending.length === 0
@@ -389,6 +619,10 @@ function renderText(
 
   if (pending.length > 0) {
     blocks.push([PENDING_HEADING, ...pending.map(renderPendingEntry)].join('\n'));
+    const queued = renderQueueOutcome(queue);
+    if (queued !== null) {
+      blocks.push(queued);
+    }
     blocks.push(PENDING_NEXT_STEP);
   }
 
@@ -397,6 +631,11 @@ function renderText(
       ? 'Written: nothing. No checkpoint row was created, because every candidate needs a human first.'
       : [`Written to checkpoint ${checkpointId}:`, ...written.map(renderWrittenItem)].join('\n'),
   );
+
+  const references = renderReferenceSignal(signal, sawSlice);
+  if (references !== null) {
+    blocks.push(references);
+  }
 
   return blocks.join('\n\n');
 }
@@ -408,14 +647,25 @@ function statusFor(pendingCount: number, writtenCount: number): string {
   return writtenCount === 0 ? 'pending_human_confirmation' : 'partially_written';
 }
 
-function toolResult(
-  input: CheckpointInput,
-  pending: readonly PendingEntry[],
-  written: readonly WrittenItem[],
-  checkpointId: Uuid | null,
-): ToolResult {
+interface CheckpointOutcome {
+  readonly pending: readonly PendingEntry[];
+  readonly written: readonly WrittenItem[];
+  readonly checkpointId: Uuid | null;
+  readonly queue: QueueOutcome;
+  readonly signal: ReferenceSignal;
+  readonly sawSlice: boolean;
+  readonly sessionId: Uuid | null;
+}
+
+function toolResult(input: CheckpointInput, outcome: CheckpointOutcome): ToolResult {
+  const { pending, written, checkpointId, queue, signal } = outcome;
   return {
-    content: [{ type: 'text', text: renderText(pending, written, checkpointId) }],
+    content: [
+      {
+        type: 'text',
+        text: renderText(pending, written, checkpointId, queue, signal, outcome.sawSlice),
+      },
+    ],
     structuredContent: {
       status: statusFor(pending.length, written.length),
       pendingCount: pending.length,
@@ -432,7 +682,20 @@ function toolResult(
       })),
       checkpointId,
       projectId: input.projectId,
+      sessionId: outcome.sessionId,
       trigger: input.trigger,
+      review: {
+        queuedCount: queue.count,
+        queuePath: queue.path,
+        queueFailed: queue.failed,
+      },
+      references: {
+        sliceId: signal.sliceId,
+        reported: signal.reported,
+        referencedCount: signal.referenced,
+        ignoredCount: signal.ignored,
+        unrecognisedItemIds: signal.unrecognisedItemIds,
+      },
     },
   };
 }
@@ -440,6 +703,8 @@ function toolResult(
 async function run(input: CheckpointInput, context: ToolContext): Promise<ToolResult> {
   const { store, now } = context;
   const occurredAt = now();
+  const sessionId = input.sessionId ?? context.sessionIdFor(input.projectId);
+  const sawSlice = context.slices.size > 0;
 
   try {
     const actor = await store.getActor(store.scope.actorId);
@@ -451,16 +716,26 @@ async function run(input: CheckpointInput, context: ToolContext): Promise<ToolRe
       );
     }
 
-    const { writes, pending } = await triage(input, actor, store);
+    const { writes, pending } = await triage(input, actor, store, sessionId);
+    const queue = await queuePending(context, input, actor, pending, occurredAt, sessionId);
+    const signal = await emitReferenceSignal(context, input, actor, occurredAt, sessionId);
 
     if (writes.length === 0) {
-      return toolResult(input, pending, [], null);
+      return toolResult(input, {
+        pending,
+        written: [],
+        checkpointId: null,
+        queue,
+        signal,
+        sawSlice,
+        sessionId,
+      });
     }
 
     const write = await store.writeCheckpoint({
       checkpoint: {
         projectId: input.projectId,
-        sessionId: input.sessionId ?? null,
+        sessionId,
         actorId: actor.id,
         trigger: input.trigger,
         summary: input.summary ?? null,
@@ -486,10 +761,26 @@ async function run(input: CheckpointInput, context: ToolContext): Promise<ToolRe
     }));
 
     for (const entry of written) {
-      await emitForWritten(context, input, actor, write.checkpoint.id, entry.item, occurredAt);
+      await emitForWritten(
+        context,
+        input,
+        actor,
+        write.checkpoint.id,
+        entry.item,
+        occurredAt,
+        sessionId,
+      );
     }
 
-    return toolResult(input, pending, written, write.checkpoint.id);
+    return toolResult(input, {
+      pending,
+      written,
+      checkpointId: write.checkpoint.id,
+      queue,
+      signal,
+      sawSlice,
+      sessionId,
+    });
   } catch (cause) {
     if (cause instanceof CandidateInputError) {
       return failure(cause.code, cause.message, cause.details);
@@ -506,7 +797,7 @@ export const checkpointTool: ToolDefinition<CheckpointInput> = {
   name: 'mneia_checkpoint',
   title: 'Checkpoint the session into project memory',
   description:
-    'Record a batch of already-extracted items in project memory at a task or day boundary, as one atomic checkpoint. Hand it the candidate decisions, constraints, open questions, facts, and artifact refs you extracted from the session — this tool does not read the transcript itself. Candidates that are load-bearing or that supersede an existing item are never written automatically: they come back in a pending queue you must surface to a human verbatim, because auto-confirming them would erase the disagreement the human needs to settle. Use mneia_assert instead for a single item settled mid-session, and mneia_rehydrate at the start of the next session to read back what was written.',
+    'Record a batch of already-extracted items in project memory at a task or day boundary, as one atomic checkpoint. Hand it the candidate decisions, constraints, open questions, facts, and artifact refs you extracted from the session — this tool does not read the transcript itself. Candidates that are load-bearing or that supersede an existing item are never written automatically: they come back in a pending queue you must surface to a human verbatim, because auto-confirming them would erase the disagreement the human needs to settle. If this session started with mneia_rehydrate, pass that sliceId and the referencedItemIds you actually used, so the slice can be judged on whether it helped. Use mneia_assert instead for a single item settled mid-session, and mneia_rehydrate at the start of the next session to read back what was written.',
   inputSchema: INPUT_JSON_SCHEMA,
   parse: parseCheckpointInput,
   run,
