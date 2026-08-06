@@ -1,3 +1,4 @@
+import { createToolContextFixture } from './context-fixture.js';
 import type {
   Actor,
   ActorKind,
@@ -273,7 +274,7 @@ function createTelemetry(options: TelemetryOptions = {}): FakeTelemetry {
 }
 
 function createContext(store: ScopedStore, telemetry: TelemetryEmitter): ToolContext {
-  return { store, telemetry, now: () => NOW };
+  return createToolContextFixture(store, telemetry, { now: NOW });
 }
 
 async function runTool(

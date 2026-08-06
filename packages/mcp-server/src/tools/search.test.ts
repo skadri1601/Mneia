@@ -1,3 +1,4 @@
+import { createToolContextFixture } from './context-fixture.js';
 import type {
   ContextItem,
   ContextItemSearch,
@@ -165,7 +166,7 @@ function createTelemetry(): FakeTelemetry {
 }
 
 function createContext(store: ScopedStore, telemetry: TelemetryEmitter): ToolContext {
-  return { store, telemetry, now: () => NOW };
+  return createToolContextFixture(store, telemetry, { now: NOW });
 }
 
 function textOf(result: ToolResult): string {

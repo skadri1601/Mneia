@@ -8,13 +8,14 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { ErasedToolDefinition } from './registry.js';
 import { ToolRegistry } from './registry.js';
-import type { MneiaServer, ToolContextProvider } from './server.js';
+import type { MneiaServer, ToolContextScope } from './server.js';
 import {
   createMneiaServer,
   redirectConsoleToStderr,
   SERVER_NAME,
   ToolAdvertisementError,
 } from './server.js';
+import { createToolContextFixture } from './tools/context-fixture.js';
 import type { ToolContext, ToolResult } from './tools/types.js';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
@@ -54,7 +55,9 @@ const SILENT_TELEMETRY: TelemetryEmitter = {
   close: () => Promise.resolve(),
 };
 
-const CONTEXT: ToolContext = { store: STORE, telemetry: SILENT_TELEMETRY, now: () => NOW };
+const CONTEXT: ToolContext = createToolContextFixture(STORE, SILENT_TELEMETRY, { now: NOW });
+
+const SCOPE: ToolContextScope = (run) => run(CONTEXT);
 
 interface Deferred<T> {
   readonly promise: Promise<T>;
@@ -87,7 +90,7 @@ function stubTool(
 }
 
 interface HarnessOptions {
-  readonly context?: ToolContextProvider | undefined;
+  readonly context?: ToolContextScope | undefined;
   readonly telemetry?: TelemetryEmitter | undefined;
   readonly closeStore?: (() => Promise<void>) | undefined;
   readonly version?: string | undefined;
@@ -101,7 +104,7 @@ function serverWith(
 ): MneiaServer {
   return createMneiaServer({
     registry: new ToolRegistry(tools),
-    context: options.context ?? (() => CONTEXT),
+    context: options.context ?? SCOPE,
     telemetry: options.telemetry,
     closeStore: options.closeStore,
     version: options.version,
@@ -192,9 +195,9 @@ describe('createMneiaServer error handling', () => {
   it('names the milestone for a tool that has not shipped, without opening a session first', async () => {
     let sessions = 0;
     const mneia = serverWith([stubTool('mneia_rehydrate')], {
-      context: () => {
+      context: (run) => {
         sessions += 1;
-        return CONTEXT;
+        return run(CONTEXT);
       },
     });
     const client = await connectClient(mneia);
@@ -235,7 +238,9 @@ describe('createMneiaServer error handling', () => {
   it('reports a session that cannot be opened as a store failure the agent can act on', async () => {
     const mneia = serverWith([stubTool('mneia_rehydrate')], {
       context: () => {
-        throw new Error('the Mneia API client is not wired yet');
+        throw new Error(
+          'the Mneia API client is not wired yet. Write ~/.mneia/local.json with databaseUrl, workspaceId and agentActorId',
+        );
       },
     });
     const client = await connectClient(mneia);
@@ -244,7 +249,7 @@ describe('createMneiaServer error handling', () => {
 
     expect(result.isError).toBe(true);
     expect(firstText(result)).toContain('not wired yet');
-    expect(firstText(result)).toContain('MNEIA_TOKEN');
+    expect(firstText(result)).toContain('local.json');
 
     await mneia.shutdown();
   });

@@ -175,7 +175,12 @@ function createLocalRuntime(
   logger: ServerLogger,
 ): LocalRuntime {
   const adapter = new PostgresStoreAdapter(
-    new PoolConnectionSource({ databaseUrl: binding.databaseUrl }),
+    new PoolConnectionSource({
+      databaseUrl: binding.databaseUrl,
+      onIdleError: (error) => {
+        logger.warn(`idle Postgres connection failed: ${error.message}`);
+      },
+    }),
   );
   const workspaceScope = { workspaceId: binding.workspaceId, actorId: binding.agentActorId };
   const slices: SliceLog = createSliceLog();
@@ -217,6 +222,9 @@ function createLocalRuntime(
         }
       });
     } catch (cause) {
+      if (cause instanceof AgentActorError) {
+        throw cause;
+      }
       if (actorVerified) {
         logger.warn(
           `no session row was opened: ${describeCause(cause)}. Items written this run carry no session provenance.`,
@@ -314,7 +322,12 @@ async function main(): Promise<void> {
 
   if (config.mode === 'local') {
     const runtime = createLocalRuntime(config.local, telemetry, logger);
-    await runtime.start();
+    try {
+      await runtime.start();
+    } catch (cause) {
+      await runtime.close();
+      throw cause;
+    }
     scope = runtime.scope;
     closeStore = runtime.close;
     binding = runtime.describe();

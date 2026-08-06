@@ -22,7 +22,12 @@ export interface PoolConnectionSourceOptions {
   readonly databaseUrl: string;
   readonly maxConnections?: number | undefined;
   readonly applicationName?: string | undefined;
+  readonly onIdleError?: ((error: Error) => void) | undefined;
   readonly createPool?: ((options: PoolConnectionSourceOptions) => PoolLike) | undefined;
+}
+
+function reportToStderr(error: Error): void {
+  process.stderr.write(`mneia-mcp: idle Postgres connection failed: ${error.message}\n`);
 }
 
 function createPgPool(options: PoolConnectionSourceOptions): PoolLike {
@@ -32,7 +37,8 @@ function createPgPool(options: PoolConnectionSourceOptions): PoolLike {
     application_name: options.applicationName ?? DEFAULT_APPLICATION_NAME,
   });
 
-  pool.on('error', () => undefined);
+  const onIdleError = options.onIdleError ?? reportToStderr;
+  pool.on('error', onIdleError);
 
   return {
     async connect(): Promise<PoolClientLike> {
