@@ -1,7 +1,15 @@
 import type { CommandDefinition, CommandIo } from './command.js';
 import { CliError, EXIT_FAILED, EXIT_OK, EXIT_USAGE } from './command.js';
 
-export const M1_COMMAND_NAMES = ['init', 'brief', 'checkpoint', 'log', 'status'] as const;
+export const M1_COMMAND_NAMES = [
+  'init',
+  'brief',
+  'checkpoint',
+  'log',
+  'status',
+  'login',
+  'whoami',
+] as const;
 
 export type M1CommandName = (typeof M1_COMMAND_NAMES)[number];
 
@@ -12,8 +20,6 @@ const LATER_SURFACE_REASONS: Readonly<Record<string, string>> = {
   pickup: 'pickup ships in M2',
   conflicts: 'conflicts ships in M4',
   sync: 'there is no sync - every mneia command is an authenticated API call',
-  login: 'login is not available in this build yet',
-  whoami: 'whoami is not available in this build yet',
 };
 
 const FLAG_ALIASES: Readonly<Record<string, string>> = {

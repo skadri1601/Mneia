@@ -10,9 +10,28 @@ import {
   generateDeviceCodePair,
   generateUserCode,
   hashSecret,
+  headerSafe,
   isUserCodeShaped,
   normalizeUserCode,
 } from './device-codes.js';
+
+describe('header safety', () => {
+  it('strips characters a ByteString header cannot carry', () => {
+    const message = 'That token is not valid — run mneia login again.';
+    expect(() => new Response(null, { headers: { 'x-t': message } })).toThrow();
+    expect(() => new Response(null, { headers: { 'x-t': headerSafe(message) } })).not.toThrow();
+  });
+
+  it('keeps the sentence readable rather than deleting the word around the dash', () => {
+    expect(headerSafe('revoked or expired — run mneia login again')).toBe(
+      'revoked or expired   run mneia login again',
+    );
+  });
+
+  it('removes quotes and backslashes, which would break out of the quoted parameter', () => {
+    expect(headerSafe('a "quoted" \\ value')).toBe('a quoted  value');
+  });
+});
 
 describe('user codes', () => {
   it('carries no digits, so no letter can be misread as one', () => {

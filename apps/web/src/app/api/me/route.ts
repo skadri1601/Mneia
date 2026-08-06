@@ -1,4 +1,4 @@
-import { bearerTokenFrom, hashSecret } from '../../../server/device-codes.js';
+import { bearerTokenFrom, hashSecret, headerSafe } from '../../../server/device-codes.js';
 import { deviceStore } from '../../../server/device-runtime.js';
 import { DeviceError } from '../../../server/store/device-store.js';
 
@@ -12,7 +12,7 @@ const unauthorized = (description: string): Response =>
       status: 401,
       headers: {
         'cache-control': 'no-store',
-        'www-authenticate': `Bearer error="invalid_token", error_description="${description}"`,
+        'www-authenticate': `Bearer error="invalid_token", error_description="${headerSafe(description)}"`,
       },
     },
   );

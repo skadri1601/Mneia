@@ -83,6 +83,9 @@ export const confirmationCodeMatches = (expected: string, supplied: string): boo
   return timingSafeEqual(expectedBytes, suppliedBytes);
 };
 
+export const headerSafe = (description: string): string =>
+  description.replace(/[^\x20-\x7e]/g, ' ').replace(/["\\]/g, '');
+
 export const bearerTokenFrom = (header: string | null): string => {
   if (header === null) return '';
   const match = /^Bearer[ ]+(?<token>[\w.~+/-]+=*)$/.exec(header.trim());
