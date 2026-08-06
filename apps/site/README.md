@@ -68,7 +68,8 @@ reporting. And **do not "unify" this import back to `@sentry/nextjs`.**
 | Configuration | Raw | Gzipped | Headroom under 3 MiB |
 |---|---|---|---|
 | Before MNE-198 | 12888 KiB | **3032 KiB** | 40 KiB |
-| Now | 10740 KiB | **2503 KiB** | 569 KiB |
+| After MNE-198 | 10740 KiB | **2503 KiB** | 569 KiB |
+| Now, with MNE-222's consent gate | 11068 KiB | **2538 KiB** | 534 KiB |
 
 Cloudflare's hard limit is **3072 KiB gzipped** and validation fails with `code: 10027`. Re-measure
 with `pnpm exec wrangler deploy --dry-run` before adding any server-side dependency.
@@ -81,9 +82,28 @@ deployed to **Vercel**, where that entry point does not exist, so every server-s
 would have become a silent no-op there. It also has no `captureRequestError`, which is what gives
 `onRequestError` its Next-specific context. 418 KiB was not worth it against 569 KiB of headroom.
 
-**That rejection is now worth revisiting**, and MNE-212 asks for exactly this note: the Vercel half of
-the argument died with the Vercel project on 2026-08-02. Only the `captureRequestError` objection
-survives. Re-measure before deciding.
+**Revisited on MNE-222's branch, 2026-08-05, and the rejection stands.** The Vercel half of the
+argument did die with the Vercel project on 2026-08-02, so only the `captureRequestError` objection
+survives — but it survives intact, and the size case that would have outweighed it got weaker rather
+than stronger. Headroom is **534 KiB** against the 418 KiB the swap would return, so trading
+`onRequestError`'s Next-specific request context for margin we already have is a bad trade. Revisit
+again only if headroom drops below roughly 200 KiB.
+
+**What is now known about whether this SDK works on `workerd` at all**, because MNE-198 opened by
+assuming it was "very likely silently degraded or dead":
+
+- It is **not** dead. Sentry issue `JAVASCRIPT-NEXTJS-3` was captured with `runtime.name: cloudflare`
+  through `auto.node.onunhandledrejection` and delivered — the SDK initialises, hooks the runtime,
+  and transports from inside workerd.
+- That event came from `wrangler dev`, not from the deployed Worker: `server_name: localhost`, and
+  the frames are `.wrangler/tmp/dev-*/worker.js`.
+- **No event tagged `environment: production` has ever reached this project.** All 14 events in the
+  last 30 days are `development`. That is consistent with a static marketing site genuinely not
+  erroring, and equally consistent with production capture being broken, and the two cannot be told
+  apart from the outside.
+
+Settling it needs a deliberate error thrown on the deployed Worker. The `/sentry-check` route that
+MNE-190 used for exactly this was removed and would have to come back behind a guard.
 
 **`includeLocalVariables` was removed on MNE-198 because it never worked on `workerd`.** It is a
 `@sentry/node` option that needs `node:inspector`. Under `nodejs_compat` that module *imports* — which

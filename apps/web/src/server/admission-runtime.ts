@@ -15,6 +15,9 @@ export class AccessEmailConfigurationError extends Error {
   }
 }
 
+export const ACCESS_EMAIL_FROM_VAR = 'WAITLIST_FROM';
+export const ACCESS_EMAIL_KEY_VAR = 'RESEND_API_KEY';
+
 const required = (variable: string): string => {
   const value = process.env[variable];
   if (value === undefined || value.trim().length === 0) {
@@ -37,8 +40,8 @@ export const deliverAccessEmail = async (input: {
 }) =>
   sendAccessGranted({
     to: input.to,
-    from: required('WAITLIST_FROM'),
-    apiKey: required('RESEND_API_KEY'),
+    from: required(ACCESS_EMAIL_FROM_VAR),
+    apiKey: required(ACCESS_EMAIL_KEY_VAR),
     idempotencyKey: input.idempotencyKey,
     email: { subject: input.subject, text: input.text, headers: input.headers },
   });

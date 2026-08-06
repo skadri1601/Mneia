@@ -96,3 +96,30 @@
 .legal p + p {
   margin-block-start: var(--space-xxs);
 }
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-block-start: var(--space-sm);
+}
+
+.control {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tile-faint);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.control:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
