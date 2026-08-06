@@ -3,7 +3,10 @@ import { VERSION } from '@mneia/core';
 export type {
   EnvLike,
   FileReader,
+  HostedServerConfig,
   LoadServerConfigOptions,
+  LocalBinding,
+  LocalServerConfig,
   ProjectBinding,
   ServerConfig,
 } from './config.js';
@@ -14,11 +17,18 @@ export {
   CREDENTIALS_FILE,
   CREDENTIALS_PATH_ENV_VAR,
   credentialsPath,
+  DATABASE_URL_ENV_VAR,
   DEFAULT_ENDPOINT,
   describeConfigError,
+  describeDatabaseTarget,
   ENDPOINT_ENV_VAR,
+  EVENTS_FILE,
+  LOCAL_CONFIG_FILE,
+  LOCAL_CONFIG_PATH_ENV_VAR,
   loadServerConfig,
+  localConfigPath,
   projectConfigPath,
+  REVIEW_QUEUE_FILE,
   TELEMETRY_ENV_VAR,
   TELEMETRY_OFF_VALUES,
   TELEMETRY_ON_VALUES,
@@ -34,11 +44,17 @@ export {
   ToolRegistry,
   toolFailure,
 } from './registry.js';
+export type { ReviewQueue, ReviewQueueEntry, ReviewQueueSource } from './review-queue.js';
+export {
+  createJsonlReviewQueue,
+  createNoopReviewQueue,
+  REVIEW_QUEUE_SOURCES,
+} from './review-queue.js';
 export type {
   MneiaServer,
   MneiaServerOptions,
   ServerLogger,
-  ToolContextProvider,
+  ToolContextScope,
 } from './server.js';
 export {
   createMneiaServer,
@@ -52,6 +68,19 @@ export {
   toAdvertisedTool,
   toCallToolResult,
 } from './server.js';
+export type { RecordedSlice, SliceLog } from './slices.js';
+export { createSliceLog, DEFAULT_SLICE_LOG_CAPACITY } from './slices.js';
+export type {
+  PoolClientLike,
+  PoolConnectionSourceOptions,
+  PoolLike,
+  PoolQueryResult,
+} from './store.js';
+export {
+  DEFAULT_APPLICATION_NAME,
+  DEFAULT_MAX_CONNECTIONS,
+  PoolConnectionSource,
+} from './store.js';
 export type {
   AnyToolDefinition,
   ToolContentBlock,

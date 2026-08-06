@@ -6,6 +6,7 @@ import type {
   ContextItem,
   Embedding,
   Handoff,
+  IntervalMs,
   Project,
   Session,
   Uuid,
@@ -32,12 +33,14 @@ import {
 import type {
   CheckpointWrite,
   CheckpointWriteResult,
+  ConfirmContextItemInput,
   ConflictResolutionInput,
   ContextItemFilter,
   ContextItemSearch,
   NewConflict,
   NewContextItem,
   NewHandoff,
+  NewProject,
   ScopedStore,
   StoreAdapter,
   WorkspaceScope,
@@ -129,6 +132,20 @@ const assertUuid = (value: Uuid, label: string): Uuid => {
 const assertOptionalUuid = (value: Uuid | null | undefined, label: string): Uuid | null => {
   if (value === null || value === undefined) return null;
   return assertUuid(value, label);
+};
+
+const assertOptionalIntervalMs = (
+  value: IntervalMs | null | undefined,
+  label: string,
+): number | null => {
+  if (value === null || value === undefined) return null;
+  if (!Number.isFinite(value) || value < 0) {
+    throw new StoreError(
+      'invalid_argument',
+      `expected ${label} to be a non-negative number of milliseconds; received ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
 };
 
 const assertNonEmpty = (value: string, label: string): string => {
@@ -305,6 +322,32 @@ class PostgresScopedStore implements ScopedStore {
     );
     const row = rows[0];
     return row === undefined ? null : toProject(row);
+  }
+
+  async createProject(input: NewProject): Promise<Project> {
+    assertNonEmpty(input.slug, 'input.slug');
+    assertNonEmpty(input.displayName, 'input.displayName');
+    const id = assertOptionalUuid(input.id, 'input.id');
+    const teamId = assertOptionalUuid(input.teamId, 'input.teamId');
+
+    const params = new SqlParams();
+    const values = [
+      `COALESCE(${params.add(id)}::uuid, gen_random_uuid())`,
+      params.add(this.scope.workspaceId),
+      params.add(teamId),
+      params.add(input.slug),
+      params.add(input.displayName),
+      params.add(input.repoUrl ?? null),
+    ];
+
+    const rows = await this.rows(
+      `INSERT INTO project (id, workspace_id, team_id, slug, display_name, repo_url)
+       VALUES (${values.join(', ')})
+       RETURNING ${PROJECT_COLUMNS}`,
+      params.list(),
+    );
+
+    return toProject(expectOne(rows, `creating project ${input.slug}`));
   }
 
   async getProjectBySlug(slug: string): Promise<Project | null> {
@@ -502,6 +545,8 @@ class PostgresScopedStore implements ScopedStore {
     const embeddingValue =
       embedding === null ? null : embeddingLiteral(assertEmbedding(embedding, 'item.embedding'));
 
+    const decayAfterMs = assertOptionalIntervalMs(item.decayAfter, 'item.decayAfter');
+
     const params = new SqlParams();
     const values = [
       `COALESCE(${params.add(id)}::uuid, gen_random_uuid())`,
@@ -519,6 +564,8 @@ class PostgresScopedStore implements ScopedStore {
       params.add(item.accessScope ?? DEFAULT_ACCESS_SCOPE),
       `${params.add(embeddingValue)}::vector`,
       params.add(supersedesId),
+      `CASE WHEN ${params.add(decayAfterMs)}::double precision IS NULL THEN NULL
+            ELSE make_interval(secs => ${params.add(decayAfterMs)}::double precision / 1000.0) END`,
     ];
 
     const rows = await this.rows(
@@ -526,13 +573,70 @@ class PostgresScopedStore implements ScopedStore {
          id, workspace_id, project_id, kind, title, body,
          asserted_by, source_session_id, source_ref,
          confidence, human_confirmed, load_bearing,
-         access_scope, embedding, supersedes_id)
+         access_scope, embedding, supersedes_id, decay_after)
        VALUES (${values.join(', ')})
        RETURNING ${CONTEXT_ITEM_COLUMNS}`,
       params.list(),
     );
 
     return expectOne(rows, `inserting a context item into project ${item.projectId}`);
+  }
+
+  async confirmContextItem(input: ConfirmContextItemInput): Promise<ContextItem> {
+    assertUuid(input.id, 'input.id');
+    assertUuid(input.confirmedBy, 'input.confirmedBy');
+    if (input.title !== undefined) {
+      assertNonEmpty(input.title, 'input.title');
+    }
+
+    return this.atomic(`confirming context item ${input.id}`, async () => {
+      const actor = await this.getActor(input.confirmedBy);
+      if (actor === null) {
+        throw new StoreError(
+          'not_found',
+          `expected input.confirmedBy ${input.confirmedBy} to name an actor in workspace ${this.scope.workspaceId}; found none`,
+        );
+      }
+      if (actor.kind !== 'human') {
+        throw new StoreError(
+          'invalid_argument',
+          `expected input.confirmedBy ${input.confirmedBy} to be an actor of kind "human"; received "${actor.kind}". Only a human confirms an item — an agent doing so would let it overrule a human (vision.md §10.1).`,
+        );
+      }
+
+      const params = new SqlParams();
+      const assignments = ['human_confirmed = true', 'last_verified_at = now()'];
+      if (input.loadBearing !== undefined) {
+        assignments.push(`load_bearing = ${params.add(input.loadBearing)}`);
+      }
+      if (input.accessScope !== undefined) {
+        assignments.push(`access_scope = ${params.add(input.accessScope)}`);
+      }
+      if (input.title !== undefined) {
+        assignments.push(`title = ${params.add(input.title)}`);
+      }
+      if (input.body !== undefined) {
+        assignments.push(`body = ${params.add(input.body)}`);
+      }
+
+      const rows = await this.rows(
+        `UPDATE context_item
+            SET ${assignments.join(', ')}
+          WHERE workspace_id = ${params.add(this.scope.workspaceId)}
+            AND id = ${params.add(input.id)}
+          RETURNING ${CONTEXT_ITEM_COLUMNS}`,
+        params.list(),
+      );
+
+      const row = rows[0];
+      if (row === undefined) {
+        throw new StoreError(
+          'not_found',
+          `expected context item ${input.id} in workspace ${this.scope.workspaceId} to confirm; found none`,
+        );
+      }
+      return toContextItem(row);
+    });
   }
 
   private async linkSupersession(previousId: Uuid, replacementId: Uuid): Promise<void> {

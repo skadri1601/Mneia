@@ -21,6 +21,7 @@ export const SERVER_INSTRUCTIONS = [
   'Call mneia_rehydrate once at the start of a session, and again whenever the task changes, before planning or writing code — it returns the active constraints, the decisions already made, and the open questions.',
   'Call mneia_assert the moment a decision is made, a constraint is stated, or a question is left open, so the next session inherits it.',
   'Call mneia_checkpoint at a task or day boundary to capture the session as a whole.',
+  'When you checkpoint after a rehydrate, pass that slice id back as sliceId along with referencedItemIds — the ids of the slice items that actually changed what you did. That is the only signal of whether the slice was worth loading, and it cannot be recovered later.',
   'Items that need a human to confirm come back as a pending queue — surface them to the user rather than treating them as written.',
 ].join(' ');
 
@@ -32,11 +33,11 @@ export interface ServerLogger {
   error(message: string): void;
 }
 
-export type ToolContextProvider = () => ToolContext | Promise<ToolContext>;
+export type ToolContextScope = <T>(run: (context: ToolContext) => Promise<T>) => Promise<T>;
 
 export interface MneiaServerOptions {
   readonly registry: ToolRegistry;
-  readonly context: ToolContextProvider;
+  readonly context: ToolContextScope;
   readonly telemetry?: TelemetryEmitter | undefined;
   readonly closeStore?: (() => Promise<void>) | undefined;
   readonly logger?: ServerLogger | undefined;
@@ -49,6 +50,16 @@ export interface MneiaServer {
   readonly tools: readonly Tool[];
   connect(transport: Transport): Promise<void>;
   shutdown(): Promise<void>;
+}
+
+class FailedToolResult extends Error {
+  readonly result: ToolResult;
+
+  constructor(result: ToolResult) {
+    super('the tool reported a failure, so its transaction is being rolled back');
+    this.name = 'FailedToolResult';
+    this.result = result;
+  }
 }
 
 export class ToolAdvertisementError extends Error {
@@ -153,15 +164,24 @@ export function createMneiaServer(options: MneiaServerOptions): MneiaServer {
   let stopping = false;
   let shutdown: Promise<void> | null = null;
 
-  const resolveContext = async (name: string): Promise<ToolContext | ToolResult> => {
+  const runInScope = async (name: string, rawArguments: unknown): Promise<ToolResult> => {
     try {
-      return await options.context();
+      return await options.context(async (context) => {
+        const result = await options.registry.dispatch(name, rawArguments, context);
+        if (result.isError === true) {
+          throw new FailedToolResult(result);
+        }
+        return result;
+      });
     } catch (cause) {
+      if (cause instanceof FailedToolResult) {
+        return cause.result;
+      }
       logger.error(`could not open a Mneia session for ${name}: ${describeCause(cause)}`);
       return toolFailure(
         'store_unavailable',
         `${name} could not reach the Mneia store: ${describeCause(cause)}.`,
-        'This is a transport or authentication failure, not a bad argument. Retry once; if it persists, check that MNEIA_TOKEN is set and unexpired and that the API endpoint is reachable, then continue the task without Mneia rather than guessing at prior decisions.',
+        'This is a store or authentication failure, not a bad argument. Nothing was written. Retry once; if it persists, read the mneia-mcp stderr log for the store this server started against, then continue the task without Mneia rather than guessing at prior decisions.',
       );
     }
   };
@@ -182,12 +202,7 @@ export function createMneiaServer(options: MneiaServerOptions): MneiaServer {
       return toCallToolResult(refusal);
     }
 
-    const context = await resolveContext(name);
-    if ('content' in context) {
-      return toCallToolResult(context);
-    }
-
-    return toCallToolResult(await options.registry.dispatch(name, rawArguments, context));
+    return toCallToolResult(await runInScope(name, rawArguments));
   };
 
   server.setRequestHandler(ListToolsRequestSchema, () => ({ tools }));

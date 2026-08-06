@@ -256,11 +256,14 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
 
     const itemIds = slice.items.map((scoredItem) => scoredItem.item.id);
 
+    context.slices.record({ sliceId: slice.id, projectId: project.id, itemIds });
+
     await emitBestEffort(context, {
       name: 'rehydration.slice_shown',
       workspaceId: context.store.scope.workspaceId,
       projectId: project.id,
       actorId: context.store.scope.actorId,
+      sessionId: context.sessionIdFor(project.id),
       occurredAt: now,
       sliceId: slice.id,
       itemIds,

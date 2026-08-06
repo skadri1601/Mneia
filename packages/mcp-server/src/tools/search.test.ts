@@ -1,3 +1,4 @@
+import { createToolContextFixture } from './context-fixture.js';
 import type {
   ContextItem,
   ContextItemSearch,
@@ -9,6 +10,8 @@ import type {
 } from '@mneia/core';
 import { createMemorySink, createTelemetryEmitter } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
+import { createNoopReviewQueue } from '../review-queue.js';
+import { createSliceLog } from '../slices.js';
 import { DEFAULT_SEARCH_LIMIT, MAX_SEARCH_LIMIT, searchTool } from './search.js';
 import type { ToolContext, ToolResult } from './types.js';
 
@@ -163,7 +166,7 @@ function createTelemetry(): FakeTelemetry {
 }
 
 function createContext(store: ScopedStore, telemetry: TelemetryEmitter): ToolContext {
-  return { store, telemetry, now: () => NOW };
+  return createToolContextFixture(store, telemetry, { now: NOW });
 }
 
 function textOf(result: ToolResult): string {

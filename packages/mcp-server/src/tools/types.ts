@@ -1,9 +1,14 @@
-import type { ScopedStore, TelemetryEmitter } from '@mneia/core';
+import type { ScopedStore, TelemetryEmitter, Uuid } from '@mneia/core';
+import type { ReviewQueue } from '../review-queue.js';
+import type { SliceLog } from '../slices.js';
 
 export interface ToolContext {
   readonly store: ScopedStore;
   readonly telemetry: TelemetryEmitter;
   readonly now: () => Date;
+  readonly slices: SliceLog;
+  readonly reviewQueue: ReviewQueue;
+  readonly sessionIdFor: (projectId: Uuid) => Uuid | null;
 }
 
 export interface ToolResult {

@@ -1,3 +1,4 @@
+import { createToolContextFixture } from './context-fixture.js';
 import type {
   Actor,
   Checkpoint,
@@ -245,7 +246,7 @@ function createTelemetry(options: { readonly throwOnEmit?: boolean } = {}): Fake
 }
 
 function createContext(store: ScopedStore, telemetry: TelemetryEmitter): ToolContext {
-  return { store, telemetry, now: () => NOW };
+  return createToolContextFixture(store, telemetry, { now: NOW });
 }
 
 function textOf(result: ToolResult): string {

@@ -1,3 +1,4 @@
+import { createToolContextFixture } from './context-fixture.js';
 import type {
   Actor,
   ActorKind,
@@ -17,6 +18,8 @@ import type {
 } from '@mneia/core';
 import { createMemorySink, createTelemetryEmitter, ITEM_STATUSES } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
+import { createNoopReviewQueue } from '../review-queue.js';
+import { createSliceLog } from '../slices.js';
 import type { AssertInput } from './assert.js';
 import { assertTool } from './assert.js';
 import type { ToolContext, ToolResult } from './types.js';
@@ -32,6 +35,7 @@ const NEWER_ITEM_ID: Uuid = '4444dddd-4444-4444-8444-4444dddd4444';
 const WRITTEN_ITEM_ID: Uuid = '55555555-5555-4555-8555-555555555555';
 const CHECKPOINT_ID: Uuid = '66666666-6666-4666-8666-666666666666';
 const SESSION_ID: Uuid = '77777777-7777-4777-8777-777777777777';
+const SERVER_SESSION_ID: Uuid = '7777eeee-7777-4777-8777-7777eeee7777';
 const UNKNOWN_ITEM_ID: Uuid = '88888888-8888-4888-8888-888888888888';
 
 const NOW = new Date('2026-08-01T12:00:00.000Z');
@@ -270,7 +274,7 @@ function createTelemetry(options: TelemetryOptions = {}): FakeTelemetry {
 }
 
 function createContext(store: ScopedStore, telemetry: TelemetryEmitter): ToolContext {
-  return { store, telemetry, now: () => NOW };
+  return createToolContextFixture(store, telemetry, { now: NOW });
 }
 
 async function runTool(

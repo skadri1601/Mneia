@@ -83,7 +83,7 @@ describe('loadServerConfig token failures', () => {
 
     expect(error.variable).toBe(TOKEN_ENV_VAR);
     expect(error.message).toContain(TOKEN_ENV_VAR);
-    expect(error.message).toContain('mneia login');
+    expect(error.message).toContain('local.json');
     expect(describeConfigError(error)).toContain('mneia-mcp cannot start');
   });
 
@@ -200,7 +200,7 @@ describe('loadServerConfig project binding', () => {
 
     expect(error.variable).toBe(path);
     expect(error.message).toContain('not valid JSON');
-    expect(error.message).toContain('mneia init');
+    expect(error.message).toContain('pass the project name to each tool call');
   });
 
   it('names the missing field when the binding is incomplete', async () => {
