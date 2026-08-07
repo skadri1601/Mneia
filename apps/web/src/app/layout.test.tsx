@@ -19,6 +19,9 @@ vi.mock('@clerk/nextjs', () => {
     SignedIn: ({ children }: { children: React.ReactNode }) => (
       <div data-signed-in="true">{children}</div>
     ),
+    SignedOut: ({ children }: { children: React.ReactNode }) => (
+      <div data-signed-out="true">{children}</div>
+    ),
     UserButton,
   };
 });
@@ -62,11 +65,15 @@ test('puts the two links a developer reaches for in the header', () => {
   expect(markup).toContain('https://mneia.dev/help');
 });
 
-test('keeps every other destination reachable from the account menu', () => {
+test('leaves a way to reach a human in the account menu', () => {
+  expect(render()).toContain('href="https://mneia.dev/contact"');
+});
+
+test('keeps the account menu an account menu rather than a sitemap', () => {
   const markup = render();
 
-  for (const path of ['', '/about', '/faq', '/contact', '/privacy', '/terms']) {
-    expect(markup).toContain(`href="https://mneia.dev${path}"`);
+  for (const path of ['/about', '/faq', '/privacy', '/terms']) {
+    expect(markup).not.toContain(`href="https://mneia.dev${path}"`);
   }
 });
 
