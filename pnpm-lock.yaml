@@ -123,7 +123,7 @@ importers:
   packages/cli:
     dependencies:
       '@mneia/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       pg:
         specifier: ^8.13.1
@@ -148,7 +148,7 @@ importers:
   packages/mcp-server:
     dependencies:
       '@mneia/core':
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../core
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0

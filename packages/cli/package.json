@@ -1,7 +1,24 @@
 {
   "name": "@mneia/cli",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "The Mneia command line interface.",
+  "keywords": [
+    "mneia",
+    "cli",
+    "ai-agents",
+    "context",
+    "checkpoint",
+    "handoff"
+  ],
+  "homepage": "https://mneia.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skadri1601/Mneia.git",
+    "directory": "packages/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/skadri1601/Mneia/issues"
+  },
   "type": "module",
   "license": "Apache-2.0",
   "bin": {
@@ -10,13 +27,22 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.tsbuildinfo",
+    "LICENSE",
+    "NOTICE"
   ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc --build"
   },
   "dependencies": {
-    "@mneia/core": "workspace:*",
+    "@mneia/core": "workspace:^",
     "zod": "^4.4.3",
     "pg": "^8.13.1"
   },

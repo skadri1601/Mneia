@@ -1,0 +1,58 @@
+name: Release
+
+# Publishing to npm is a deliberate act, the same as pnpm db:migrate against production.
+# Nothing here fires on a push or a merge — a human has to run it from the Actions tab.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Pack and inspect only; publish nothing'
+        type: boolean
+        default: true
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    environment: npm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: build the publishable packages
+        run: pnpm build
+
+      - name: refuse to publish a package that already exists at this version
+        run: node scripts/check-publish.mjs
+
+      - name: pack and show what would ship
+        run: |
+          for package in core cli mcp-server; do
+            echo "::group::@mneia/$package"
+            (cd "packages/$package" && pnpm pack --pack-destination "$RUNNER_TEMP")
+            echo "::endgroup::"
+          done
+          ls -la "$RUNNER_TEMP"/*.tgz
+
+      - name: publish
+        if: ${{ inputs.dry_run == false }}
+        run: pnpm publish -r --access public --no-git-checks --report-summary
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

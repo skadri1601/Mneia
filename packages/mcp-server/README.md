@@ -1,0 +1,81 @@
+# @mneia/mcp-server
+
+The [Mneia](https://mneia.dev) MCP server — shared project memory and handoff for teams working with
+AI agents, exposed as MCP tools to Claude Code, Cursor, Codex, and any other MCP client.
+
+Your agent forgets between sessions. Your teammates never knew in the first place. Mneia captures
+what a session decided, and gives the next session — or the next person — the part of it that
+matters.
+
+## Install
+
+Nothing to install: point your MCP client at it with `npx`. Node 20.11 or newer.
+
+**Claude Code**
+
+```
+claude mcp add mneia --env MNEIA_TOKEN=<your token> -- npx -y @mneia/mcp-server
+```
+
+**Any client that reads a JSON config** — Cursor, Codex, Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "mneia": {
+      "command": "npx",
+      "args": ["-y", "@mneia/mcp-server"],
+      "env": { "MNEIA_TOKEN": "<your token>" }
+    }
+  }
+}
+```
+
+Get the token by installing [`@mneia/cli`](https://www.npmjs.com/package/@mneia/cli) and running
+`mneia login`; it is written to `~/.mneia/credentials`.
+
+The server speaks MCP over stdio. Run it from a client, not by hand — `mneia-mcp --help` and
+`mneia-mcp --version` are the only things it does interactively.
+
+## Tools
+
+| Tool | When the agent should call it |
+|---|---|
+| `mneia_rehydrate` | Once at the start of every session, and again whenever the task changes. Loads the minimal high-signal slice: active constraints, decisions and their reasons, open questions, and what was recently superseded so it is not re-proposed. |
+| `mneia_checkpoint` | At a task or day boundary. Records a batch of extracted items as one atomic checkpoint. |
+| `mneia_assert` | The moment a single decision, constraint, or open question is settled mid-session. |
+| `mneia_search` | When you already know what you are looking for — not as a substitute for rehydrate. |
+
+Two rules are enforced by the server, not left to the agent:
+
+- **A load-bearing item, or one that supersedes an existing item, is never written automatically.**
+  It comes back in a pending queue that the client must surface to a human verbatim. Auto-confirming
+  it would erase the disagreement the human needs to settle.
+- **An agent never overwrites something a human confirmed.** Provenance is read from the store, not
+  from the tool call.
+
+## Configuration
+
+| Variable | Purpose |
+|---|---|
+| `MNEIA_TOKEN` | Mneia API token from `mneia login`. Set it in the MCP client's server config. |
+| `MNEIA_API_URL` | API endpoint. Defaults to `https://app.mneia.dev`. |
+| `MNEIA_CREDENTIALS_PATH` | Absolute path to the credentials file, instead of `~/.mneia/credentials`. |
+| `MNEIA_TELEMETRY` | Set to `off` to opt out of usage events. |
+
+## Privacy
+
+Mneia is hosted. Your context is stored in the service, and access to it is enforced by controls —
+workspace scope on every row, Postgres row-level security, retention, and residency — not by where
+the bytes happen to sit. Usage events carry ids and timings, never your content, and
+`MNEIA_TELEMETRY=off` turns them off entirely.
+
+Read the [privacy policy](https://mneia.dev/privacy) for what is kept and for how long.
+
+## See also
+
+- [`@mneia/cli`](https://www.npmjs.com/package/@mneia/cli) — `mneia login`, `init`, `brief`,
+  `checkpoint`, `log`, `status`
+- [`@mneia/core`](https://www.npmjs.com/package/@mneia/core) — the library underneath both
+
+Apache-2.0.

@@ -97,7 +97,13 @@ pnpm db:migrate       # apply pending migrations to DATABASE_URL — local and t
 pnpm db:snapshot      # regenerate db/structure.sql from DATABASE_URL — run it with every migration
 pnpm db:snapshot --check  # fail if db/structure.sql and the migrations disagree — CI runs this
 pnpm waitlist:notify  # preview or send a waitlist campaign — local only, see below
+pnpm check:publish    # refuse an npm publish that would fail or ship a broken manifest
 ```
+
+**Publishing to npm is manual, on purpose.** `.github/workflows/release.yml` is `workflow_dispatch`
+only and defaults to a dry run — nothing publishes on a merge or a tag, the same shape as
+`db:migrate`. It needs an `NPM_TOKEN` secret on the `npm` environment, and the `@mneia` scope has to
+exist on npm before the first publish; as of 2026-08-07 it does not.
 
 **`ci.yml` does not run tests or typecheck.** Ruled by the founder 2026-07-30: both were judged
 noise. That job is format, lint errors, build, and git policy. It builds with `pnpm -r --if-present

@@ -385,7 +385,7 @@ describe('mneia status', () => {
     });
   });
 
-  it('points an unbound machine at the bootstrap script', async () => {
+  it('points an unbound machine at login and init, not at a repo-only script', async () => {
     const command = createStatusCommand({
       api: recordingApi(report(PROJECT_ITEMS)),
       loadConfig: (cwd) => requireProjectConfig(cwd),
@@ -398,7 +398,9 @@ describe('mneia status', () => {
 
     expect(error.kind).toBe('not_configured');
     expect(error.exitCode).toBe(EXIT_NOT_CONFIGURED);
-    expect(error.fix).toContain('bootstrap:local');
+    expect(error.fix).toContain('mneia login');
+    expect(error.fix).toContain('mneia init');
+    expect(error.fix).not.toContain('pnpm');
   });
 
   it('separates an unreachable API, a rejected token, and a real failure by exit code', async () => {
