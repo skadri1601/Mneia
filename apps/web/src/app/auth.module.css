@@ -8,21 +8,42 @@
   --clerk-card-inset: 40px;
   width: min(100%, 400px);
   display: grid;
-  justify-items: stretch;
+  grid-template-columns: auto minmax(0, 1fr);
   background: var(--canvas);
   border: 1px solid var(--tile-hairline);
   border-radius: var(--rounded-lg);
   overflow: hidden;
 }
 
+.panel :global(.cl-rootBox),
+.panel :global(.cl-cardBox),
+.panel :global(.cl-footer) {
+  display: contents;
+}
+
+.panel :global(.cl-card) {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  padding-block-end: 0;
+}
+
+.panel :global(.cl-footerAction) {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.panel :global(.cl-footer > :not(.cl-footerAction)) {
+  grid-column: 1 / -1;
+}
+
 .backLink {
-  justify-self: start;
+  grid-column: 1;
+  grid-row: 2;
   min-height: var(--target-min);
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
-  padding-inline: var(--clerk-card-inset);
-  padding-block-end: var(--space-md);
+  padding-inline-start: var(--clerk-card-inset);
   color: var(--tile-faint);
   font-size: var(--size-fine-print);
 }
