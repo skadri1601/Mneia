@@ -39,7 +39,7 @@
       "Bash(pnpm publish:*)",
       "Bash(vercel --prod:*)",
       "Bash(vercel deploy --prod:*)"
-    ],
+    ]
     // "deny": [
     //   "Read(./.env)",
     //   "Read(./.env.*)",

@@ -1,17 +1,7 @@
 'use client';
 
 import { UserButton } from '@clerk/nextjs';
-
-const SITE = 'https://mneia.dev';
-
-const LINKS = [
-  { label: 'Home', href: SITE },
-  { label: 'About', href: `${SITE}/about` },
-  { label: 'FAQ', href: `${SITE}/faq` },
-  { label: 'Contact', href: `${SITE}/contact` },
-  { label: 'Privacy', href: `${SITE}/privacy` },
-  { label: 'Terms', href: `${SITE}/terms` },
-] as const;
+import { MARKETING_SITE_URL } from '../site.js';
 
 function LinkIcon() {
   return (
@@ -39,14 +29,11 @@ export function AccountMenu() {
   return (
     <UserButton appearance={{ elements: { avatarBox: { width: '32px', height: '32px' } } }}>
       <UserButton.MenuItems>
-        {LINKS.map((link) => (
-          <UserButton.Link
-            key={link.href}
-            label={link.label}
-            href={link.href}
-            labelIcon={<LinkIcon />}
-          />
-        ))}
+        <UserButton.Link
+          label="Contact"
+          href={`${MARKETING_SITE_URL}/contact`}
+          labelIcon={<LinkIcon />}
+        />
       </UserButton.MenuItems>
     </UserButton>
   );
