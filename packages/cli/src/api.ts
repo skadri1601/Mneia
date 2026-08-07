@@ -1,3 +1,4 @@
+import { ApiError } from '@mneia/core';
 import { CliError } from './command.js';
 
 const NETWORK_ERROR_CODES: ReadonlySet<string> = new Set([
@@ -44,6 +45,35 @@ export function networkErrorCode(error: unknown): string | null {
   return null;
 }
 
+function apiFailure(error: ApiError, command: string): CliError {
+  if (error.code === 'invalid_token') {
+    return new CliError(
+      'auth',
+      `the Mneia API rejected these credentials: ${error.message}`,
+      'run mneia login again, or set MNEIA_TOKEN to a valid token in CI',
+    );
+  }
+  if (error.code === 'not_found') {
+    return new CliError(
+      'not_configured',
+      error.message,
+      `check the project in .mneia/config.json, then run mneia ${command} again`,
+    );
+  }
+  if (error.code === 'supersede_refused') {
+    return new CliError(
+      'failed',
+      error.message,
+      'a human has to confirm that replacement; nothing was written',
+    );
+  }
+  return new CliError(
+    'failed',
+    `the Mneia API call failed: ${error.message}`,
+    'retry, and report it if it keeps failing',
+  );
+}
+
 export async function callApi<T>(
   endpoint: string,
   command: string,
@@ -54,6 +84,9 @@ export async function callApi<T>(
   } catch (error) {
     if (error instanceof CliError) {
       throw error;
+    }
+    if (error instanceof ApiError) {
+      throw apiFailure(error, command);
     }
     const code = networkErrorCode(error);
     if (code !== null) {

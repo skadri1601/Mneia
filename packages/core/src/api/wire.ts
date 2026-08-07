@@ -1,0 +1,407 @@
+import { z } from 'zod';
+import type {
+  Actor,
+  Checkpoint,
+  CheckpointItem,
+  ContextItem,
+  Project,
+  Session,
+} from '../domain/types.js';
+import type { ScoredItem, Slice } from '../rehydrate/types.js';
+import type { CheckpointWriteResult } from '../store/adapter/types.js';
+import {
+  ACCESS_SCOPES,
+  ACTOR_KINDS,
+  CHECKPOINT_ACTIONS,
+  CHECKPOINT_TRIGGERS,
+  ITEM_KINDS,
+  ITEM_STATUSES,
+} from '../store/schema.js';
+
+export const MAX_ITEM_LIMIT = 1000;
+export const MAX_TITLE_LENGTH = 300;
+export const MAX_BODY_LENGTH = 8000;
+export const MAX_SOURCE_REF_LENGTH = 500;
+export const MAX_CHECKPOINT_ITEMS = 50;
+export const MIN_TOKEN_BUDGET = 500;
+export const MAX_TOKEN_BUDGET = 32_000;
+
+const uuid = z.string().min(1);
+const isoDate = z.iso.datetime({ offset: true });
+
+const toDate = (value: string): Date => new Date(value);
+const toNullableDate = (value: string | null): Date | null =>
+  value === null ? null : new Date(value);
+
+export const ContextItemWireSchema = z.object({
+  id: uuid,
+  workspaceId: uuid,
+  projectId: uuid,
+  kind: z.enum(ITEM_KINDS),
+  title: z.string(),
+  body: z.string().nullable(),
+  status: z.enum(ITEM_STATUSES),
+  assertedBy: uuid,
+  assertedAt: isoDate,
+  sourceSessionId: uuid.nullable(),
+  sourceRef: z.string().nullable(),
+  confidence: z.number(),
+  humanConfirmed: z.boolean(),
+  loadBearing: z.boolean(),
+  lastVerifiedAt: isoDate.nullable(),
+  decayAfter: z.number().nullable(),
+  validFrom: isoDate,
+  validTo: isoDate.nullable(),
+  supersedesId: uuid.nullable(),
+  supersededById: uuid.nullable(),
+  accessScope: z.enum(ACCESS_SCOPES),
+});
+
+export type ContextItemWire = z.infer<typeof ContextItemWireSchema>;
+
+export const encodeContextItem = (item: ContextItem): ContextItemWire => ({
+  id: item.id,
+  workspaceId: item.workspaceId,
+  projectId: item.projectId,
+  kind: item.kind,
+  title: item.title,
+  body: item.body,
+  status: item.status,
+  assertedBy: item.assertedBy,
+  assertedAt: item.assertedAt.toISOString(),
+  sourceSessionId: item.sourceSessionId,
+  sourceRef: item.sourceRef,
+  confidence: item.confidence,
+  humanConfirmed: item.humanConfirmed,
+  loadBearing: item.loadBearing,
+  lastVerifiedAt: item.lastVerifiedAt?.toISOString() ?? null,
+  decayAfter: item.decayAfter,
+  validFrom: item.validFrom.toISOString(),
+  validTo: item.validTo?.toISOString() ?? null,
+  supersedesId: item.supersedesId,
+  supersededById: item.supersededById,
+  accessScope: item.accessScope,
+});
+
+export const decodeContextItem = (wire: ContextItemWire): ContextItem => ({
+  id: wire.id,
+  workspaceId: wire.workspaceId,
+  projectId: wire.projectId,
+  kind: wire.kind,
+  title: wire.title,
+  body: wire.body,
+  status: wire.status,
+  assertedBy: wire.assertedBy,
+  assertedAt: toDate(wire.assertedAt),
+  sourceSessionId: wire.sourceSessionId,
+  sourceRef: wire.sourceRef,
+  confidence: wire.confidence,
+  humanConfirmed: wire.humanConfirmed,
+  loadBearing: wire.loadBearing,
+  lastVerifiedAt: toNullableDate(wire.lastVerifiedAt),
+  decayAfter: wire.decayAfter,
+  validFrom: toDate(wire.validFrom),
+  validTo: toNullableDate(wire.validTo),
+  supersedesId: wire.supersedesId,
+  supersededById: wire.supersededById,
+  accessScope: wire.accessScope,
+  embedding: null,
+});
+
+export const ActorWireSchema = z.object({
+  id: uuid,
+  workspaceId: uuid,
+  kind: z.enum(ACTOR_KINDS),
+  displayName: z.string(),
+  externalRef: z.string().nullable(),
+  createdAt: isoDate,
+});
+
+export type ActorWire = z.infer<typeof ActorWireSchema>;
+
+export const encodeActor = (actor: Actor): ActorWire => ({
+  id: actor.id,
+  workspaceId: actor.workspaceId,
+  kind: actor.kind,
+  displayName: actor.displayName,
+  externalRef: actor.externalRef,
+  createdAt: actor.createdAt.toISOString(),
+});
+
+export const decodeActor = (wire: ActorWire): Actor => ({
+  id: wire.id,
+  workspaceId: wire.workspaceId,
+  kind: wire.kind,
+  displayName: wire.displayName,
+  externalRef: wire.externalRef,
+  createdAt: toDate(wire.createdAt),
+});
+
+export const ProjectWireSchema = z.object({
+  id: uuid,
+  workspaceId: uuid,
+  teamId: uuid.nullable(),
+  slug: z.string(),
+  repoUrl: z.string().nullable(),
+  createdAt: isoDate,
+});
+
+export type ProjectWire = z.infer<typeof ProjectWireSchema>;
+
+export const encodeProject = (project: Project): ProjectWire => ({
+  id: project.id,
+  workspaceId: project.workspaceId,
+  teamId: project.teamId,
+  slug: project.slug,
+  repoUrl: project.repoUrl,
+  createdAt: project.createdAt.toISOString(),
+});
+
+export const decodeProject = (wire: ProjectWire): Project => ({
+  id: wire.id,
+  workspaceId: wire.workspaceId,
+  teamId: wire.teamId,
+  slug: wire.slug,
+  repoUrl: wire.repoUrl,
+  createdAt: toDate(wire.createdAt),
+});
+
+const ScoreComponentsWireSchema = z.object({
+  semanticRelevance: z.number(),
+  recencyDecay: z.number(),
+  confidence: z.number(),
+  humanConfirmed: z.number(),
+  loadBearing: z.number(),
+  freshness: z.number(),
+  disputed: z.number(),
+});
+
+export const ScoredItemWireSchema = z.object({
+  item: ContextItemWireSchema,
+  score: z.number(),
+  components: ScoreComponentsWireSchema,
+});
+
+export type ScoredItemWire = z.infer<typeof ScoredItemWireSchema>;
+
+export const encodeScoredItem = (scored: ScoredItem): ScoredItemWire => ({
+  item: encodeContextItem(scored.item),
+  score: scored.score,
+  components: scored.components,
+});
+
+export const decodeScoredItem = (wire: ScoredItemWire): ScoredItem => ({
+  item: decodeContextItem(wire.item),
+  score: wire.score,
+  components: wire.components,
+});
+
+export const SliceWireSchema = z.object({
+  id: uuid,
+  projectId: uuid,
+  task: z.string(),
+  items: z.array(ScoredItemWireSchema),
+  tokensUsed: z.number(),
+  tokenBudget: z.number(),
+  renderedMarkdown: z.string(),
+  generatedAt: isoDate,
+});
+
+export type SliceWire = z.infer<typeof SliceWireSchema>;
+
+export const encodeSlice = (slice: Slice): SliceWire => ({
+  id: slice.id,
+  projectId: slice.projectId,
+  task: slice.task,
+  items: slice.items.map(encodeScoredItem),
+  tokensUsed: slice.tokensUsed,
+  tokenBudget: slice.tokenBudget,
+  renderedMarkdown: slice.renderedMarkdown,
+  generatedAt: slice.generatedAt.toISOString(),
+});
+
+export const decodeSlice = (wire: SliceWire): Slice => ({
+  id: wire.id,
+  projectId: wire.projectId,
+  task: wire.task,
+  items: wire.items.map(decodeScoredItem),
+  tokensUsed: wire.tokensUsed,
+  tokenBudget: wire.tokenBudget,
+  renderedMarkdown: wire.renderedMarkdown,
+  generatedAt: toDate(wire.generatedAt),
+});
+
+export const SessionWireSchema = z.object({
+  id: uuid,
+  workspaceId: uuid,
+  projectId: uuid,
+  actorId: uuid,
+  tool: z.string().nullable(),
+  startedAt: isoDate,
+  endedAt: isoDate.nullable(),
+});
+
+export type SessionWire = z.infer<typeof SessionWireSchema>;
+
+export const encodeSession = (session: Session): SessionWire => ({
+  id: session.id,
+  workspaceId: session.workspaceId,
+  projectId: session.projectId,
+  actorId: session.actorId,
+  tool: session.tool,
+  startedAt: session.startedAt.toISOString(),
+  endedAt: session.endedAt?.toISOString() ?? null,
+});
+
+export const decodeSession = (wire: SessionWire): Session => ({
+  id: wire.id,
+  workspaceId: wire.workspaceId,
+  projectId: wire.projectId,
+  actorId: wire.actorId,
+  tool: wire.tool,
+  startedAt: toDate(wire.startedAt),
+  endedAt: toNullableDate(wire.endedAt),
+});
+
+export const CheckpointWireSchema = z.object({
+  id: uuid,
+  workspaceId: uuid,
+  projectId: uuid,
+  sessionId: uuid.nullable(),
+  actorId: uuid,
+  trigger: z.enum(CHECKPOINT_TRIGGERS),
+  createdAt: isoDate,
+  summary: z.string().nullable(),
+});
+
+export type CheckpointWire = z.infer<typeof CheckpointWireSchema>;
+
+export const encodeCheckpoint = (checkpoint: Checkpoint): CheckpointWire => ({
+  id: checkpoint.id,
+  workspaceId: checkpoint.workspaceId,
+  projectId: checkpoint.projectId,
+  sessionId: checkpoint.sessionId,
+  actorId: checkpoint.actorId,
+  trigger: checkpoint.trigger,
+  createdAt: checkpoint.createdAt.toISOString(),
+  summary: checkpoint.summary,
+});
+
+export const decodeCheckpoint = (wire: CheckpointWire): Checkpoint => ({
+  id: wire.id,
+  workspaceId: wire.workspaceId,
+  projectId: wire.projectId,
+  sessionId: wire.sessionId,
+  actorId: wire.actorId,
+  trigger: wire.trigger,
+  createdAt: toDate(wire.createdAt),
+  summary: wire.summary,
+});
+
+export const CheckpointItemWireSchema = z.object({
+  workspaceId: uuid,
+  checkpointId: uuid,
+  itemId: uuid,
+  action: z.enum(CHECKPOINT_ACTIONS),
+});
+
+export type CheckpointItemWire = z.infer<typeof CheckpointItemWireSchema>;
+
+export const encodeCheckpointItem = (item: CheckpointItem): CheckpointItemWire => ({
+  workspaceId: item.workspaceId,
+  checkpointId: item.checkpointId,
+  itemId: item.itemId,
+  action: item.action,
+});
+
+export const decodeCheckpointItem = (wire: CheckpointItemWire): CheckpointItem => ({
+  workspaceId: wire.workspaceId,
+  checkpointId: wire.checkpointId,
+  itemId: wire.itemId,
+  action: wire.action,
+});
+
+export const CheckpointWriteResultWireSchema = z.object({
+  checkpoint: CheckpointWireSchema,
+  items: z.array(CheckpointItemWireSchema),
+  written: z.array(ContextItemWireSchema),
+});
+
+export type CheckpointWriteResultWire = z.infer<typeof CheckpointWriteResultWireSchema>;
+
+export const encodeCheckpointWriteResult = (
+  result: CheckpointWriteResult,
+): CheckpointWriteResultWire => ({
+  checkpoint: encodeCheckpoint(result.checkpoint),
+  items: result.items.map(encodeCheckpointItem),
+  written: result.written.map(encodeContextItem),
+});
+
+export const decodeCheckpointWriteResult = (
+  wire: CheckpointWriteResultWire,
+): CheckpointWriteResult => ({
+  checkpoint: decodeCheckpoint(wire.checkpoint),
+  items: wire.items.map(decodeCheckpointItem),
+  written: wire.written.map(decodeContextItem),
+});
+
+export const ContextItemFilterWireSchema = z.object({
+  projectId: uuid,
+  kinds: z.array(z.enum(ITEM_KINDS)).optional(),
+  statuses: z.array(z.enum(ITEM_STATUSES)).optional(),
+  loadBearing: z.boolean().optional(),
+  asOf: isoDate.optional(),
+  limit: z.number().int().positive().max(MAX_ITEM_LIMIT).optional(),
+});
+
+export type ContextItemFilterWire = z.infer<typeof ContextItemFilterWireSchema>;
+
+export const ContextItemSearchWireSchema = ContextItemFilterWireSchema.extend({
+  text: z.string().optional(),
+});
+
+export type ContextItemSearchWire = z.infer<typeof ContextItemSearchWireSchema>;
+
+export const NewContextItemWireSchema = z.object({
+  projectId: uuid,
+  kind: z.enum(ITEM_KINDS),
+  title: z.string().trim().min(1).max(MAX_TITLE_LENGTH),
+  body: z.string().max(MAX_BODY_LENGTH).nullable().optional(),
+  sourceSessionId: uuid.nullable().optional(),
+  sourceRef: z.string().max(MAX_SOURCE_REF_LENGTH).nullable().optional(),
+  confidence: z.number().min(0).max(1).optional(),
+  loadBearing: z.boolean().optional(),
+  accessScope: z.enum(ACCESS_SCOPES).optional(),
+  supersedesId: uuid.nullable().optional(),
+  decayAfter: z.number().nullable().optional(),
+});
+
+export type NewContextItemWire = z.infer<typeof NewContextItemWireSchema>;
+
+export const CheckpointWriteWireSchema = z.object({
+  checkpoint: z.object({
+    projectId: uuid,
+    sessionId: uuid.nullable().optional(),
+    trigger: z.enum(CHECKPOINT_TRIGGERS),
+    summary: z.string().max(MAX_BODY_LENGTH).nullable().optional(),
+  }),
+  items: z
+    .array(
+      z.object({
+        action: z.enum(CHECKPOINT_ACTIONS),
+        item: NewContextItemWireSchema,
+      }),
+    )
+    .min(1)
+    .max(MAX_CHECKPOINT_ITEMS),
+});
+
+export type CheckpointWriteWire = z.infer<typeof CheckpointWriteWireSchema>;
+
+export const RehydrateRequestWireSchema = z.object({
+  project: z.string().min(1),
+  task: z.string(),
+  tokenBudget: z.number().int().min(MIN_TOKEN_BUDGET).max(MAX_TOKEN_BUDGET),
+});
+
+export type RehydrateRequestWire = z.infer<typeof RehydrateRequestWireSchema>;

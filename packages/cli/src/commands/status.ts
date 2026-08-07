@@ -1,7 +1,7 @@
 import type { ContextItem, IntervalMs, ItemKind, ItemStatus, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
-import { localStatusApi } from './local-api.js';
+import { httpStatusApi } from '../http-api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
 
@@ -361,6 +361,6 @@ const defaultLoadConfig: ProjectConfigLoader = async (cwd) => {
 };
 
 export const statusCommand: CommandDefinition = createStatusCommand({
-  api: localStatusApi,
+  api: httpStatusApi,
   loadConfig: defaultLoadConfig,
 });

@@ -120,7 +120,7 @@ describe('mneia init', () => {
 
     expect(config?.workspace).toBe('acme');
     expect(config?.project).toBe('checkout');
-    expect(config?.endpoint).toBe('https://api.mneia.dev');
+    expect(config?.endpoint).toBe('https://app.mneia.dev');
     expect(config?.repoRoot).toBe(root);
   });
 
@@ -220,7 +220,7 @@ describe('mneia init failure modes', () => {
     const result = await runInit(fakeApi(new TypeError('fetch failed', { cause })));
 
     expect(result.code).toBe(EXIT_NETWORK);
-    expect(result.stderr).toContain('could not reach the Mneia API at https://api.mneia.dev');
+    expect(result.stderr).toContain('could not reach the Mneia API at https://app.mneia.dev');
     expect(result.stderr).toContain('your token was not the problem');
     expect(result.stderr).not.toContain('token is invalid');
     expect(await exists('.mneia/config.json')).toBe(false);
@@ -339,7 +339,7 @@ describe('mneia init output', () => {
       command: 'init',
       workspace: 'acme',
       project: 'checkout',
-      endpoint: 'https://api.mneia.dev',
+      endpoint: 'https://app.mneia.dev',
       created: true,
       constraintsImported: 1,
       sources: ['AGENTS.md'],

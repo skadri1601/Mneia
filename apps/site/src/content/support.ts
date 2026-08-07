@@ -171,7 +171,7 @@ export const HELP_TASKS: readonly HelpTask[] = [
   {
     question: 'How do I point a client at a different API endpoint?',
     answer:
-      'Set MNEIA_API_URL, or pass --endpoint to mneia init to persist it in .mneia/config.json. The default is https://api.mneia.dev.',
+      'Set MNEIA_API_URL, or pass --endpoint to mneia init to persist it in .mneia/config.json. The default is https://app.mneia.dev.',
     href: '/docs/cli',
     linkLabel: 'CLI reference',
   },

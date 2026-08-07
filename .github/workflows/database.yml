@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'packages/core/src/store/**'
+      - 'packages/core/src/api/**'
+      - 'packages/cli/src/**'
       - 'packages/mcp-server/src/**'
       - 'apps/web/src/server/**'
       - 'tests/integration/**'
@@ -16,6 +18,8 @@ on:
     branches: [main]
     paths:
       - 'packages/core/src/store/**'
+      - 'packages/core/src/api/**'
+      - 'packages/cli/src/**'
       - 'packages/mcp-server/src/**'
       - 'apps/web/src/server/**'
       - 'tests/integration/**'

@@ -1,7 +1,7 @@
 import type { Actor, ActorKind, ContextItem, ItemKind, ItemStatus, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
-import { localLogApi } from './local-api.js';
+import { httpLogApi } from '../http-api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
 
@@ -402,6 +402,6 @@ const defaultLoadConfig: ProjectConfigLoader = async (cwd) => {
 };
 
 export const logCommand: CommandDefinition = createLogCommand({
-  api: localLogApi,
+  api: httpLogApi,
   loadConfig: defaultLoadConfig,
 });

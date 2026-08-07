@@ -11,7 +11,7 @@ export const CREDENTIALS_PATH_ENV_VAR = 'MNEIA_CREDENTIALS_PATH';
 export const LOCAL_CONFIG_PATH_ENV_VAR = 'MNEIA_LOCAL_CONFIG';
 export const DATABASE_URL_ENV_VAR = 'DATABASE_URL';
 
-export const DEFAULT_ENDPOINT = 'https://api.mneia.dev';
+export const DEFAULT_ENDPOINT = 'https://app.mneia.dev';
 export const CONFIG_DIR = '.mneia';
 export const CONFIG_FILE = 'config.json';
 export const CREDENTIALS_FILE = 'credentials';
