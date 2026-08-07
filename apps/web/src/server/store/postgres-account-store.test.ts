@@ -156,15 +156,13 @@ const aggregateErrors = (value: unknown): readonly unknown[] => {
   return (value as AggregateError).errors;
 };
 
+const blanks = (count: number): Step[] => Array.from({ length: count }, () => []);
+
+const PREAMBLE = 10;
+const TEAM_INSERT_STEP = 12;
+
 const createSteps = (): Step[] => [
-  [],
-  [],
-  [],
-  [],
-  [],
-  [],
-  [],
-  [],
+  ...blanks(PREAMBLE),
   [workspaceRow()],
   [actorRow()],
   [teamRow()],
@@ -176,17 +174,13 @@ const existingSteps = (
   memberships: readonly SqlRow[] = [membershipRow()],
   plan: 'solo' | 'team' | 'enterprise' = 'solo',
 ): Step[] => [
-  [],
-  [],
-  [],
-  [],
-  [],
+  ...blanks(7),
   [actorRow()],
   [],
   [],
   [workspaceRow({ plan })],
-  [teamRow()],
   memberships,
+  [teamRow()],
   [],
 ];
 
@@ -241,7 +235,9 @@ describe('PostgresAccountStore', () => {
     expect(statements(session)).toEqual([
       'BEGIN',
       'SET TRANSACTION ISOLATION LEVEL READ COMMITTED',
-      "SELECT set_config($1, '', true)",
+      'SELECT set_config($1, $2, true)',
+      'SELECT set_config($1, $2, true)',
+      'SELECT set_config($1, $2, true)',
       'SELECT set_config($1, $2, true)',
       'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
       "SELECT id, workspace_id, kind, display_name, external_ref, created_at FROM actor WHERE kind = 'human' AND external_ref = $1",
@@ -256,8 +252,10 @@ describe('PostgresAccountStore', () => {
     expect(session.calls.slice(1).map(({ params }) => params)).toEqual([
       [],
       [],
-      ['mneia.workspace_id'],
+      ['mneia.workspace_id', ''],
       ['mneia.identity_subject', SUBJECT],
+      ['mneia.invitation_email', ''],
+      ['mneia.invitation_token_hash', ''],
       [SUBJECT],
       [SUBJECT],
       ['mneia.identity_subject'],
@@ -291,15 +289,17 @@ describe('PostgresAccountStore', () => {
       expect(statements(session)).toEqual([
         'BEGIN',
         'SET TRANSACTION ISOLATION LEVEL READ COMMITTED',
-        "SELECT set_config($1, '', true)",
+        'SELECT set_config($1, $2, true)',
+        'SELECT set_config($1, $2, true)',
+        'SELECT set_config($1, $2, true)',
         'SELECT set_config($1, $2, true)',
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
         "SELECT id, workspace_id, kind, display_name, external_ref, created_at FROM actor WHERE kind = 'human' AND external_ref = $1",
         "SELECT set_config($1, '', true)",
         'SELECT set_config($1, $2, true)',
         'SELECT id, slug, display_name, plan, billing_status, billing_customer_ref, seats_purchased, checkpoint_allowance, trial_ends_at, created_at FROM workspace WHERE id = $1',
-        "SELECT id, workspace_id, slug, display_name, function, created_at FROM team WHERE workspace_id = $1 AND slug = 'default'",
-        'SELECT workspace_id, team_id, actor_id, role, added_at FROM team_member WHERE workspace_id = $1 AND team_id = $2 AND actor_id = $3',
+        'SELECT workspace_id, team_id, actor_id, role, added_at FROM team_member WHERE workspace_id = $1 AND actor_id = $2 ORDER BY added_at ASC LIMIT 1',
+        'SELECT id, workspace_id, slug, display_name, function, created_at FROM team WHERE workspace_id = $1 AND id = $2',
         'COMMIT',
       ]);
       expect(session.releaseCount).toBe(1);
@@ -307,10 +307,25 @@ describe('PostgresAccountStore', () => {
     },
   );
 
+  it('resolves an invited member who is not a lead of the default team', async () => {
+    const session = new FakeSession(
+      existingSteps([membershipRow({ role: 'member' })], 'enterprise'),
+    );
+    const store = new PostgresAccountStore(new FakeSource(session), ids());
+
+    const context = await store.bootstrapSoloAccount({
+      subject: SUBJECT,
+      displayName: DISPLAY_NAME,
+    });
+
+    expect(context.membership.role).toBe('member');
+    expect(context.workspace.id).toBe(WORKSPACE_ID);
+    expect(statements(session).at(-1)).toBe('COMMIT');
+  });
+
   it.each([
-    ['no default membership', []],
-    ['multiple default memberships', [membershipRow(), membershipRow()]],
-    ['a non-lead default membership', [membershipRow({ role: 'member' })]],
+    ['no membership', []],
+    ['multiple memberships', [membershipRow(), membershipRow()]],
   ])('rejects corrupt existing state with %s', async (_label, memberships) => {
     const session = new FakeSession(existingSteps(memberships));
     const store = new PostgresAccountStore(new FakeSource(session), ids());
@@ -325,7 +340,7 @@ describe('PostgresAccountStore', () => {
   it('rolls back the transaction failure and releases the session', async () => {
     const failure = new Error('team insert failed');
     const steps = createSteps();
-    steps[10] = failure;
+    steps[TEAM_INSERT_STEP] = failure;
     const session = new FakeSession(steps);
     const store = new PostgresAccountStore(new FakeSource(session), ids());
 
@@ -341,8 +356,8 @@ describe('PostgresAccountStore', () => {
     const failure = new Error('team insert failed');
     const rollbackFailure = new Error('rollback failed');
     const steps = createSteps();
-    steps[10] = failure;
-    steps[11] = rollbackFailure;
+    steps[TEAM_INSERT_STEP] = failure;
+    steps[TEAM_INSERT_STEP + 1] = rollbackFailure;
     const session = new FakeSession(steps);
     const store = new PostgresAccountStore(new FakeSource(session), ids());
 
@@ -377,7 +392,7 @@ describe('PostgresAccountStore', () => {
     const failure = new Error('team insert failed');
     const releaseFailure = new Error('release failed');
     const steps = createSteps();
-    steps[10] = failure;
+    steps[TEAM_INSERT_STEP] = failure;
     const session = new FakeSession(steps, false, releaseFailure);
     const store = new PostgresAccountStore(new FakeSource(session), ids());
 
@@ -397,8 +412,8 @@ describe('PostgresAccountStore', () => {
     const rollbackFailure = new Error('rollback failed');
     const discardFailure = new Error('discard failed');
     const steps = createSteps();
-    steps[10] = failure;
-    steps[11] = rollbackFailure;
+    steps[TEAM_INSERT_STEP] = failure;
+    steps[TEAM_INSERT_STEP + 1] = rollbackFailure;
     const session = new FakeSession(steps, false, undefined, discardFailure);
     const store = new PostgresAccountStore(new FakeSource(session), ids());
 
@@ -431,5 +446,164 @@ describe('PostgresAccountStore', () => {
     expect(session.calls[0]?.sql).toBe(RLS_POSTURE_SQL);
     expect(session.releaseCount).toBe(1);
     expect(session.discardCount).toBe(0);
+  });
+});
+
+const INVITATION_ID = '44444444-4444-4444-8444-444444444444';
+const INVITED_ACTOR_ID = '55555555-5555-4555-8555-555555555555';
+const INVITED_EMAIL = 'grace@example.com';
+const TOKEN_HASH = 'a'.repeat(64);
+const EXPIRES_AT = new Date('2026-08-14T00:00:00.000Z');
+
+const invitationRow = (overrides: Partial<SqlRow> = {}): SqlRow => ({
+  id: INVITATION_ID,
+  workspace_id: WORKSPACE_ID,
+  team_id: TEAM_ID,
+  invited_email: INVITED_EMAIL,
+  role: 'member',
+  invited_by: ACTOR_ID,
+  created_at: CREATED_AT,
+  expires_at: EXPIRES_AT,
+  accepted_at: null,
+  revoked_at: null,
+  ...overrides,
+});
+
+const scopeOf = (session: FakeSession): Record<string, string> => {
+  const scope: Record<string, string> = {};
+  for (const { sql, params } of session.calls) {
+    if (sql.includes('set_config') && params.length === 2) {
+      scope[String(params[0])] = String(params[1]);
+    }
+  }
+  return scope;
+};
+
+describe('PostgresAccountStore invitations', () => {
+  it('writes only the token hash, scoped to the inviting workspace', async () => {
+    const session = new FakeSession([...blanks(6), [invitationRow()], []]);
+    const store = new PostgresAccountStore(
+      new FakeSource(session),
+      vi.fn<() => string>().mockReturnValue(INVITATION_ID),
+    );
+
+    await expect(
+      store.inviteToWorkspace({
+        workspaceId: WORKSPACE_ID,
+        teamId: TEAM_ID,
+        invitedByActorId: ACTOR_ID,
+        invitedEmail: INVITED_EMAIL,
+        role: 'member',
+        tokenHash: TOKEN_HASH,
+        expiresAt: EXPIRES_AT,
+      }),
+    ).resolves.toEqual({
+      id: INVITATION_ID,
+      workspaceId: WORKSPACE_ID,
+      teamId: TEAM_ID,
+      invitedEmail: INVITED_EMAIL,
+      role: 'member',
+      invitedBy: ACTOR_ID,
+      createdAt: CREATED_AT,
+      expiresAt: EXPIRES_AT,
+      acceptedAt: null,
+      revokedAt: null,
+    });
+
+    expect(scopeOf(session)['mneia.workspace_id']).toBe(WORKSPACE_ID);
+    const insert = session.calls.find(({ sql }) =>
+      sql.includes('INSERT INTO workspace_invitation'),
+    );
+    expect(insert?.params).toContain(TOKEN_HASH);
+    expect(insert?.sql).toContain('token_hash');
+    expect(insert?.sql).not.toContain('RETURNING id, workspace_id, team_id, invited_email, token');
+    expect(statements(session).at(-1)).toBe('COMMIT');
+  });
+
+  it('refuses to revoke an invitation that is already settled', async () => {
+    const session = new FakeSession([...blanks(6), [], []]);
+    const store = new PostgresAccountStore(new FakeSource(session), ids());
+
+    await expect(
+      store.revokeInvitation({ workspaceId: WORKSPACE_ID, invitationId: INVITATION_ID }),
+    ).rejects.toMatchObject({ code: 'invitation_not_found' } satisfies Partial<AccountError>);
+    expect(statements(session).at(-1)).toBe('ROLLBACK');
+  });
+
+  it('creates the actor and membership inside the inviting workspace', async () => {
+    const session = new FakeSession([
+      ...blanks(7),
+      [],
+      ...blanks(4),
+      [invitationRow()],
+      ...blanks(4),
+      [actorRow({ id: INVITED_ACTOR_ID, external_ref: 'user_invited' })],
+      [membershipRow({ actor_id: INVITED_ACTOR_ID, role: 'member' })],
+      [invitationRow({ accepted_at: CREATED_AT })],
+      [workspaceRow()],
+      [teamRow()],
+      [],
+    ]);
+    const store = new PostgresAccountStore(
+      new FakeSource(session),
+      vi.fn<() => string>().mockReturnValue(INVITED_ACTOR_ID),
+    );
+
+    const context = await store.redeemInvitation({
+      subject: 'user_invited',
+      verifiedEmail: INVITED_EMAIL,
+      displayName: 'Grace Hopper',
+      tokenHash: TOKEN_HASH,
+    });
+
+    expect(context?.workspace.id).toBe(WORKSPACE_ID);
+    expect(context?.actor.id).toBe(INVITED_ACTOR_ID);
+    expect(context?.membership.role).toBe('member');
+
+    const lookup = session.calls.find(({ sql }) => sql.includes('FROM workspace_invitation'));
+    expect(lookup?.params).toEqual([INVITED_EMAIL, TOKEN_HASH]);
+
+    const scopeAtLookup = session.calls
+      .slice(0, session.calls.indexOf(lookup as SqlCall))
+      .filter(({ sql, params }) => sql.includes('set_config') && params.length === 2)
+      .reduce<Record<string, string>>((scope, { params }) => {
+        scope[String(params[0])] = String(params[1]);
+        return scope;
+      }, {});
+    expect(scopeAtLookup['mneia.workspace_id']).toBe('');
+    expect(scopeAtLookup['mneia.invitation_email']).toBe(INVITED_EMAIL);
+
+    expect(scopeOf(session)['mneia.workspace_id']).toBe(WORKSPACE_ID);
+    expect(statements(session).at(-1)).toBe('COMMIT');
+  });
+
+  it('leaves an existing actor alone rather than redeeming again', async () => {
+    const session = new FakeSession([...blanks(7), [actorRow()], []]);
+    const store = new PostgresAccountStore(new FakeSource(session), ids());
+
+    await expect(
+      store.redeemInvitation({
+        subject: SUBJECT,
+        verifiedEmail: INVITED_EMAIL,
+        displayName: DISPLAY_NAME,
+      }),
+    ).resolves.toBeNull();
+    expect(statements(session).some((sql) => sql.includes('workspace_invitation'))).toBe(false);
+    expect(statements(session).at(-1)).toBe('COMMIT');
+  });
+
+  it('returns null when no pending invitation matches the verified email', async () => {
+    const session = new FakeSession([...blanks(7), [], ...blanks(4), [], []]);
+    const store = new PostgresAccountStore(new FakeSource(session), ids());
+
+    await expect(
+      store.redeemInvitation({
+        subject: 'user_invited',
+        verifiedEmail: INVITED_EMAIL,
+        displayName: 'Grace Hopper',
+      }),
+    ).resolves.toBeNull();
+    expect(statements(session).some((sql) => sql.includes('INSERT INTO actor'))).toBe(false);
+    expect(statements(session).at(-1)).toBe('COMMIT');
   });
 });

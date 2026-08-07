@@ -37,6 +37,10 @@ export function AppHeader() {
           </a>
         </SignedOut>
         <nav className={styles.nav} aria-label="Resources">
+          <SignedIn>
+            <Link href="/projects">Projects</Link>
+            <Link href="/team">Team</Link>
+          </SignedIn>
           {DESTINATIONS.map((destination) => (
             <a href={`${MARKETING_SITE_URL}${destination.path}`} key={destination.path}>
               {destination.label}

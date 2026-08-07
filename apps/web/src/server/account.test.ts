@@ -2,8 +2,17 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
-import { AccountError, bootstrapSoloAccount } from './account.js';
-import type { AccountContext, AccountStore } from './store/account-store.js';
+import {
+  AccountError,
+  bootstrapSoloAccount,
+  INVITATION_TTL_MS,
+  inviteTeammate,
+  normalizeEmail,
+  parseTeamRole,
+  redeemInvitation,
+} from './account.js';
+import { hashJoinToken } from './invitations.js';
+import type { AccountContext, AccountStore, WorkspaceInvitation } from './store/account-store.js';
 
 const ACCOUNT_CONTEXT: AccountContext = {
   workspace: {
@@ -43,12 +52,37 @@ const ACCOUNT_CONTEXT: AccountContext = {
   },
 };
 
+const INVITATION: WorkspaceInvitation = {
+  id: '44444444-4444-4444-8444-444444444444',
+  workspaceId: ACCOUNT_CONTEXT.workspace.id,
+  teamId: ACCOUNT_CONTEXT.team.id,
+  invitedEmail: 'grace@example.com',
+  role: 'member',
+  invitedBy: ACCOUNT_CONTEXT.actor.id,
+  createdAt: new Date('2026-08-07T00:00:00.000Z'),
+  expiresAt: new Date('2026-08-14T00:00:00.000Z'),
+  acceptedAt: null,
+  revokedAt: null,
+};
+
 const accountStore = () => {
   const bootstrapSoloAccount = vi.fn<AccountStore['bootstrapSoloAccount']>();
+  const inviteToWorkspace = vi
+    .fn<AccountStore['inviteToWorkspace']>()
+    .mockResolvedValue(INVITATION);
+  const redeem = vi.fn<AccountStore['redeemInvitation']>().mockResolvedValue(null);
 
   return {
-    store: { bootstrapSoloAccount } satisfies AccountStore,
+    store: {
+      bootstrapSoloAccount,
+      inviteToWorkspace,
+      redeemInvitation: redeem,
+      listPendingInvitations: vi.fn<AccountStore['listPendingInvitations']>(),
+      revokeInvitation: vi.fn<AccountStore['revokeInvitation']>(),
+    } satisfies AccountStore,
     bootstrapSoloAccount,
+    inviteToWorkspace,
+    redeem,
   };
 };
 
@@ -103,6 +137,142 @@ describe('bootstrapSoloAccount', () => {
     expect(persist).toHaveBeenCalledWith({
       subject: 'user_123',
       displayName: ' Ada Lovelace ',
+    });
+  });
+});
+
+describe('normalizeEmail', () => {
+  it.each([
+    { input: '  Grace@Example.COM ', expected: 'grace@example.com' },
+    { input: 'a.b+tag@sub.example.co.uk', expected: 'a.b+tag@sub.example.co.uk' },
+  ])('normalizes $input', ({ input, expected }) => {
+    expect(normalizeEmail(input)).toBe(expected);
+  });
+
+  it.each(['', '   ', 'grace', 'grace@', '@example.com', 'grace@example', 'a b@example.com'])(
+    'rejects %j',
+    (input) => {
+      expect(() => normalizeEmail(input)).toThrowError(
+        expect.objectContaining({ code: 'invalid_email' }),
+      );
+    },
+  );
+
+  it('rejects an address longer than the RFC maximum', () => {
+    expect(() => normalizeEmail(`${'a'.repeat(320)}@example.com`)).toThrowError(
+      expect.objectContaining({ code: 'invalid_email' }),
+    );
+  });
+});
+
+describe('parseTeamRole', () => {
+  it.each(['lead', 'member'] as const)('accepts %s', (role) => {
+    expect(parseTeamRole(role)).toBe(role);
+  });
+
+  it.each(['owner', 'admin', '', 'LEAD'])('rejects %j', (role) => {
+    expect(() => parseTeamRole(role)).toThrowError(
+      expect.objectContaining({ code: 'invalid_role' }),
+    );
+  });
+});
+
+describe('inviteTeammate', () => {
+  it('stores only the hash of a token it returns exactly once', async () => {
+    const { store, inviteToWorkspace } = accountStore();
+
+    const { invitation, token } = await inviteTeammate({
+      workspaceId: ACCOUNT_CONTEXT.workspace.id,
+      teamId: ACCOUNT_CONTEXT.team.id,
+      invitedByActorId: ACCOUNT_CONTEXT.actor.id,
+      email: '  Grace@Example.com ',
+      role: 'member',
+      store,
+      now: () => new Date('2026-08-07T00:00:00.000Z'),
+      issueToken: () => 'join-token',
+    });
+
+    expect(invitation).toBe(INVITATION);
+    expect(token).toBe('join-token');
+    expect(inviteToWorkspace).toHaveBeenCalledWith({
+      workspaceId: ACCOUNT_CONTEXT.workspace.id,
+      teamId: ACCOUNT_CONTEXT.team.id,
+      invitedByActorId: ACCOUNT_CONTEXT.actor.id,
+      invitedEmail: 'grace@example.com',
+      role: 'member',
+      tokenHash: hashJoinToken('join-token'),
+      expiresAt: new Date(new Date('2026-08-07T00:00:00.000Z').getTime() + INVITATION_TTL_MS),
+    });
+    expect(JSON.stringify(inviteToWorkspace.mock.calls)).not.toContain('join-token');
+  });
+
+  it.each([
+    { email: 'not-an-address', role: 'member', code: 'invalid_email' },
+    { email: 'grace@example.com', role: 'owner', code: 'invalid_role' },
+  ])('refuses $code before touching the store', async ({ email, role, code }) => {
+    const { store, inviteToWorkspace } = accountStore();
+
+    await expect(
+      inviteTeammate({
+        workspaceId: ACCOUNT_CONTEXT.workspace.id,
+        teamId: ACCOUNT_CONTEXT.team.id,
+        invitedByActorId: ACCOUNT_CONTEXT.actor.id,
+        email,
+        role,
+        store,
+      }),
+    ).rejects.toMatchObject({ code });
+    expect(inviteToWorkspace).not.toHaveBeenCalled();
+  });
+});
+
+describe('redeemInvitation', () => {
+  it('rejects an absent Clerk subject', async () => {
+    const { store, redeem } = accountStore();
+
+    await expect(
+      redeemInvitation({
+        subject: null,
+        verifiedEmail: 'grace@example.com',
+        displayName: 'Grace Hopper',
+        store,
+      }),
+    ).rejects.toMatchObject({ code: 'unauthenticated' });
+    expect(redeem).not.toHaveBeenCalled();
+  });
+
+  it('never reaches the store without a verified email address', async () => {
+    const { store, redeem } = accountStore();
+
+    await expect(
+      redeemInvitation({
+        subject: 'user_123',
+        verifiedEmail: null,
+        displayName: 'Grace Hopper',
+        store,
+      }),
+    ).resolves.toBeNull();
+    expect(redeem).not.toHaveBeenCalled();
+  });
+
+  it('passes the normalized verified email and hashes the join token', async () => {
+    const { store, redeem } = accountStore();
+    redeem.mockResolvedValue(ACCOUNT_CONTEXT);
+
+    await expect(
+      redeemInvitation({
+        subject: 'user_123',
+        verifiedEmail: ' Grace@Example.com ',
+        displayName: 'Grace Hopper',
+        token: 'join-token',
+        store,
+      }),
+    ).resolves.toBe(ACCOUNT_CONTEXT);
+    expect(redeem).toHaveBeenCalledWith({
+      subject: 'user_123',
+      verifiedEmail: 'grace@example.com',
+      displayName: 'Grace Hopper',
+      tokenHash: hashJoinToken('join-token'),
     });
   });
 });
