@@ -7,11 +7,21 @@ const STATUS_BY_CODE: Readonly<Record<ApiErrorCode, number>> = {
   invalid_request: 400,
   not_found: 404,
   supersede_refused: 409,
+  payload_too_large: 413,
+  rate_limited: 429,
   unsupported: 501,
   internal: 500,
 };
 
-export const apiError = (code: ApiErrorCode, message: string): Response =>
+export interface ApiErrorOptions {
+  readonly retryAfterSeconds?: number | undefined;
+}
+
+export const apiError = (
+  code: ApiErrorCode,
+  message: string,
+  options: ApiErrorOptions = {},
+): Response =>
   Response.json(
     { error: { code, message } },
     {
@@ -23,6 +33,9 @@ export const apiError = (code: ApiErrorCode, message: string): Response =>
               'www-authenticate': `Bearer error="invalid_token", error_description="${headerSafe(message)}"`,
             }
           : {}),
+        ...(options.retryAfterSeconds === undefined
+          ? {}
+          : { 'retry-after': String(options.retryAfterSeconds) }),
       },
     },
   );
