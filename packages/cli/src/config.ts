@@ -8,7 +8,7 @@ export const CONFIG_DIR = '.mneia';
 export const CONFIG_FILE = 'config.json';
 export const CREDENTIALS_ENV_VAR = 'MNEIA_TOKEN';
 export const ENDPOINT_ENV_VAR = 'MNEIA_API_URL';
-export const DEFAULT_ENDPOINT = 'https://api.mneia.dev';
+export const DEFAULT_ENDPOINT = 'https://app.mneia.dev';
 export const AUTH_URL_ENV_VAR = 'MNEIA_AUTH_URL';
 export const DEFAULT_AUTH_URL = 'https://app.mneia.dev';
 

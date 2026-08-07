@@ -1,5 +1,6 @@
 export const VERSION = '0.0.0';
 
+export * from './api/index.js';
 export type {
   Actor,
   Checkpoint,

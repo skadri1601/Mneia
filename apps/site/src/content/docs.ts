@@ -634,7 +634,7 @@ const CLI: DocPage = {
             ],
             [
               '`MNEIA_API_URL`',
-              '`https://api.mneia.dev`',
+              '`https://app.mneia.dev`',
               'The API endpoint. Wins over the value in `.mneia/config.json`',
             ],
             [

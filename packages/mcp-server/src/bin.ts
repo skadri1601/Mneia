@@ -1,14 +1,27 @@
 #!/usr/bin/env node
-import type { ScopedStore, TelemetryEmitter, TelemetrySink, Uuid } from '@mneia/core';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import type {
+  HostedIdentity,
+  RemoteStore,
+  ScopedStore,
+  TelemetryEmitter,
+  TelemetrySink,
+  Uuid,
+} from '@mneia/core';
 import {
+  createHttpTransport,
   createJsonlSink,
   createNoopEmitter,
+  createRemoteStore,
   createTelemetryEmitter,
+  fetchIdentity,
   remoteSinkFromEnv,
   PostgresStoreAdapter,
+  resolveProject,
   VERSION,
 } from '@mneia/core';
-import type { HostedServerConfig, LocalBinding, ServerConfig } from './config.js';
+import type { HostedServerConfig, LocalBinding, ProjectBinding, ServerConfig } from './config.js';
 import {
   ConfigError,
   describeConfigError,
@@ -49,16 +62,17 @@ Usage:
   mneia-mcp --version    print the version
   mneia-mcp --help       print this message
 
-Local store (the mode that works today):
+Hosted API (the default):
+  MNEIA_TOKEN            Mneia API token from mneia login. Set it in the MCP
+                         client's server config.
+  MNEIA_API_URL          Mneia API endpoint. Defaults to https://app.mneia.dev.
+
+Local store (dogfooding only; takes precedence when the file exists):
   ~/.mneia/local.json    binds this server straight to a Postgres store. Requires
                          workspaceId and agentActorId, and either a databaseUrl
                          field or DATABASE_URL. agentActorId must be an actor of
                          kind "agent" — the server refuses to write otherwise.
   MNEIA_LOCAL_CONFIG     read the binding from this path instead.
-
-Hosted API:
-  MNEIA_TOKEN            Mneia API token, used when no local binding exists.
-  MNEIA_API_URL          Mneia API endpoint. Defaults to https://api.mneia.dev.
 
 Telemetry:
   MNEIA_TELEMETRY        Set to off to opt out. In local mode events are appended
@@ -279,13 +293,103 @@ function createLocalRuntime(
   return { scope, start, close, describe };
 }
 
-function createHostedScope(config: HostedServerConfig): ToolContextScope {
-  return <T>(): Promise<T> =>
-    Promise.reject(
-      new Error(
-        `the hosted Mneia API client is not wired into this build (MNE-101), so no tool can reach ${config.endpoint}. Write ~/.mneia/local.json with databaseUrl, workspaceId and agentActorId to run this server against a Postgres store instead`,
-      ),
-    );
+interface HostedRuntime {
+  readonly scope: ToolContextScope;
+  readonly start: () => Promise<void>;
+  readonly close: () => Promise<void>;
+  readonly describe: () => string;
+}
+
+export function hostedReviewQueuePath(): string {
+  return join(homedir(), '.mneia', 'review-queue.jsonl');
+}
+
+async function resolveBoundProject(
+  store: ScopedStore,
+  binding: ProjectBinding,
+): Promise<Uuid | null> {
+  const project = await resolveProject(store, binding.project);
+  return project === null ? null : project.id;
+}
+
+function createHostedRuntime(
+  config: HostedServerConfig,
+  telemetry: TelemetryEmitter,
+  logger: ServerLogger,
+): HostedRuntime {
+  const transport = createHttpTransport({
+    endpoint: config.endpoint,
+    token: config.token,
+    userAgent: `mneia-mcp/${VERSION}`,
+  });
+  const slices: SliceLog = createSliceLog();
+  const reviewQueue: ReviewQueue = createJsonlReviewQueue({ filePath: hostedReviewQueuePath() });
+
+  let store: RemoteStore | null = null;
+  let identity: HostedIdentity | null = null;
+  let session: { readonly id: Uuid; readonly projectId: Uuid } | null = null;
+
+  const sessionIdFor = (projectId: Uuid): Uuid | null =>
+    session !== null && session.projectId === projectId ? session.id : null;
+
+  const connect = async (): Promise<RemoteStore> => {
+    if (store !== null) {
+      return store;
+    }
+    const resolved = await fetchIdentity(transport);
+    identity = resolved;
+    store = createRemoteStore({
+      transport,
+      scope: { workspaceId: resolved.workspaceId, actorId: resolved.actorId },
+    });
+    return store;
+  };
+
+  const scope: ToolContextScope = async <T>(
+    run: (context: ToolContext) => Promise<T>,
+  ): Promise<T> => {
+    const connected = await connect();
+    return run({
+      store: connected,
+      telemetry,
+      now: () => new Date(),
+      slices,
+      reviewQueue,
+      sessionIdFor,
+    });
+  };
+
+  const start = async (): Promise<void> => {
+    try {
+      const connected = await connect();
+      const projectId =
+        config.project === null ? null : await resolveBoundProject(connected, config.project);
+      if (projectId !== null) {
+        const created = await connected.createSession(projectId, SESSION_TOOL);
+        session = { id: created.id, projectId };
+      }
+    } catch (cause) {
+      logger.warn(
+        `the Mneia API at ${config.endpoint} could not be reached at startup: ${describeCause(cause)}. Tool calls will retry it.`,
+      );
+    }
+  };
+
+  const close = async (): Promise<void> => {
+    session = null;
+  };
+
+  const describe = (): string =>
+    [
+      `hosted API ${config.endpoint}`,
+      identity === null
+        ? 'identity not yet resolved'
+        : `workspace ${identity.workspaceSlug}, actor ${identity.actorId} (${identity.actorKind})`,
+      session === null ? 'no session row' : `session ${session.id}`,
+      `review queue ${reviewQueue.path ?? 'off'}`,
+    ].join(', ');
+
+  return { scope, start, close, describe };
 }
 
 function installProcessHandlers(mneia: MneiaServer, logger: ServerLogger): void {
@@ -347,9 +451,12 @@ async function main(): Promise<void> {
     binding = runtime.describe();
     telemetryTarget = config.telemetryEnabled ? config.local.telemetryPath : 'off';
   } else {
-    scope = createHostedScope(config);
-    binding = `endpoint ${config.endpoint}, hosted API client not wired`;
-    telemetryTarget = config.telemetryEnabled ? 'on, but no sink is configured' : 'off';
+    const runtime = createHostedRuntime(config, telemetry, logger);
+    await runtime.start();
+    scope = runtime.scope;
+    closeStore = runtime.close;
+    binding = runtime.describe();
+    telemetryTarget = config.telemetryEnabled ? 'remote sink only' : 'off';
   }
 
   const mneia = await startStdioServer({

@@ -1,12 +1,15 @@
 import { expect, test, vi } from 'vitest';
 
+const { routeMatcherPatterns } = vi.hoisted(() => ({ routeMatcherPatterns: [] as string[][] }));
+
 vi.mock('@clerk/nextjs/server', () => ({
   clerkMiddleware: (handler: unknown) => handler,
-  createRouteMatcher:
-    () =>
-    (request: { nextUrl: { pathname: string } }): boolean =>
+  createRouteMatcher: (patterns: string[]) => {
+    routeMatcherPatterns.push(patterns);
+    return (request: { nextUrl: { pathname: string } }): boolean =>
       request.nextUrl.pathname.startsWith('/sign-in') ||
-      request.nextUrl.pathname.startsWith('/sign-up'),
+      request.nextUrl.pathname.startsWith('/sign-up');
+  },
 }));
 
 import middleware from './middleware.js';
@@ -44,10 +47,7 @@ test('sends a signed-out visitor to sign-in rather than letting Clerk rewrite a 
 
 test('leaves local sign-in and sign-up routes public', async () => {
   const protect = vi.fn().mockResolvedValue(undefined);
-  const handler = middleware as unknown as (
-    auth: { protect: () => Promise<void> },
-    request: { nextUrl: { pathname: string } },
-  ) => Promise<void>;
+  const handler = middleware as unknown as Handler;
 
   await handler(
     { protect },
@@ -59,4 +59,11 @@ test('leaves local sign-in and sign-up routes public', async () => {
   );
 
   expect(protect).not.toHaveBeenCalled();
+});
+
+test('exempts the token-authenticated API from the Clerk session gate', () => {
+  const patterns = routeMatcherPatterns.at(0);
+
+  expect(patterns).toContain('/api/v1(.*)');
+  expect(patterns).toContain('/api/me');
 });
