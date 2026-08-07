@@ -27,7 +27,7 @@ const TEAM_A = 'ccccccc1-0000-4000-8000-000000000003';
 const TEAM_B = 'ccccccc1-0000-4000-8000-000000000004';
 const PROJECT_A = 'ddddddd1-0000-4000-8000-000000000005';
 const PROJECT_B = 'ddddddd1-0000-4000-8000-000000000006';
-const GHOST_ACTOR = 'eeeeeee1-0000-4000-8000-000000000007';
+const GHOST_ITEM = 'eeeeeee1-0000-4000-8000-000000000007';
 const AGENT_A = 'fffffff1-0000-4000-8000-000000000008';
 
 const SCOPE_A: WorkspaceScope = { workspaceId: WS_A, actorId: ACTOR_A };
@@ -180,11 +180,10 @@ async function withAdapter(
   }
 }
 
-const newItem = (projectId: string, actorId: string, title: string) => ({
+const newItem = (projectId: string, _actorId: string, title: string) => ({
   projectId,
   kind: 'decision' as const,
   title,
-  assertedBy: actorId,
 });
 
 describe.skipIf(connectionString === undefined)('postgres store adapter', () => {
@@ -579,7 +578,13 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
             checkpoint: { projectId: PROJECT_A, actorId: ACTOR_A, trigger: 'manual' },
             items: [
               { action: 'created', item: newItem(PROJECT_A, ACTOR_A, 'this one is valid') },
-              { action: 'created', item: newItem(PROJECT_A, GHOST_ACTOR, 'asserted by nobody') },
+              {
+                action: 'superseded',
+                item: {
+                  ...newItem(PROJECT_A, ACTOR_A, 'supersedes an item that is not there'),
+                  supersedesId: GHOST_ITEM,
+                },
+              },
             ],
           }),
         ).rejects.toThrow();

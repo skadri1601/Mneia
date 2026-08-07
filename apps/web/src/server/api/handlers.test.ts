@@ -13,7 +13,6 @@ import { ApiRequestError, handleWriteCheckpoint } from './handlers.js';
 const WORKSPACE = '22222222-2222-4222-8222-222222222222';
 const PROJECT = '33333333-3333-4333-8333-333333333333';
 const AGENT = '44444444-4444-4444-8444-444444444444';
-const HUMAN = '55555555-5555-4555-8555-555555555555';
 const IMPERSONATED = '66666666-6666-4666-8666-666666666666';
 
 const actor = (id: string, kind: Actor['kind']): Actor => ({
@@ -48,6 +47,7 @@ const writtenItem = (overrides: Partial<ContextItem> = {}): ContextItem => ({
   supersededById: null,
   accessScope: 'project',
   embedding: null,
+  embeddingModel: null,
   ...overrides,
 });
 
@@ -120,35 +120,28 @@ describe('handleWriteCheckpoint provenance', () => {
     sink = harness(actor(AGENT, 'agent'), [writtenItem()]);
   });
 
-  it('attributes the write to the token actor, not to anything in the payload', async () => {
+  it('hands the store no provenance at all, so the store is the only thing that decides', async () => {
     await handleWriteCheckpoint(
       sink.store,
       request({ assertedBy: IMPERSONATED, humanConfirmed: true }) as never,
       deps(sink.telemetry),
     );
 
-    const write = sink.writes.at(0);
-    expect(write?.checkpoint.actorId).toBe(AGENT);
-    expect(write?.items.at(0)?.item.assertedBy).toBe(AGENT);
-    expect(write?.items.at(0)?.item.assertedBy).not.toBe(IMPERSONATED);
+    const item = sink.writes.at(0)?.items.at(0)?.item;
+    expect(item).toBeDefined();
+    expect(Object.keys(item ?? {})).not.toContain('assertedBy');
+    expect(Object.keys(item ?? {})).not.toContain('humanConfirmed');
+    expect(JSON.stringify(item)).not.toContain(IMPERSONATED);
   });
 
-  it('derives human_confirmed from the actor kind read from the database', async () => {
+  it('attributes the checkpoint itself to the token actor', async () => {
     await handleWriteCheckpoint(
       sink.store,
-      request({ humanConfirmed: true }) as never,
+      request({ assertedBy: IMPERSONATED }) as never,
       deps(sink.telemetry),
     );
 
-    expect(sink.writes.at(0)?.items.at(0)?.item.humanConfirmed).toBe(false);
-  });
-
-  it('marks a human actor human-confirmed without being asked to', async () => {
-    const human = harness(actor(HUMAN, 'human'), [writtenItem({ assertedBy: HUMAN })]);
-
-    await handleWriteCheckpoint(human.store, request() as never, deps(human.telemetry));
-
-    expect(human.writes.at(0)?.items.at(0)?.item.humanConfirmed).toBe(true);
+    expect(sink.writes.at(0)?.checkpoint.actorId).toBe(AGENT);
   });
 
   it('refuses the write when the token names an actor that no longer exists', async () => {

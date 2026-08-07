@@ -306,6 +306,52 @@ describe.skipIf(connectionString === undefined)('hosted API handlers', () => {
     });
   });
 
+  it('lets no caller of the store itself claim provenance, with no API in the path', async () => {
+    await withAdapter(async (adapter) => {
+      const written = await adapter.withScope(SCOPE_AGENT_A, (store) =>
+        store.insertContextItem({
+          projectId: PROJECT_A,
+          kind: 'decision',
+          title: 'written straight through the store',
+          assertedBy: OUTSIDER,
+          humanConfirmed: true,
+        } as never),
+      );
+
+      expect(written.assertedBy).toBe(AGENT_A);
+      expect(written.assertedBy).not.toBe(OUTSIDER);
+      expect(written.humanConfirmed).toBe(false);
+    });
+  });
+
+  it('does not carry the embedding on a read that never asked for one', async () => {
+    await withAdapter(async (adapter) => {
+      const { telemetry } = recorder();
+
+      await adapter.withScope(SCOPE_HUMAN_A, (store) =>
+        handleWriteCheckpoint(
+          store,
+          checkpointOf('an item with no vector') as never,
+          deps(telemetry),
+        ),
+      );
+
+      const [withoutEmbedding, withEmbedding] = await adapter.withScope(
+        SCOPE_HUMAN_A,
+        async (store) =>
+          [
+            await store.listContextItems({ projectId: PROJECT_A }),
+            await store.listContextItems({ projectId: PROJECT_A, withEmbedding: true }),
+          ] as const,
+      );
+
+      expect(withoutEmbedding).toHaveLength(1);
+      expect(withEmbedding).toHaveLength(1);
+      expect(withoutEmbedding.at(0)?.embedding).toBeNull();
+      expect(withEmbedding.at(0)?.embedding).toBeNull();
+    });
+  });
+
   it('shows a workspace nothing that belongs to another workspace', async () => {
     await withAdapter(async (adapter) => {
       const { telemetry } = recorder();

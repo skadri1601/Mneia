@@ -118,12 +118,11 @@ interface CommitEntry {
   readonly overrides: ReviewedCandidate | undefined;
 }
 
-const newItemFrom = (entry: CommitEntry, projectId: Uuid, assertedBy: Uuid): NewContextItem => ({
+const newItemFrom = (entry: CommitEntry, projectId: Uuid): NewContextItem => ({
   projectId,
   kind: entry.candidate.kind,
   title: entry.overrides?.title ?? entry.candidate.title,
   body: entry.overrides?.body ?? entry.candidate.body,
-  assertedBy,
   confidence: entry.candidate.confidence,
   loadBearing: entry.overrides?.loadBearing ?? entry.candidate.loadBearing,
   accessScope: entry.candidate.accessScope,
@@ -175,7 +174,7 @@ export const httpCheckpointApi: CheckpointApi = {
       },
       items: entries.map((entry) => ({
         action: actionFor(entry),
-        item: newItemFrom(entry, request.projectId, identity.actorId),
+        item: newItemFrom(entry, request.projectId),
       })),
     });
 

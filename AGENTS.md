@@ -44,9 +44,22 @@ schema, `workspace_id` on every row, Postgres RLS mandatory — see `vision.md` 
 and `context_item` are real, each with `ENABLE`/`FORCE ROW LEVEL SECURITY` and a workspace-isolation
 policy keyed on a `mneia.workspace_id` session GUC.
 
-What is genuinely still ahead: MNE-43 (`checkpoint`, `checkpoint_item`, `handoff`, `conflict`),
-MNE-44 (the store adapter) and MNE-169 (scope enforcement). **RLS is currently inert in production**
-— the role in `DATABASE_URL` holds `BYPASSRLS`, so MNE-186 has to land before any tenant data does.
+**RLS is enforced in code, and its production posture is now observable.** MNE-186 landed: every
+store — in `@mneia/core` and in `apps/web` — calls `assertConnectionEnforcesRls` inside its shared
+transaction helper, so a connection holding `BYPASSRLS` or `SUPERUSER` is refused rather than
+silently trusted. Do not take the old "RLS is inert in production" note at face value; it predates
+that guard.
+
+**Check it rather than assuming it**, in either direction:
+
+```
+curl -s https://app.mneia.dev/api/health
+```
+
+`rls` reports `enforced`, `bypassed`, `bypassed_by_escape_hatch`, or `unknown`. Anything other than
+`enforced` means workspace isolation is not doing what §11.3 says it does. `MNEIA_ALLOW_RLS_BYPASS=1`
+is for one privileged migration command and never for the application — see `deploy/web.env.example`,
+which is the inventory of what the deployed app reads.
 
 ## Repo map
 
