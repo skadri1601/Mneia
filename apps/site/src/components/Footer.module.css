@@ -6,15 +6,16 @@
 }
 
 .inner {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-xxl);
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(5, minmax(0, 1fr));
+  column-gap: var(--space-xl);
+  row-gap: var(--space-xl);
   max-width: var(--width-grid);
   margin-inline: auto;
 }
 
 .brand {
-  flex: 1 1 260px;
+  min-width: 0;
 }
 
 .wordmark {
@@ -47,7 +48,7 @@
 }
 
 .column {
-  flex: 0 1 200px;
+  min-width: 0;
 }
 
 .heading {
@@ -122,4 +123,26 @@
 .control:focus-visible {
   outline: 2px solid var(--primary-focus);
   outline-offset: 2px;
+}
+
+@media (max-width: 1068px) {
+  .inner {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .brand {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 640px) {
+  .inner {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 419px) {
+  .inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
