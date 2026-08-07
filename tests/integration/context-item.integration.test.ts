@@ -137,12 +137,13 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
            id, workspace_id, project_id, kind, title, body, status,
            asserted_by, asserted_at, source_session_id, source_ref,
            confidence, human_confirmed, load_bearing, last_verified_at, decay_after,
-           valid_from, valid_to, access_scope, embedding
+           valid_from, valid_to, access_scope, embedding, embedding_model
          ) VALUES (
            $1, $2, $3, 'constraint', $4, $5, 'active',
            $6, '2026-03-03T10:00:00Z', $7, $8,
            0.9, true, true, '2026-03-04T11:00:00Z', '30 days',
-           '2026-03-03T10:00:00Z', '2026-04-03T10:00:00Z', 'team', $9
+           '2026-03-03T10:00:00Z', '2026-04-03T10:00:00Z', 'team', $9,
+           'openai:text-embedding-3-small'
          )`,
         [
           id,
@@ -177,6 +178,7 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
       expect((row.valid_from as Date).toISOString()).toBe('2026-03-03T10:00:00.000Z');
       expect((row.valid_to as Date).toISOString()).toBe('2026-04-03T10:00:00.000Z');
       expect(row.access_scope).toBe('team');
+      expect(row.embedding_model).toBe('openai:text-embedding-3-small');
 
       const storedVector = JSON.parse(row.embedding as string) as number[];
       const sentVector = JSON.parse(embedding) as number[];
@@ -184,6 +186,39 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
       expect(storedVector.every((v, i) => Math.abs(v - (sentVector[i] as number)) < 1e-6)).toBe(
         true,
       );
+    });
+  });
+
+  it('refuses a vector whose model is unknown, and a model with no vector', async () => {
+    await withSchema(async (client, seed) => {
+      const insert = async (
+        id: string,
+        embedding: string | null,
+        embeddingModel: string | null,
+      ): Promise<void> => {
+        await client.query(
+          `INSERT INTO context_item (
+             id, workspace_id, project_id, kind, title, asserted_by, embedding, embedding_model
+           ) VALUES ($1, $2, $3, 'constraint', $4, $5, $6, $7)`,
+          [id, WS_A, seed.projectId, 'a ruling', seed.actorId, embedding, embeddingModel],
+        );
+      };
+
+      await expect(
+        insert('66666666-6666-4666-8666-666666666666', vectorLiteral(1), null),
+      ).rejects.toThrow(/context_item_embedding_model_present/);
+
+      await expect(
+        insert('77777777-7777-4777-8777-777777777777', null, 'openai:text-embedding-3-small'),
+      ).rejects.toThrow(/context_item_embedding_model_present/);
+
+      await expect(
+        insert('88888888-8888-4888-8888-888888888888', vectorLiteral(2), ''),
+      ).rejects.toThrow(/context_item_embedding_model_not_blank/);
+
+      await expect(
+        insert('99999999-9999-4999-8999-999999999999', null, null),
+      ).resolves.toBeUndefined();
     });
   });
 

@@ -55,6 +55,7 @@ function contextItem(spec: Spec): ContextItem {
     supersededById: null,
     accessScope: 'project',
     embedding: null,
+    embeddingModel: null,
   };
 }
 

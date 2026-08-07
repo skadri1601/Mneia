@@ -193,6 +193,7 @@ const asContextItem = (row: ItemRow): ContextItem => ({
   supersededById: null,
   accessScope: row.access_scope,
   embedding: null,
+  embeddingModel: null,
 });
 
 async function itemsInProject(client: Client, projectId: string): Promise<ContextItem[]> {

@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 13
+-- schema version: 14
 
 -- extensions
 
@@ -180,13 +180,16 @@ CREATE TABLE context_item (
   supersedes_id uuid,
   superseded_by_id uuid,
   access_scope access_scope DEFAULT 'project'::access_scope NOT NULL,
-  embedding vector(1536)
+  embedding vector(1536),
+  embedding_model text
 );
 ALTER TABLE context_item ADD CONSTRAINT context_item_access_scope_not_null NOT NULL access_scope;
 ALTER TABLE context_item ADD CONSTRAINT context_item_asserted_at_not_null NOT NULL asserted_at;
 ALTER TABLE context_item ADD CONSTRAINT context_item_asserted_by_not_null NOT NULL asserted_by;
 ALTER TABLE context_item ADD CONSTRAINT context_item_confidence_check CHECK (((confidence >= (0)::double precision) AND (confidence <= (1)::double precision)));
 ALTER TABLE context_item ADD CONSTRAINT context_item_confidence_not_null NOT NULL confidence;
+ALTER TABLE context_item ADD CONSTRAINT context_item_embedding_model_not_blank CHECK (((embedding_model IS NULL) OR (embedding_model <> ''::text)));
+ALTER TABLE context_item ADD CONSTRAINT context_item_embedding_model_present CHECK (((embedding IS NULL) = (embedding_model IS NULL)));
 ALTER TABLE context_item ADD CONSTRAINT context_item_human_confirmed_not_null NOT NULL human_confirmed;
 ALTER TABLE context_item ADD CONSTRAINT context_item_id_not_null NOT NULL id;
 ALTER TABLE context_item ADD CONSTRAINT context_item_kind_not_null NOT NULL kind;

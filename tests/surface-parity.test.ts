@@ -47,6 +47,7 @@ function item(overrides: Partial<ContextItem> & { id: Uuid; title: string }): Co
     decayAfter: null,
     accessScope: 'project',
     embedding: null,
+    embeddingModel: null,
     supersedesId: null,
     supersededById: null,
     validFrom: new Date('2026-08-01T00:00:00.000Z'),

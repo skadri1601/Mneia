@@ -53,6 +53,7 @@ export interface NewContextItem {
   readonly loadBearing?: boolean;
   readonly accessScope?: AccessScope;
   readonly embedding?: Embedding | null;
+  readonly embeddingModel?: string | null;
   readonly supersedesId?: Uuid | null;
   readonly decayAfter?: IntervalMs | null;
 }

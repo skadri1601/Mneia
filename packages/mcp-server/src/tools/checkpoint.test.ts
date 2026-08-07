@@ -97,6 +97,7 @@ function contextItem(overrides: Partial<ContextItem> = {}): ContextItem {
     supersededById: null,
     accessScope: 'project',
     embedding: null,
+    embeddingModel: null,
     ...overrides,
   };
 }
@@ -128,6 +129,7 @@ function materialise(item: NewContextItem, index: number): ContextItem {
     supersededById: null,
     accessScope: item.accessScope ?? 'project',
     embedding: null,
+    embeddingModel: null,
   };
 }
 

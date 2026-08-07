@@ -50,6 +50,7 @@ const itemWith = (overrides: ItemOverrides): ContextItem => ({
   supersededById: overrides.supersededById ?? null,
   accessScope: overrides.accessScope ?? 'project',
   embedding: null,
+  embeddingModel: null,
 });
 
 interface Cell {

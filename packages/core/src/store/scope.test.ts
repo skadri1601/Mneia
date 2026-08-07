@@ -35,6 +35,7 @@ const itemAt = (accessScope: AccessScope): ContextItem => ({
   supersededById: null,
   accessScope,
   embedding: null,
+  embeddingModel: null,
 });
 
 interface Relationship {

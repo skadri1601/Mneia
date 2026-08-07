@@ -137,6 +137,7 @@ const targetItemRow = (overrides: Row = {}): Row => ({
   superseded_by_id: null,
   access_scope: 'project',
   embedding: null,
+  embedding_model: null,
   ...overrides,
 });
 

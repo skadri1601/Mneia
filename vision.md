@@ -328,7 +328,13 @@ CREATE TABLE context_item (
 
   -- visibility hierarchy, widest-reaching last
   access_scope      access_scope NOT NULL DEFAULT 'project',
-  embedding         VECTOR(1536)
+
+  -- retrieval: a vector is meaningless without the model that produced it
+  embedding         VECTOR(1536),
+  embedding_model   TEXT,                    -- provider-qualified, e.g. 'openai:text-embedding-3-small'
+
+  CONSTRAINT context_item_embedding_model_present
+    CHECK ((embedding IS NULL) = (embedding_model IS NULL))
 );
 
 CREATE INDEX ON context_item (project_id, status, kind);
@@ -381,6 +387,7 @@ CREATE TABLE conflict (
 - **`access_scope` is a hierarchy, not a flag.** Individual → project → team → company. It ships in the first migration for the same reason bi-temporality does: widening a visibility model after real multi-team data exists is a migration nobody survives cleanly.
 - **Scope is ratified, never routed.** The extractor *suggests* a scope; the human confirms or overrides it at checkpoint, exactly as with `load_bearing`. "Escalating" an item to company-wide is a scope change with provenance — attributed, dated, and visible in the checkpoint history — **not** an approval workflow with its own object and state machine. This gets the founder's escalation model with zero new machinery, and every override becomes another labelled example for §17.
 - **Function lives on the team, not the actor.** A support engineer's default view differs from a backend team's because their *team's* function differs. Deriving it from team membership keeps one source of truth and survives people moving between teams.
+- **`embedding_model` is stored per row, not per workspace.** A vector is meaningless without the model that produced it: two vectors from different models in one `ivfflat` index give a cosine distance that means nothing, and the result is retrieval that is subtly wrong rather than broken — degradation that reads as bad ranking rather than a bug, and that then poisons the §17 signal used to tune ranking, so the instrument and the thing being measured are wrong together. Per-workspace would be cheaper and would be wrong precisely during a backfill, when two models are legitimately in flight at once and the guarantee is the only thing standing. The `CHECK` ties the two columns together so a vector cannot be written anonymously. §11.2 Q4 has not chosen a vendor yet, which is exactly why the column lands before the first real vector does (MNE-189, ruled 2026-08-07).
 - **Deliberately not modelled: a separate subject axis.** An item is *about* its project and *visible* per `access_scope`; those two carry the load. A distinct "what is this concerned with" dimension is speculative until a real case demands it.
 
 ---

@@ -80,6 +80,7 @@ function contextItem(overrides: Partial<ContextItem>): ContextItem {
     supersededById: null,
     accessScope: 'project',
     embedding: null,
+    embeddingModel: null,
     ...overrides,
   };
 }

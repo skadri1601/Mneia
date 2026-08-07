@@ -2,6 +2,7 @@ import { Client } from 'pg';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { SqlResult, SqlValue } from '../../packages/core/src/index.js';
 import {
+  EMBEDDING_DIMENSIONS,
   migrate,
   SupersedeNotAllowedError,
   WORKSPACE_SETTING,
@@ -412,6 +413,43 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
 
       const head = await adapter.withScope(SCOPE_A, (store) => store.getContextItem(original.id));
       expect(head?.supersededById).toBe(first.id);
+    });
+  });
+
+  it('refuses a vector the caller cannot attribute to a model, before it reaches the database', async () => {
+    await withAdapter(async (adapter, _source, setup) => {
+      const vector = Array.from({ length: EMBEDDING_DIMENSIONS }, (_, i) => (i % 10) / 10);
+
+      await expect(
+        adapter.withScope(SCOPE_A, async (store) =>
+          store.insertContextItem({
+            ...newItem(PROJECT_A, ACTOR_A, 'an anonymous vector'),
+            embedding: vector,
+          }),
+        ),
+      ).rejects.toThrow(/embeddingModel.*embedding.*received none/s);
+
+      await expect(
+        adapter.withScope(SCOPE_A, async (store) =>
+          store.insertContextItem({
+            ...newItem(PROJECT_A, ACTOR_A, 'a model with nothing to attribute'),
+            embeddingModel: 'openai:text-embedding-3-small',
+          }),
+        ),
+      ).rejects.toThrow(/expected item.embedding to hold a vector/);
+
+      expect(await rawRows(setup, WS_A, 'SELECT id FROM context_item')).toHaveLength(0);
+
+      const stored = await adapter.withScope(SCOPE_A, async (store) =>
+        store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'a vector that names its model'),
+          embedding: vector,
+          embeddingModel: 'openai:text-embedding-3-small',
+        }),
+      );
+
+      expect(stored.embeddingModel).toBe('openai:text-embedding-3-small');
+      expect(stored.embedding).toHaveLength(EMBEDDING_DIMENSIONS);
     });
   });
 

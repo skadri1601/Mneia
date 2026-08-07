@@ -103,6 +103,7 @@ export interface ContextItem {
 
   readonly accessScope: AccessScope;
   readonly embedding: Embedding | null;
+  readonly embeddingModel: string | null;
 }
 
 export interface Checkpoint {
