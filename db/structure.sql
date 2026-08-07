@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 14
+-- schema version: 15
 
 -- extensions
 
@@ -342,6 +342,26 @@ CREATE INDEX project_workspace_id_team_id_idx ON public.project USING btree (wor
 ALTER TABLE project ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project FORCE ROW LEVEL SECURITY;
 CREATE POLICY project_workspace_isolation ON project USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE rate_limit_counter (
+  workspace_id uuid NOT NULL,
+  subject text NOT NULL,
+  bucket text NOT NULL,
+  window_start timestamp with time zone NOT NULL,
+  count integer DEFAULT 0 NOT NULL
+);
+ALTER TABLE rate_limit_counter ADD CONSTRAINT rate_limit_counter_bucket_not_null NOT NULL bucket;
+ALTER TABLE rate_limit_counter ADD CONSTRAINT rate_limit_counter_count_check CHECK ((count >= 0));
+ALTER TABLE rate_limit_counter ADD CONSTRAINT rate_limit_counter_count_not_null NOT NULL count;
+ALTER TABLE rate_limit_counter ADD CONSTRAINT rate_limit_counter_pkey PRIMARY KEY (workspace_id, subject, bucket, window_start);
+ALTER TABLE rate_limit_counter ADD CONSTRAINT rate_limit_counter_subject_not_null NOT NULL subject;
+ALTER TABLE rate_limit_counter ADD CONSTRAINT rate_limit_counter_window_start_not_null NOT NULL window_start;
+ALTER TABLE rate_limit_counter ADD CONSTRAINT rate_limit_counter_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id) ON DELETE CASCADE;
+ALTER TABLE rate_limit_counter ADD CONSTRAINT rate_limit_counter_workspace_id_not_null NOT NULL workspace_id;
+CREATE INDEX rate_limit_counter_sweep_idx ON public.rate_limit_counter USING btree (workspace_id, window_start);
+ALTER TABLE rate_limit_counter ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rate_limit_counter FORCE ROW LEVEL SECURITY;
+CREATE POLICY rate_limit_counter_workspace_isolation ON rate_limit_counter USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
 
 CREATE TABLE session (
   id uuid NOT NULL,

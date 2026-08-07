@@ -5,6 +5,8 @@ export const API_ERROR_CODES = [
   'invalid_request',
   'not_found',
   'supersede_refused',
+  'payload_too_large',
+  'rate_limited',
   'unsupported',
   'internal',
 ] as const;
@@ -59,6 +61,12 @@ const statusToCode = (status: number): ApiErrorCode => {
   }
   if (status === 409) {
     return 'supersede_refused';
+  }
+  if (status === 413) {
+    return 'payload_too_large';
+  }
+  if (status === 429) {
+    return 'rate_limited';
   }
   if (status === 501) {
     return 'unsupported';
