@@ -1,6 +1,14 @@
 import 'server-only';
 
+import { createHash, randomBytes } from 'node:crypto';
 import { clerkClient } from '@clerk/nextjs/server';
+
+export const JOIN_TOKEN_BYTES = 32;
+
+export const createJoinToken = (): string => randomBytes(JOIN_TOKEN_BYTES).toString('base64url');
+
+export const hashJoinToken = (token: string): string =>
+  createHash('sha256').update(token, 'utf8').digest('hex');
 
 export type InvitationErrorCode = 'invitation_failed' | 'invitation_url_missing';
 

@@ -2,7 +2,7 @@ import 'server-only';
 
 import { auth, currentUser } from '@clerk/nextjs/server';
 import { cache } from 'react';
-import { bootstrapSoloAccount } from './account.js';
+import { bootstrapSoloAccount, redeemInvitation } from './account.js';
 import { database } from './database.js';
 import type { AccountContext, AccountStore } from './store/account-store.js';
 import { PostgresAccountStore } from './store/postgres-account-store.js';
@@ -11,9 +11,14 @@ export interface ClerkAuthentication {
   readonly userId: string | null;
 }
 
+export interface ClerkEmailAddress {
+  readonly emailAddress: string;
+  readonly verified: boolean;
+}
+
 export interface ClerkProfile {
   readonly fullName: string | null;
-  readonly primaryEmailAddress: { readonly emailAddress: string } | null;
+  readonly primaryEmailAddress: ClerkEmailAddress | null;
 }
 
 export interface CurrentAccountDependencies {
@@ -30,6 +35,12 @@ const nonBlank = (value: string | null | undefined): string | null => {
   return candidate === undefined || candidate.length === 0 ? null : candidate;
 };
 
+export const verifiedEmailOf = (profile: ClerkProfile | null): string | null => {
+  const primary = profile?.primaryEmailAddress;
+  if (primary === null || primary === undefined || !primary.verified) return null;
+  return nonBlank(primary.emailAddress);
+};
+
 export const resolveCurrentAccount = async (
   dependencies: CurrentAccountDependencies,
 ): Promise<AccountContext> => {
@@ -39,8 +50,18 @@ export const resolveCurrentAccount = async (
   }
 
   const profile = await dependencies.loadCurrentUser();
-  const displayName =
-    nonBlank(profile?.fullName) ?? nonBlank(profile?.primaryEmailAddress?.emailAddress) ?? userId;
+  const verifiedEmail = verifiedEmailOf(profile);
+  const displayName = nonBlank(profile?.fullName) ?? verifiedEmail ?? userId;
+
+  const joined = await redeemInvitation({
+    subject: userId,
+    verifiedEmail,
+    displayName,
+    store: dependencies.store,
+  });
+  if (joined !== null) {
+    return joined;
+  }
 
   return bootstrapSoloAccount({ subject: userId, displayName, store: dependencies.store });
 };
@@ -52,7 +73,7 @@ export const createCurrentAccountResolver = (
 
 const accountStore = new PostgresAccountStore(database);
 
-export const getCurrentAccount = createCurrentAccountResolver({
+export const currentAccountDependencies: CurrentAccountDependencies = {
   authenticate: async () => {
     const { userId } = await auth();
     return { userId };
@@ -63,10 +84,17 @@ export const getCurrentAccount = createCurrentAccountResolver({
     return {
       fullName: user.fullName,
       primaryEmailAddress:
-        user.primaryEmailAddress === null
+        user.primaryEmailAddress === null || user.primaryEmailAddress === undefined
           ? null
-          : { emailAddress: user.primaryEmailAddress.emailAddress },
+          : {
+              emailAddress: user.primaryEmailAddress.emailAddress,
+              verified: user.primaryEmailAddress.verification?.status === 'verified',
+            },
     };
   },
   store: accountStore,
-});
+};
+
+export const getCurrentAccount = createCurrentAccountResolver(currentAccountDependencies);
+
+export { accountStore };

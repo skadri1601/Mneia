@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 15
+-- schema version: 16
 
 -- extensions
 
@@ -508,3 +508,46 @@ ALTER TABLE workspace ADD CONSTRAINT workspace_slug_not_null NOT NULL slug;
 ALTER TABLE workspace ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workspace FORCE ROW LEVEL SECURITY;
 CREATE POLICY workspace_workspace_isolation ON workspace USING ((id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE workspace_invitation (
+  id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  team_id uuid NOT NULL,
+  invited_email text NOT NULL,
+  token_hash text NOT NULL,
+  role team_role DEFAULT 'member'::team_role NOT NULL,
+  invited_by uuid NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  accepted_at timestamp with time zone,
+  accepted_actor_id uuid,
+  revoked_at timestamp with time zone
+);
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_acceptance_is_whole CHECK (((accepted_at IS NULL) = (accepted_actor_id IS NULL)));
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_created_at_not_null NOT NULL created_at;
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_email_is_normalized CHECK (((invited_email = lower(btrim(invited_email))) AND (POSITION(('@'::text) IN (invited_email)) > 1)));
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_expires_after_creation CHECK ((expires_at > created_at));
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_expires_at_not_null NOT NULL expires_at;
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_id_not_null NOT NULL id;
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_invited_by_not_null NOT NULL invited_by;
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_invited_email_not_null NOT NULL invited_email;
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_is_not_both_accepted_and_revoked CHECK (((accepted_at IS NULL) OR (revoked_at IS NULL)));
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_pkey PRIMARY KEY (id);
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_role_not_null NOT NULL role;
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_team_id_not_null NOT NULL team_id;
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_token_hash_not_null NOT NULL token_hash;
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_workspace_id_accepted_actor_id_fkey FOREIGN KEY (workspace_id, accepted_actor_id) REFERENCES actor(workspace_id, id);
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_workspace_id_id_key UNIQUE (workspace_id, id);
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_workspace_id_invited_by_fkey FOREIGN KEY (workspace_id, invited_by) REFERENCES actor(workspace_id, id);
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_workspace_id_not_null NOT NULL workspace_id;
+ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_workspace_id_team_id_fkey FOREIGN KEY (workspace_id, team_id) REFERENCES team(workspace_id, id);
+CREATE INDEX workspace_invitation_invited_email_idx ON public.workspace_invitation USING btree (invited_email) WHERE ((accepted_at IS NULL) AND (revoked_at IS NULL));
+CREATE UNIQUE INDEX workspace_invitation_one_live_per_email ON public.workspace_invitation USING btree (workspace_id, invited_email) WHERE ((accepted_at IS NULL) AND (revoked_at IS NULL));
+CREATE UNIQUE INDEX workspace_invitation_token_hash_key ON public.workspace_invitation USING btree (token_hash);
+CREATE INDEX workspace_invitation_workspace_idx ON public.workspace_invitation USING btree (workspace_id, created_at DESC);
+ALTER TABLE workspace_invitation ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workspace_invitation FORCE ROW LEVEL SECURITY;
+CREATE POLICY workspace_invitation_email_lookup ON workspace_invitation FOR SELECT USING (((invited_email = NULLIF(current_setting('mneia.invitation_email'::text, true), ''::text)) AND (accepted_at IS NULL) AND (revoked_at IS NULL) AND (expires_at > now()) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
+CREATE POLICY workspace_invitation_token_lookup ON workspace_invitation FOR SELECT USING (((token_hash = NULLIF(current_setting('mneia.invitation_token_hash'::text, true), ''::text)) AND (accepted_at IS NULL) AND (revoked_at IS NULL) AND (expires_at > now()) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
+CREATE POLICY workspace_invitation_workspace_isolation ON workspace_invitation USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
