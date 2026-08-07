@@ -30,13 +30,14 @@ const item: ContextItem = {
   supersededById: null,
   accessScope: 'workspace',
   embedding: [0.1, 0.2, 0.3],
+  embeddingModel: 'openai:text-embedding-3-small',
 };
 
 describe('context item wire format', () => {
   it('round-trips every field the client reads', () => {
     const decoded = decodeContextItem(encodeContextItem(item));
 
-    expect(decoded).toEqual({ ...item, embedding: null });
+    expect(decoded).toEqual({ ...item, embedding: null, embeddingModel: null });
     expect(decoded.assertedAt.toISOString()).toBe(item.assertedAt.toISOString());
     expect(decoded.decayAfter).toBe(item.decayAfter);
   });
@@ -48,6 +49,15 @@ describe('context item wire format', () => {
     expect(Object.keys(JSON.parse(JSON.stringify(encoded)))).not.toContain('embedding');
     expect(ContextItemWireSchema.parse(encoded)).not.toHaveProperty('embedding');
     expect(decodeContextItem(encoded).embedding).toBeNull();
+  });
+
+  it('drops the embedding model with the vector, so the §9 pairing survives decoding', () => {
+    const encoded = encodeContextItem(item);
+    const decoded = decodeContextItem(encoded);
+
+    expect(encoded).not.toHaveProperty('embeddingModel');
+    expect(decoded.embeddingModel).toBeNull();
+    expect(decoded.embedding === null).toBe(decoded.embeddingModel === null);
   });
 });
 

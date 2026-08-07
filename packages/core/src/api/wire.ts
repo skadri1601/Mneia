@@ -106,6 +106,7 @@ export const decodeContextItem = (wire: ContextItemWire): ContextItem => ({
   supersededById: wire.supersededById,
   accessScope: wire.accessScope,
   embedding: null,
+  embeddingModel: null,
 });
 
 export const ActorWireSchema = z.object({
