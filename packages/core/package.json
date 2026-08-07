@@ -1,7 +1,23 @@
 {
   "name": "@mneia/core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "Data model, checkpoint, rehydration, handoff, and telemetry for Mneia.",
+  "keywords": [
+    "mneia",
+    "ai-agents",
+    "context",
+    "checkpoint",
+    "handoff"
+  ],
+  "homepage": "https://mneia.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skadri1601/Mneia.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/skadri1601/Mneia/issues"
+  },
   "type": "module",
   "license": "Apache-2.0",
   "main": "./dist/index.js",
@@ -13,8 +29,17 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.tsbuildinfo",
+    "LICENSE",
+    "NOTICE"
   ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc --build"
   },

@@ -45,7 +45,7 @@ export function notConfiguredError(cwd: string): CliError {
   return new CliError(
     'not_configured',
     `no Mneia project is bound to ${resolve(cwd)} — neither ${configPathFor(cwd)} nor ~/.mneia/local.json exists`,
-    'run pnpm bootstrap:local --apply to create a workspace and bind this machine to it',
+    'run mneia login to sign this machine in, then mneia init to bind this repo to a project',
   );
 }
 

@@ -109,7 +109,7 @@ export function requireLocalBinding(binding: LocalBinding | null, command: strin
   throw new CliError(
     'not_configured',
     `mneia ${command} has no store to read: ${localConfigPath()} does not exist`,
-    'run pnpm bootstrap:local --apply to create a workspace and write that file',
+    'run mneia login, then mneia init in this repo; inside the Mneia repo itself, run pnpm bootstrap:local --apply instead',
   );
 }
 

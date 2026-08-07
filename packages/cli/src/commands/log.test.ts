@@ -365,7 +365,7 @@ describe('mneia log', () => {
     expect(error.message).toContain('--limit 5');
   });
 
-  it('points an unbound machine at the bootstrap script', async () => {
+  it('points an unbound machine at login and init, not at a repo-only script', async () => {
     const command = createLogCommand({
       api: recordingApi(TIMELINE),
       loadConfig: (cwd) => requireProjectConfig(cwd),
@@ -377,7 +377,9 @@ describe('mneia log', () => {
 
     expect(error.kind).toBe('not_configured');
     expect(error.exitCode).toBe(EXIT_NOT_CONFIGURED);
-    expect(error.fix).toContain('bootstrap:local');
+    expect(error.fix).toContain('mneia login');
+    expect(error.fix).toContain('mneia init');
+    expect(error.fix).not.toContain('pnpm');
   });
 
   it('does not tell a developer whose wifi dropped that their token is invalid', async () => {

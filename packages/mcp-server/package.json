@@ -1,7 +1,24 @@
 {
   "name": "@mneia/mcp-server",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "MCP server exposing Mneia to Claude Code, Cursor, Codex, and any MCP client.",
+  "keywords": [
+    "mneia",
+    "mcp",
+    "model-context-protocol",
+    "ai-agents",
+    "context",
+    "checkpoint"
+  ],
+  "homepage": "https://mneia.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/skadri1601/Mneia.git",
+    "directory": "packages/mcp-server"
+  },
+  "bugs": {
+    "url": "https://github.com/skadri1601/Mneia/issues"
+  },
   "type": "module",
   "license": "Apache-2.0",
   "bin": {
@@ -10,13 +27,22 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.tsbuildinfo",
+    "LICENSE",
+    "NOTICE"
   ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc --build"
   },
   "dependencies": {
-    "@mneia/core": "workspace:*",
+    "@mneia/core": "workspace:^",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "pg": "^8.22.0",
     "zod": "^4.4.3"
