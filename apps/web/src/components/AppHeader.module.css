@@ -58,7 +58,12 @@
   min-height: var(--target-min);
   display: inline-flex;
   align-items: center;
-  color: var(--tile-muted);
+  color: var(--tile-faint);
+  white-space: nowrap;
+}
+
+.nav a:hover {
+  color: var(--ink);
 }
 
 .nav a:active {
@@ -75,4 +80,20 @@
   display: flex;
   align-items: center;
   min-height: var(--target-min);
+  font-size: var(--size-fine-print);
+}
+
+.account :global(.cl-userButtonTrigger) {
+  display: inline-flex;
+  align-items: center;
+}
+
+.account :global(.cl-userButtonTrigger)::after {
+  content: "";
+  width: 7px;
+  height: 7px;
+  margin-inline-start: var(--space-xxs);
+  border-inline-end: 1.5px solid var(--tile-faint);
+  border-block-end: 1.5px solid var(--tile-faint);
+  transform: translateY(-2px) rotate(45deg);
 }
