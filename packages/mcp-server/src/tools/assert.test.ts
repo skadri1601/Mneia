@@ -85,6 +85,7 @@ function contextItem(overrides: Partial<ContextItem> = {}): ContextItem {
     supersededById: null,
     accessScope: 'project',
     embedding: null,
+    embeddingModel: null,
     ...overrides,
   };
 }
@@ -163,6 +164,7 @@ function storedItem(item: NewContextItem): ContextItem {
     supersededById: null,
     accessScope: item.accessScope ?? 'project',
     embedding: null,
+    embeddingModel: null,
   };
 }
 

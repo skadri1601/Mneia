@@ -74,6 +74,7 @@ const BASE_ITEM: ContextItem = {
   supersededById: null,
   accessScope: 'project',
   embedding: null,
+  embeddingModel: null,
 };
 
 const item = (overrides: Partial<ContextItem> = {}): ContextItem => ({

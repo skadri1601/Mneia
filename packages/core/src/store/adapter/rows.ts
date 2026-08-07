@@ -516,6 +516,7 @@ export const toContextItem = (row: SqlRow): ContextItem => ({
   supersededById: toNullableUuid(row, 'superseded_by_id'),
   accessScope: toEnum(row, 'access_scope', ACCESS_SCOPES),
   embedding: toEmbedding(row, 'embedding'),
+  embeddingModel: toNullableText(row, 'embedding_model'),
 });
 
 export const toCheckpoint = (row: SqlRow): Checkpoint => ({

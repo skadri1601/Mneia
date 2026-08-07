@@ -67,6 +67,7 @@ function contextItem(
     supersededById: null,
     accessScope: 'project',
     embedding: null,
+    embeddingModel: null,
     ...overrides,
   };
 }

@@ -59,6 +59,7 @@ const contextItemRow = (): Record<string, unknown> => ({
   superseded_by_id: null,
   access_scope: 'workspace',
   embedding: '[0.25,-0.5,1]',
+  embedding_model: 'openai:text-embedding-3-small',
 });
 
 describe('isUuid', () => {
@@ -96,6 +97,7 @@ describe('toContextItem', () => {
       supersededById: null,
       accessScope: 'workspace',
       embedding: [0.25, -0.5, 1],
+      embeddingModel: 'openai:text-embedding-3-small',
     });
   });
 
@@ -111,6 +113,7 @@ describe('toContextItem', () => {
       supersedes_id: null,
       superseded_by_id: null,
       embedding: null,
+      embedding_model: null,
     });
 
     expect(item.body).toBeNull();
@@ -122,6 +125,7 @@ describe('toContextItem', () => {
     expect(item.supersedesId).toBeNull();
     expect(item.supersededById).toBeNull();
     expect(item.embedding).toBeNull();
+    expect(item.embeddingModel).toBeNull();
   });
 
   it('names the missing column when a select forgets one', () => {

@@ -11,6 +11,7 @@ import { migration as waitlistBroadcast } from './0010-waitlist-broadcast.js';
 import { migration as waitlistAdmission } from './0011-waitlist-admission.js';
 import { migration as deviceAuthorization } from './0012-device-authorization.js';
 import { migration as dropNeonDemoTable } from './0013-drop-neon-demo-table.js';
+import { migration as embeddingModelProvenance } from './0014-embedding-model-provenance.js';
 import type { Migration } from './migration.js';
 
 export type { AppliedMigration, Migration } from './migration.js';
@@ -29,4 +30,5 @@ export const MIGRATIONS: readonly Migration[] = [
   waitlistAdmission,
   deviceAuthorization,
   dropNeonDemoTable,
+  embeddingModelProvenance,
 ];

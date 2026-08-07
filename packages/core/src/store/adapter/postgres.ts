@@ -96,7 +96,7 @@ const CONTEXT_ITEM_COLUMNS = `id, workspace_id, project_id, kind, title, body, s
        confidence, human_confirmed, load_bearing, last_verified_at,
        (EXTRACT(EPOCH FROM decay_after) * 1000)::double precision AS decay_after,
        valid_from, valid_to, supersedes_id, superseded_by_id,
-       access_scope, embedding::text AS embedding`;
+       access_scope, embedding::text AS embedding, embedding_model`;
 
 class SqlParams {
   private readonly values: SqlValue[] = [];
@@ -166,6 +166,28 @@ const assertEmbedding = (embedding: Embedding, label: string): Embedding => {
     );
   }
   return embedding;
+};
+
+const assertEmbeddingProvenance = (
+  embedding: Embedding | null,
+  embeddingModel: string | null,
+): string | null => {
+  if (embedding !== null && embeddingModel === null) {
+    throw new StoreError(
+      'invalid_argument',
+      'expected item.embeddingModel to name the model that produced item.embedding; received none — ' +
+        'pass a provider-qualified identifier such as "openai:text-embedding-3-small", because a vector ' +
+        'whose model is unknown cannot be compared against any other',
+    );
+  }
+  if (embedding === null && embeddingModel !== null) {
+    throw new StoreError(
+      'invalid_argument',
+      `expected item.embedding to hold a vector when item.embeddingModel is ${JSON.stringify(embeddingModel)}; received none — omit the model, or pass the vector it produced`,
+    );
+  }
+  if (embeddingModel === null) return null;
+  return assertNonEmpty(embeddingModel, 'item.embeddingModel');
 };
 
 const resolveLimit = (limit: number | undefined, label: string): number => {
@@ -542,6 +564,7 @@ class PostgresScopedStore implements ScopedStore {
     }
 
     const embedding = item.embedding ?? null;
+    const embeddingModel = assertEmbeddingProvenance(embedding, item.embeddingModel ?? null);
     const embeddingValue =
       embedding === null ? null : embeddingLiteral(assertEmbedding(embedding, 'item.embedding'));
 
@@ -563,6 +586,7 @@ class PostgresScopedStore implements ScopedStore {
       params.add(item.loadBearing ?? false),
       params.add(item.accessScope ?? DEFAULT_ACCESS_SCOPE),
       `${params.add(embeddingValue)}::vector`,
+      params.add(embeddingModel),
       params.add(supersedesId),
       `CASE WHEN ${params.add(decayAfterMs)}::double precision IS NULL THEN NULL
             ELSE make_interval(secs => ${params.add(decayAfterMs)}::double precision / 1000.0) END`,
@@ -573,7 +597,7 @@ class PostgresScopedStore implements ScopedStore {
          id, workspace_id, project_id, kind, title, body,
          asserted_by, source_session_id, source_ref,
          confidence, human_confirmed, load_bearing,
-         access_scope, embedding, supersedes_id, decay_after)
+         access_scope, embedding, embedding_model, supersedes_id, decay_after)
        VALUES (${values.join(', ')})
        RETURNING ${CONTEXT_ITEM_COLUMNS}`,
       params.list(),
