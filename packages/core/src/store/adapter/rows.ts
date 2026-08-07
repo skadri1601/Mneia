@@ -390,6 +390,9 @@ const embeddingComponent = (value: unknown, column: string, index: number): numb
   return parsed;
 };
 
+export const toOptionalEmbedding = (row: SqlRow, column: string): Embedding | null =>
+  column in row ? toEmbedding(row, column) : null;
+
 export const toEmbedding = (row: SqlRow, column: string): Embedding | null => {
   const value = readColumn(row, column);
   if (isAbsent(value)) return null;
@@ -515,7 +518,7 @@ export const toContextItem = (row: SqlRow): ContextItem => ({
   supersedesId: toNullableUuid(row, 'supersedes_id'),
   supersededById: toNullableUuid(row, 'superseded_by_id'),
   accessScope: toEnum(row, 'access_scope', ACCESS_SCOPES),
-  embedding: toEmbedding(row, 'embedding'),
+  embedding: toOptionalEmbedding(row, 'embedding'),
   embeddingModel: toNullableText(row, 'embedding_model'),
 });
 

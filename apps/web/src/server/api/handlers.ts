@@ -177,7 +177,6 @@ export const handleWriteCheckpoint = async (
     );
   }
 
-  const humanConfirmed = actor.kind === 'human';
   const now = deps.now();
 
   const result = await store.writeCheckpoint({
@@ -195,8 +194,6 @@ export const handleWriteCheckpoint = async (
         kind: entry.item.kind,
         title: entry.item.title,
         body: entry.item.body ?? null,
-        assertedBy: actor.id,
-        humanConfirmed,
         sourceSessionId: entry.item.sourceSessionId ?? null,
         sourceRef: entry.item.sourceRef ?? null,
         confidence: entry.item.confidence ?? 0.5,

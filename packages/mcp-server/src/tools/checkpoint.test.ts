@@ -105,7 +105,7 @@ function contextItem(overrides: Partial<ContextItem> = {}): ContextItem {
 const writtenId = (index: number): Uuid =>
   `a0000000-0000-4000-8000-${String(index).padStart(12, '0')}`;
 
-function materialise(item: NewContextItem, index: number): ContextItem {
+function materialise(item: NewContextItem, index: number, asserter: Actor): ContextItem {
   return {
     id: item.id ?? writtenId(index),
     workspaceId: WORKSPACE_ID,
@@ -114,12 +114,12 @@ function materialise(item: NewContextItem, index: number): ContextItem {
     title: item.title,
     body: item.body ?? null,
     status: 'active',
-    assertedBy: item.assertedBy,
+    assertedBy: asserter.id,
     assertedAt: NOW,
     sourceSessionId: item.sourceSessionId ?? null,
     sourceRef: item.sourceRef ?? null,
     confidence: item.confidence ?? 0.5,
-    humanConfirmed: item.humanConfirmed ?? false,
+    humanConfirmed: asserter.kind === 'human',
     loadBearing: item.loadBearing ?? false,
     lastVerifiedAt: null,
     decayAfter: null,
@@ -195,7 +195,7 @@ function createStore(options: FakeStoreOptions = {}): FakeStore {
       };
 
       const kept = write.items.slice(0, options.writtenCount ?? write.items.length);
-      const written = kept.map((entry, index) => materialise(entry.item, index));
+      const written = kept.map((entry, index) => materialise(entry.item, index, actor ?? AGENT));
       const items: CheckpointItem[] = written.map((item, index) => ({
         workspaceId: WORKSPACE_ID,
         checkpointId: CHECKPOINT_ID,
@@ -464,8 +464,8 @@ describe('mneia_checkpoint writes', () => {
     expect(write.items.every((entry) => entry.action === 'created')).toBe(true);
 
     const [item] = writtenItemsOf(write);
-    expect(item?.assertedBy).toBe(AGENT_ID);
-    expect(item?.humanConfirmed).toBe(false);
+    expect(Object.keys(item ?? {})).not.toContain('assertedBy');
+    expect(Object.keys(item ?? {})).not.toContain('humanConfirmed');
     expect(item?.sourceSessionId).toBe(SESSION_ID);
     expect(item?.supersedesId).toBeNull();
   });
@@ -481,8 +481,8 @@ describe('mneia_checkpoint writes', () => {
 
     const [write] = fake.writes;
     const [item] = write === undefined ? [] : writtenItemsOf(write);
-    expect(item?.humanConfirmed).toBe(true);
-    expect(item?.assertedBy).toBe(HUMAN_ID);
+    expect(Object.keys(item ?? {})).not.toContain('humanConfirmed');
+    expect(write?.checkpoint.actorId).toBe(HUMAN_ID);
   });
 });
 

@@ -18,6 +18,7 @@ export {
   toContextItem,
   toDate,
   toEmbedding,
+  toOptionalEmbedding,
   toEnum,
   toHandoff,
   toIntervalMs,

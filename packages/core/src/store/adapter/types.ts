@@ -32,6 +32,7 @@ export interface ContextItemFilter {
   readonly loadBearing?: boolean;
   readonly asOf?: Date;
   readonly limit?: number;
+  readonly withEmbedding?: boolean;
 }
 
 export interface ContextItemSearch extends ContextItemFilter {
@@ -45,11 +46,9 @@ export interface NewContextItem {
   readonly kind: ItemKind;
   readonly title: string;
   readonly body?: string | null;
-  readonly assertedBy: Uuid;
   readonly sourceSessionId?: Uuid | null;
   readonly sourceRef?: string | null;
   readonly confidence?: number;
-  readonly humanConfirmed?: boolean;
   readonly loadBearing?: boolean;
   readonly accessScope?: AccessScope;
   readonly embedding?: Embedding | null;

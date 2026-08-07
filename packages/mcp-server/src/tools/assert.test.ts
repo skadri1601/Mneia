@@ -140,7 +140,7 @@ function unsupported(method: string): never {
   throw new Error(`ScopedStore.${method} is not used by mneia_assert`);
 }
 
-function storedItem(item: NewContextItem): ContextItem {
+function storedItem(item: NewContextItem, asserter: Actor): ContextItem {
   return {
     id: item.id ?? WRITTEN_ITEM_ID,
     workspaceId: WORKSPACE_ID,
@@ -149,12 +149,12 @@ function storedItem(item: NewContextItem): ContextItem {
     title: item.title,
     body: item.body ?? null,
     status: 'active',
-    assertedBy: item.assertedBy,
+    assertedBy: asserter.id,
     assertedAt: NOW,
     sourceSessionId: item.sourceSessionId ?? null,
     sourceRef: item.sourceRef ?? null,
     confidence: item.confidence ?? 0.5,
-    humanConfirmed: item.humanConfirmed ?? false,
+    humanConfirmed: asserter.kind === 'human',
     loadBearing: item.loadBearing ?? false,
     lastVerifiedAt: null,
     decayAfter: null,
@@ -209,7 +209,7 @@ function createStore(options: FakeStoreOptions = {}): FakeStore {
         return { checkpoint, items: [], written: [] };
       }
 
-      const written = write.items.map((entry) => storedItem(entry.item));
+      const written = write.items.map((entry) => storedItem(entry.item, actor ?? AGENT));
       const items: CheckpointItem[] = write.items.map((entry, index) => ({
         workspaceId: WORKSPACE_ID,
         checkpointId: CHECKPOINT_ID,
@@ -569,8 +569,8 @@ describe('mneia_assert never accepts human confirmation from tool input', () => 
       const result = await runTool({ ...FULL_RAW, ...variant.fields }, fake, telemetry);
 
       expect(statusOf(result), variant.label).toBe('written');
-      expect(submittedItem(fake).humanConfirmed, variant.label).toBe(false);
-      expect(submittedItem(fake).assertedBy, variant.label).toBe(AGENT_ACTOR_ID);
+      expect(Object.keys(submittedItem(fake)), variant.label).not.toContain('humanConfirmed');
+      expect(Object.keys(submittedItem(fake)), variant.label).not.toContain('assertedBy');
       expect(writtenOf(result).humanConfirmed, variant.label).toBe(false);
       expect(textOf(result), variant.label).toContain('unconfirmed');
     }
@@ -646,8 +646,8 @@ describe('mneia_assert reads actor kind from the store, never from the caller', 
     const telemetry = createTelemetry();
     const result = await runTool(MINIMAL_RAW, fake, telemetry);
 
-    expect(submittedItem(fake).humanConfirmed).toBe(true);
-    expect(submittedItem(fake).assertedBy).toBe(HUMAN_ACTOR_ID);
+    expect(Object.keys(submittedItem(fake))).not.toContain('humanConfirmed');
+    expect(Object.keys(submittedItem(fake))).not.toContain('assertedBy');
     expect(writtenOf(result).humanConfirmed).toBe(true);
     expect(textOf(result)).toContain('human-confirmed');
   });
@@ -682,8 +682,8 @@ describe('mneia_assert reads actor kind from the store, never from the caller', 
       const forged = forge(base, variant.fields);
       const result = await runUnparsed(forged, fake, createTelemetry());
 
-      expect(submittedItem(fake).humanConfirmed, variant.label).toBe(false);
-      expect(submittedItem(fake).assertedBy, variant.label).toBe(AGENT_ACTOR_ID);
+      expect(Object.keys(submittedItem(fake)), variant.label).not.toContain('humanConfirmed');
+      expect(Object.keys(submittedItem(fake)), variant.label).not.toContain('assertedBy');
       expect(writtenOf(result).humanConfirmed, variant.label).toBe(false);
     }
   });
@@ -839,7 +839,7 @@ describe('GUARD (MNE-63, MNE-208) standing rule 1 on the mneia_assert path: an a
 
     expect(statusOf(result)).toBe('written');
     expect(submittedItem(fake).supersedesId).toBeNull();
-    expect(submittedItem(fake).humanConfirmed).toBe(false);
+    expect(Object.keys(submittedItem(fake))).not.toContain('humanConfirmed');
     expect(fake.calls.map((call) => call.method)).toEqual(['getActor', 'writeCheckpoint']);
   });
 });
@@ -961,11 +961,9 @@ describe('mneia_assert writes', () => {
       kind: 'decision',
       title: TITLE,
       body: SECRET_BODY,
-      assertedBy: AGENT_ACTOR_ID,
       sourceSessionId: SESSION_ID,
       sourceRef: 'https://example.invalid/pr/42',
       confidence: 0.9,
-      humanConfirmed: false,
       loadBearing: true,
       accessScope: 'team',
       supersedesId: null,

@@ -96,7 +96,12 @@ const CONTEXT_ITEM_COLUMNS = `id, workspace_id, project_id, kind, title, body, s
        confidence, human_confirmed, load_bearing, last_verified_at,
        (EXTRACT(EPOCH FROM decay_after) * 1000)::double precision AS decay_after,
        valid_from, valid_to, supersedes_id, superseded_by_id,
-       access_scope, embedding::text AS embedding, embedding_model`;
+       access_scope, embedding_model`;
+
+const CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING = `${CONTEXT_ITEM_COLUMNS}, embedding::text AS embedding`;
+
+const contextItemColumns = (withEmbedding: boolean | undefined): string =>
+  withEmbedding === true ? CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING : CONTEXT_ITEM_COLUMNS;
 
 class SqlParams {
   private readonly values: SqlValue[] = [];
@@ -516,7 +521,7 @@ class PostgresScopedStore implements ScopedStore {
     const limit = params.add(resolveLimit(search.limit, 'filter.limit'));
 
     const rows = await this.rows(
-      `SELECT ${CONTEXT_ITEM_COLUMNS}
+      `SELECT ${contextItemColumns(search.withEmbedding)}
          FROM context_item
         WHERE ${conditions.join('\n          AND ')}
         ORDER BY ${ordering}
@@ -548,8 +553,8 @@ class PostgresScopedStore implements ScopedStore {
     supersedes: Uuid | null,
   ): Promise<SqlRow> {
     assertUuid(item.projectId, 'item.projectId');
-    assertUuid(item.assertedBy, 'item.assertedBy');
     assertNonEmpty(item.title, 'item.title');
+    const asserter = await this.assertingActor();
     const id = assertOptionalUuid(item.id, 'item.id');
     const sourceSessionId = assertOptionalUuid(item.sourceSessionId, 'item.sourceSessionId');
     const supersedesId =
@@ -578,11 +583,11 @@ class PostgresScopedStore implements ScopedStore {
       params.add(item.kind),
       params.add(item.title),
       params.add(item.body ?? null),
-      params.add(item.assertedBy),
+      params.add(asserter.id),
       params.add(sourceSessionId),
       params.add(item.sourceRef ?? null),
       params.add(confidence),
-      params.add(item.humanConfirmed ?? false),
+      params.add(asserter.kind === 'human'),
       params.add(item.loadBearing ?? false),
       params.add(item.accessScope ?? DEFAULT_ACCESS_SCOPE),
       `${params.add(embeddingValue)}::vector`,
@@ -599,7 +604,7 @@ class PostgresScopedStore implements ScopedStore {
          confidence, human_confirmed, load_bearing,
          access_scope, embedding, embedding_model, supersedes_id, decay_after)
        VALUES (${values.join(', ')})
-       RETURNING ${CONTEXT_ITEM_COLUMNS}`,
+       RETURNING ${CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING}`,
       params.list(),
     );
 
@@ -648,7 +653,7 @@ class PostgresScopedStore implements ScopedStore {
             SET ${assignments.join(', ')}
           WHERE workspace_id = ${params.add(this.scope.workspaceId)}
             AND id = ${params.add(input.id)}
-          RETURNING ${CONTEXT_ITEM_COLUMNS}`,
+          RETURNING ${CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING}`,
         params.list(),
       );
 
