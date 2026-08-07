@@ -217,16 +217,38 @@ Not the features. What survives is that a team has been checkpointing into our s
 Postgres with pgvector. Bi-temporal where it matters. Provenance on everything.
 
 ```sql
+-- A person, once, across every workspace they belong to. `actor` is that
+-- person *within* one workspace, so provenance stays workspace-local.
+CREATE TABLE identity (
+  id            UUID PRIMARY KEY,
+  subject       TEXT NOT NULL UNIQUE,   -- the Clerk subject
+  email         TEXT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TYPE workspace_role AS ENUM ('owner', 'admin', 'member');
+
+CREATE TABLE workspace_member (
+  workspace_id  UUID NOT NULL REFERENCES workspace(id),
+  identity_id   UUID NOT NULL REFERENCES identity(id),
+  role          workspace_role NOT NULL DEFAULT 'member',
+  joined_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  invited_by    UUID REFERENCES identity(id),
+  PRIMARY KEY (workspace_id, identity_id)
+);
+
 -- Actors: humans and agents are first-class and distinguishable
 CREATE TYPE actor_kind AS ENUM ('human', 'agent');
 
 CREATE TABLE actor (
   id            UUID PRIMARY KEY,
   workspace_id  UUID NOT NULL REFERENCES workspace(id),
+  identity_id   UUID REFERENCES identity(id),  -- null for kind = 'agent'
   kind          actor_kind NOT NULL,
   display_name  TEXT NOT NULL,
   external_ref  TEXT,          -- e.g. github handle, or 'claude-code@sonnet-4.6'
-  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (workspace_id, external_ref)
 );
 
 -- Teams are first-class. A medium company has 5 to 20 of them, and the
@@ -325,20 +347,50 @@ CREATE TABLE context_item (
   valid_to          TIMESTAMPTZ,             -- null = still valid
   supersedes_id     UUID REFERENCES context_item(id),
   superseded_by_id  UUID REFERENCES context_item(id),
+  supersede_reason  TEXT,                    -- why this replaced what it replaced
 
   -- visibility hierarchy, widest-reaching last
-  access_scope      access_scope NOT NULL DEFAULT 'project',
-
-  -- retrieval: a vector is meaningless without the model that produced it
-  embedding         VECTOR(1536),
-  embedding_model   TEXT,                    -- provider-qualified, e.g. 'openai:text-embedding-3-small'
-
-  CONSTRAINT context_item_embedding_model_present
-    CHECK ((embedding IS NULL) = (embedding_model IS NULL))
+  access_scope      access_scope NOT NULL DEFAULT 'project'
 );
 
 CREATE INDEX ON context_item (project_id, status, kind);
-CREATE INDEX ON context_item USING ivfflat (embedding vector_cosine_ops);
+
+-- The guaranteed-inclusion pass in §10.2 runs on every rehydration and needs
+-- its own index, or standing rule 2 is correct but not cheap.
+CREATE INDEX ON context_item (workspace_id, project_id)
+  WHERE status = 'active' AND load_bearing AND valid_to IS NULL;
+
+-- Retrieval. A vector is meaningless without the model that produced it, and
+-- one row per (item, model) is what lets two models be queryable at once
+-- during a backfill — the moment the guarantee is the only thing standing.
+CREATE TABLE context_item_embedding (
+  workspace_id  UUID NOT NULL REFERENCES workspace(id),
+  item_id       UUID NOT NULL,
+  model         TEXT NOT NULL,           -- provider-qualified, 'openai:text-embedding-3-small'
+  dim           INTEGER NOT NULL,
+  embedding     VECTOR(1536) NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (item_id, model),
+  FOREIGN KEY (workspace_id, item_id)
+    REFERENCES context_item(workspace_id, id) ON DELETE CASCADE
+);
+
+CREATE INDEX ON context_item_embedding USING hnsw (embedding vector_cosine_ops);
+
+-- `restricted` is an explicit grant list, so it needs somewhere to be explicit.
+CREATE TABLE context_item_grant (
+  workspace_id  UUID NOT NULL REFERENCES workspace(id),
+  item_id       UUID NOT NULL,
+  grantee_kind  TEXT NOT NULL,           -- 'actor' | 'team'
+  grantee_id    UUID NOT NULL,
+  granted_by    UUID NOT NULL REFERENCES actor(id),
+  granted_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (item_id, grantee_kind, grantee_id),
+  FOREIGN KEY (workspace_id, item_id)
+    REFERENCES context_item(workspace_id, id) ON DELETE CASCADE
+);
+
+CREATE TYPE checkpoint_review_state AS ENUM ('pending', 'reviewed', 'auto_accepted');
 
 CREATE TABLE checkpoint (
   id            UUID PRIMARY KEY,
@@ -347,7 +399,21 @@ CREATE TABLE checkpoint (
   actor_id      UUID NOT NULL REFERENCES actor(id),
   trigger       TEXT NOT NULL,   -- 'task_boundary' | 'day_boundary' | 'manual' | 'pre_compaction'
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-  summary       TEXT
+  summary       TEXT,
+
+  -- the review queue needs to know a checkpoint is *awaiting* review;
+  -- checkpoint_item.action only records the outcome, per item
+  review_state  checkpoint_review_state NOT NULL DEFAULT 'pending',
+  reviewed_at   TIMESTAMPTZ,
+  reviewed_by   UUID REFERENCES actor(id),
+
+  -- the extraction call is the one metered marginal cost (§14.1), so its cost
+  -- is recorded where it is incurred. MNE-180 sizes the allowance from these.
+  extraction_model       TEXT,
+  input_tokens           INTEGER,
+  output_tokens          INTEGER,
+  cost_micros            BIGINT,
+  extraction_duration_ms INTEGER
 );
 
 CREATE TABLE checkpoint_item (
@@ -368,6 +434,16 @@ CREATE TABLE handoff (
   rendered      TEXT NOT NULL     -- the frozen markdown artifact
 );
 
+-- `rendered` is frozen prose. The live link, the Superseded Recently block,
+-- and time_to_first_action all need the item set as data.
+CREATE TABLE handoff_item (
+  workspace_id  UUID NOT NULL REFERENCES workspace(id),
+  handoff_id    UUID NOT NULL REFERENCES handoff(id) ON DELETE CASCADE,
+  item_id       UUID NOT NULL REFERENCES context_item(id),
+  section       TEXT NOT NULL,
+  PRIMARY KEY (handoff_id, item_id)
+);
+
 CREATE TABLE conflict (
   id            UUID PRIMARY KEY,
   project_id    UUID NOT NULL REFERENCES project(id),
@@ -376,8 +452,74 @@ CREATE TABLE conflict (
   detected_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
   resolved_at   TIMESTAMPTZ,
   resolved_by   UUID REFERENCES actor(id),
-  resolution    TEXT              -- 'a_wins' | 'b_wins' | 'merged' | 'both_retired'
+  resolution    TEXT,             -- 'a_wins' | 'b_wins' | 'merged' | 'both_retired'
+  rationale     TEXT              -- *why*. The part nobody else is collecting.
 );
+
+-- §17's event spine, and by §14.1 the metering spine too. Partitioned by month
+-- from creation: attaching partitioning to a large table later is a rewrite.
+CREATE TABLE telemetry_event (
+  id            UUID NOT NULL,
+  workspace_id  UUID NOT NULL REFERENCES workspace(id),
+  project_id    UUID,
+  actor_id      UUID,
+  session_id    UUID,
+  name          TEXT NOT NULL,
+  occurred_at   TIMESTAMPTZ NOT NULL,
+  recorded_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  payload       JSONB NOT NULL DEFAULT '{}'   -- ids, scores, durations. Never content.
+) PARTITION BY RANGE (occurred_at);
+
+CREATE INDEX ON telemetry_event (workspace_id, name, occurred_at);        -- metering
+CREATE INDEX ON telemetry_event (workspace_id, project_id, occurred_at);  -- north-star
+
+-- A materialised projection of the above, never a second source of truth.
+-- Incremented inside the checkpoint transaction, which is what makes it the
+-- margin guard rather than an estimate of one.
+CREATE TABLE workspace_usage_period (
+  workspace_id      UUID NOT NULL REFERENCES workspace(id),
+  period_start      DATE NOT NULL,
+  checkpoints_used  INTEGER NOT NULL DEFAULT 0,
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (workspace_id, period_start)
+);
+
+-- Deliberately not telemetry: telemetry is opt-out and redacted (§11.1, MNE-50),
+-- and an audit log that can be either is not an audit log.
+CREATE TABLE audit_event (
+  id            UUID PRIMARY KEY,
+  workspace_id  UUID NOT NULL REFERENCES workspace(id),
+  actor_id      UUID REFERENCES actor(id),
+  action        TEXT NOT NULL,
+  target_kind   TEXT NOT NULL,
+  target_id     UUID,
+  occurred_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+  metadata      JSONB NOT NULL DEFAULT '{}'
+);
+
+-- `workspace_invitation` (MNE-126) invites into the workspace; a team is
+-- optional. Accepting writes the workspace_member row always, and the
+-- team_member row only when a team was named.
+
+-- Clobber protection needs to remember what we last wrote and what the file
+-- looked like when we wrote it. Nothing else about §12.4 is decided yet.
+CREATE TABLE project_file_binding (
+  workspace_id     UUID NOT NULL REFERENCES workspace(id),
+  project_id       UUID NOT NULL,
+  path             TEXT NOT NULL,
+  fence_checksum   TEXT,
+  last_imported_at TIMESTAMPTZ,
+  last_written_at  TIMESTAMPTZ,
+  PRIMARY KEY (workspace_id, project_id, path),
+  FOREIGN KEY (workspace_id, project_id) REFERENCES project(workspace_id, id) ON DELETE CASCADE
+);
+
+-- Retention and residency are enforced by controls, not by locality (§11.1),
+-- so they need columns. `region` in particular: keying it after multi-region
+-- data exists is a migration across regions, not a schema change.
+ALTER TABLE workspace     ADD COLUMN retention_days INTEGER;  -- null = unlimited
+ALTER TABLE workspace     ADD COLUMN region         TEXT;
+ALTER TABLE context_item  ADD COLUMN purge_after    TIMESTAMPTZ;
 ```
 
 **Design notes worth defending:**
@@ -387,8 +529,13 @@ CREATE TABLE conflict (
 - **`access_scope` is a hierarchy, not a flag.** Individual → project → team → company. It ships in the first migration for the same reason bi-temporality does: widening a visibility model after real multi-team data exists is a migration nobody survives cleanly.
 - **Scope is ratified, never routed.** The extractor *suggests* a scope; the human confirms or overrides it at checkpoint, exactly as with `load_bearing`. "Escalating" an item to company-wide is a scope change with provenance — attributed, dated, and visible in the checkpoint history — **not** an approval workflow with its own object and state machine. This gets the founder's escalation model with zero new machinery, and every override becomes another labelled example for §17.
 - **Function lives on the team, not the actor.** A support engineer's default view differs from a backend team's because their *team's* function differs. Deriving it from team membership keeps one source of truth and survives people moving between teams.
-- **`embedding_model` is stored per row, not per workspace.** A vector is meaningless without the model that produced it: two vectors from different models in one `ivfflat` index give a cosine distance that means nothing, and the result is retrieval that is subtly wrong rather than broken — degradation that reads as bad ranking rather than a bug, and that then poisons the §17 signal used to tune ranking, so the instrument and the thing being measured are wrong together. Per-workspace would be cheaper and would be wrong precisely during a backfill, when two models are legitimately in flight at once and the guarantee is the only thing standing. The `CHECK` ties the two columns together so a vector cannot be written anonymously. §11.2 Q4 has not chosen a vendor yet, which is exactly why the column lands before the first real vector does (MNE-189, ruled 2026-08-07).
+- **The model is stored per vector, not per workspace, and vectors live in their own table.** A vector is meaningless without the model that produced it: two vectors from different models in one index give a cosine distance that means nothing, and the result is retrieval that is subtly wrong rather than broken — degradation that reads as bad ranking rather than a bug, and that then poisons the §17 signal used to tune ranking, so the instrument and the thing being measured are wrong together. `context_item_embedding` makes the pairing structural — a vector cannot exist there without a model — and its `PRIMARY KEY (item_id, model)` lets two models be **queryable at once**, which one column plus a `CHECK` never could. That is the backfill case, and the backfill is the moment the guarantee is the only thing standing. It also keeps vectors off the §12.1 read path by construction rather than by a filter flag someone can forget. §11.2 Q4 still has not chosen a vendor, which is exactly the point: the table absorbs a dimension change that an `ALTER TYPE` on `context_item` would not (MNE-189, MNE-253, ruled 2026-08-07).
+- **HNSW, not ivfflat.** ivfflat trains its centroids when the index is built; built against an empty table it learns nothing and recall stays poor until somebody remembers to reindex. HNSW needs no training data and handles incremental inserts, which is the shape of every write we make.
+- **`identity` is separate from `actor`, and it is the person.** An actor is a person *within one workspace*, so `asserted_by` stays workspace-local and every provenance FK keeps working. Collapsing the two — one global row per human — silently caps a person at one workspace, and unwinding that after real items exist means rewriting the provenance column §8.1 calls the difference between a record and a cache (MNE-253, ruled 2026-08-07).
+- **`restricted` gets a grant table or it is a lie.** Shipping the enum value without `context_item_grant` means the schema advertises a visibility mode the query layer silently denies. Enum values are cheap; grant semantics retrofitted onto live multi-team data are the same migration as widening the hierarchy, which is the thing this section already refuses to defer.
+- **`conflict.rationale` is not optional metadata.** §17 says the collectible nobody else has is *which side a human chose **and why***. The resolution without the reason is the half we could have derived anyway.
 - **Deliberately not modelled: a separate subject axis.** An item is *about* its project and *visible* per `access_scope`; those two carry the load. A distinct "what is this concerned with" dimension is speculative until a real case demands it.
+- **Deliberately not modelled: a rate-limit counter.** §14.1 makes the checkpoint the only metered marginal cost, so the margin guard is `workspace_usage_period` incremented inside the checkpoint transaction — it cannot drift from the thing it counts. Burst limiting for cheap read paths stays in process while we run one instance. A second datastore for this would buy coordination we do not yet need (MNE-253, ruled 2026-08-07).
 
 ---
 

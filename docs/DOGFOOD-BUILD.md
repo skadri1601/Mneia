@@ -99,7 +99,6 @@ Update the marker and add the PR or commit. `[ ]` not started · `[~]` in progre
 | `[ ]` | `pg_dump` backup script + delete recipe | `scripts/`, `docs/` | Zero `DELETE` against any tenant table exists in source |
 | `[ ]` | Correct `AGENTS.md` | `AGENTS.md:48-49` | Says RLS is inert in production and MNE-44/169/186 are ahead. All three are **Done**; the guard is called at `postgres.ts:809` |
 | `[ ]` | Correct published docs | `apps/site/src/content/docs.ts` | `:115` claims the whole surface is built · `:154` advertises an npm install that 404s · `:169/176/251/726` document `mneia login` as shipped |
-| `[ ]` | Correct the handoff doc | `docs/HANDOFF-2026-08-02.md` | Says `withScope` never calls the guard and 4 of 13 events are emitted. Both wrong; the count is 6 |
 | `[ ]` | Triage the 30 tickets in `In Progress` | Linear | `ROADMAP.md` §0.2 forbids parking work there |
 
 ### Gate — before the first byte of Ascend content
