@@ -12,6 +12,16 @@ const BRAND = (
   </>
 );
 
+const DESTINATIONS = [
+  { label: 'Docs', path: '/docs' },
+  { label: 'Help', path: '/help' },
+  { label: 'About', path: '/about' },
+  { label: 'FAQ', path: '/faq' },
+  { label: 'Contact', path: '/contact' },
+  { label: 'Privacy', path: '/privacy' },
+  { label: 'Terms', path: '/terms' },
+];
+
 export function AppHeader() {
   return (
     <header className={styles.header}>
@@ -27,8 +37,11 @@ export function AppHeader() {
           </a>
         </SignedOut>
         <nav className={styles.nav} aria-label="Resources">
-          <a href={`${MARKETING_SITE_URL}/docs`}>Docs</a>
-          <a href={`${MARKETING_SITE_URL}/help`}>Help</a>
+          {DESTINATIONS.map((destination) => (
+            <a href={`${MARKETING_SITE_URL}${destination.path}`} key={destination.path}>
+              {destination.label}
+            </a>
+          ))}
         </nav>
         <SignedIn>
           <div className={styles.account}>

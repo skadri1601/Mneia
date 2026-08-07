@@ -58,23 +58,20 @@ test('gives a signed-in user a way to reach their account and sign out', () => {
   expect(markup).toContain('data-user-button="true"');
 });
 
-test('puts the two links a developer reaches for in the header', () => {
+test('lays every marketing destination out across the header', () => {
   const markup = render();
 
-  expect(markup).toContain('https://mneia.dev/docs');
-  expect(markup).toContain('https://mneia.dev/help');
-});
-
-test('leaves a way to reach a human in the account menu', () => {
-  expect(render()).toContain('href="https://mneia.dev/contact"');
-});
-
-test('keeps the account menu an account menu rather than a sitemap', () => {
-  const markup = render();
-
-  for (const path of ['/about', '/faq', '/privacy', '/terms']) {
-    expect(markup).not.toContain(`href="https://mneia.dev${path}"`);
+  for (const path of ['/docs', '/help', '/about', '/faq', '/contact', '/privacy', '/terms']) {
+    expect(markup).toContain(`href="https://mneia.dev${path}"`);
   }
+});
+
+test('reaches those destinations by anchor, not by a click handler', () => {
+  expect(render().match(/<a href="https:\/\/mneia\.dev\//g)).toHaveLength(7);
+});
+
+test('hangs nothing off the avatar, which is Clerk territory', () => {
+  expect(render()).toContain('<div data-user-button="true"></div>');
 });
 
 test('renders no footer, the way app dashboards do not', () => {
