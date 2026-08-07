@@ -5,19 +5,46 @@
 }
 
 .panel {
-  width: min(100%, 480px);
+  --clerk-card-inset: 40px;
+  width: min(100%, 400px);
   display: grid;
-  justify-items: center;
-  gap: var(--space-xl, 32px);
+  grid-template-columns: auto minmax(0, 1fr);
+  background: var(--canvas);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-lg);
+  overflow: hidden;
+}
+
+.panel :global(.cl-rootBox),
+.panel :global(.cl-cardBox),
+.panel :global(.cl-footer) {
+  display: contents;
+}
+
+.panel :global(.cl-card) {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  padding-block-end: 0;
+}
+
+.panel :global(.cl-footerAction) {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+.panel :global(.cl-footer > :not(.cl-footerAction)) {
+  grid-column: 1 / -1;
 }
 
 .backLink {
-  justify-self: start;
+  grid-column: 1;
+  grid-row: 2;
   min-height: var(--target-min);
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
-  color: var(--tile-link);
+  padding-inline-start: var(--clerk-card-inset);
+  color: var(--tile-faint);
   font-size: var(--size-fine-print);
 }
 
@@ -30,11 +57,14 @@
   outline-offset: 2px;
 }
 
-.panel h1 {
-  font-family: var(--font-display);
-  font-size: var(--size-display-lg);
-  font-weight: var(--weight-semibold);
-  line-height: var(--leading-display-lg);
-  letter-spacing: var(--tracking-display-lg);
-  text-align: center;
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }

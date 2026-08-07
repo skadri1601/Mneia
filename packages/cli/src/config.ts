@@ -9,6 +9,17 @@ export const CONFIG_FILE = 'config.json';
 export const CREDENTIALS_ENV_VAR = 'MNEIA_TOKEN';
 export const ENDPOINT_ENV_VAR = 'MNEIA_API_URL';
 export const DEFAULT_ENDPOINT = 'https://api.mneia.dev';
+export const AUTH_URL_ENV_VAR = 'MNEIA_AUTH_URL';
+export const DEFAULT_AUTH_URL = 'https://app.mneia.dev';
+
+export function resolveAuthUrl(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string {
+  const configured = env[AUTH_URL_ENV_VAR];
+  const raw =
+    configured !== undefined && configured.trim().length > 0 ? configured : DEFAULT_AUTH_URL;
+  return raw.trim().replace(/\/+$/, '');
+}
 
 const projectConfigSchema = z.object({
   workspace: z.string().min(1),

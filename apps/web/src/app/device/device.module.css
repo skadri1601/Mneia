@@ -1,0 +1,106 @@
+.page {
+  width: min(100% - (2 * var(--space-lg)), 640px);
+  margin-inline: auto;
+  padding-block: var(--space-section);
+}
+
+.pageHeader {
+  display: grid;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-xxl);
+}
+
+.pageHeader h1 {
+  font-family: var(--font-display);
+  font-size: var(--size-display-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-display-lg);
+  letter-spacing: var(--tracking-display-lg);
+}
+
+.pageHeader p {
+  color: var(--tile-muted);
+}
+
+.error {
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-sm);
+  padding: var(--space-md);
+  margin-block-end: var(--space-lg);
+}
+
+.form {
+  display: grid;
+  gap: var(--space-lg);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.field label {
+  font-weight: var(--weight-semibold);
+}
+
+.field input[type="text"] {
+  min-height: var(--target-min);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  padding: var(--space-sm) var(--space-md);
+  font: inherit;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+}
+
+.field input[type="text"]:focus-visible,
+.actions button:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+
+.client {
+  color: var(--tile-muted);
+}
+
+.warning {
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-sm);
+  padding: var(--space-md);
+  color: var(--tile-muted);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  flex-wrap: wrap;
+}
+
+.actions button {
+  min-height: var(--target-min);
+  width: fit-content;
+  border: 0;
+  border-radius: var(--rounded-pill);
+  padding-inline: var(--space-xl);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.approve {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.deny {
+  background: transparent;
+  border: 1px solid var(--tile-hairline);
+  color: var(--ink);
+}
+
+.actions button:active {
+  transform: scale(var(--press-scale));
+}
