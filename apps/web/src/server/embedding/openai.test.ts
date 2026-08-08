@@ -80,13 +80,27 @@ describe('createOpenAiEmbeddingProvider', () => {
     expect(provider.dimensions).toBe(EMBEDDING_DIMENSIONS);
   });
 
-  it('qualifies an overridden model too', () => {
+  it('refuses a model that is not on the allowlist, before spending anything on it', () => {
+    expect(() =>
+      createOpenAiEmbeddingProvider({ apiKey: API_KEY, model: 'text-embedding-3-large' }),
+    ).toThrow(/name one of text-embedding-3-small/);
+  });
+
+  it('refuses an empty or unknown model rather than falling back silently', () => {
+    for (const model of ['', '   ', 'gpt-5.6-luna', 'text-embedding-4']) {
+      expect(() => createOpenAiEmbeddingProvider({ apiKey: API_KEY, model })).toThrow(
+        EmbeddingError,
+      );
+    }
+  });
+
+  it('accepts the allowlisted model explicitly, not only by omission', () => {
     const provider = createOpenAiEmbeddingProvider({
       apiKey: API_KEY,
-      model: 'text-embedding-3-large',
+      model: 'text-embedding-3-small',
     });
 
-    expect(provider.model).toBe('openai:text-embedding-3-large');
+    expect(provider.model).toBe('openai:text-embedding-3-small');
   });
 
   it('sends the unqualified model name and the bearer token to the embeddings endpoint', async () => {

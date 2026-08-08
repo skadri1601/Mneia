@@ -12,9 +12,7 @@ export interface ExtractionModel {
 
 export const EXTRACTION_MODELS: readonly ExtractionModel[] = [
   { id: 'gpt-5.6-luna', vendor: 'openai', contextTokens: 1_050_000 },
-  { id: 'gpt-5.6-terra', vendor: 'openai', contextTokens: 1_050_000 },
   { id: 'claude-haiku-4-5', vendor: 'anthropic', contextTokens: 200_000 },
-  { id: 'claude-sonnet-5', vendor: 'anthropic', contextTokens: 1_000_000 },
 ];
 
 export const DEFAULT_EXTRACTION_MODEL = 'gpt-5.6-luna';

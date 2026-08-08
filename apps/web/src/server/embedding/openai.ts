@@ -6,6 +6,8 @@ import { z } from 'zod';
 
 export const OPENAI_EMBEDDING_PROVIDER = 'openai';
 export const DEFAULT_OPENAI_EMBEDDING_MODEL = 'text-embedding-3-small';
+
+export const EMBEDDING_MODELS: readonly string[] = [DEFAULT_OPENAI_EMBEDDING_MODEL];
 export const DEFAULT_OPENAI_BASE_URL = 'https://api.openai.com/v1';
 export const DEFAULT_EMBEDDING_BATCH_SIZE = 96;
 export const DEFAULT_EMBEDDING_MAX_CONCURRENCY = 4;
@@ -119,11 +121,12 @@ export function createOpenAiEmbeddingProvider(
   }
 
   const model = (options.model ?? DEFAULT_OPENAI_EMBEDDING_MODEL).trim();
-  if (model === '') {
+  if (!EMBEDDING_MODELS.includes(model)) {
     throw new EmbeddingError(
       'invalid_input',
-      `expected options.model to name an OpenAI embedding model; received an empty string — ` +
-        `omit it to use ${DEFAULT_OPENAI_EMBEDDING_MODEL}`,
+      `expected options.model to name one of ${EMBEDDING_MODELS.join(', ')}; received ${JSON.stringify(model)} — ` +
+        `stored vectors are keyed by model and only comparable against their own, so an unlisted model is refused rather than ` +
+        `silently writing vectors nothing can rank against. Omit it to use ${DEFAULT_OPENAI_EMBEDDING_MODEL}`,
     );
   }
 

@@ -51,6 +51,30 @@ describe('resolveExtractionModel', () => {
     expect(resolveExtractionModel('gpt-5.6-luna', 'x').vendor).toBe('openai');
     expect(resolveExtractionModel('claude-haiku-4-5', 'x').vendor).toBe('anthropic');
   });
+
+  it('allows exactly the two ruled models and nothing else', async () => {
+    const { EXTRACTION_MODELS } = await import('./providers.js');
+
+    expect(EXTRACTION_MODELS.map((model) => model.id)).toEqual([
+      'gpt-5.6-luna',
+      'claude-haiku-4-5',
+    ]);
+  });
+
+  it('refuses every other model, including more capable ones from the same vendors', () => {
+    for (const model of [
+      'gpt-5.6-terra',
+      'gpt-5.6-sol',
+      'gpt-5.1',
+      'claude-sonnet-5',
+      'claude-opus-5',
+      '',
+    ]) {
+      expect(() => resolveExtractionModel(model, 'MNEIA_EXTRACTION_MODEL')).toThrow(
+        /MNEIA_EXTRACTION_MODEL/,
+      );
+    }
+  });
 });
 
 describe('createExtractionRunner', () => {
