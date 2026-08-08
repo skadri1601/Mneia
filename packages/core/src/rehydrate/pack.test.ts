@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ContextItem, Uuid } from '../domain/types.js';
 import type { ItemKind, ItemStatus } from '../store/schema.js';
 import { DEFAULT_KIND_QUOTAS, packSlice } from './pack.js';
-import { type TokenCounter, countItemTokens } from './tokens.js';
+import { countItemTokens, type TokenCounter } from './tokens.js';
 import type { KindQuotas, ScoreComponents, ScoredItem } from './types.js';
 
 const counter: TokenCounter = { name: 'char-length', count: (text) => text.length };

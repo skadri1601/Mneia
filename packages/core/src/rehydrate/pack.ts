@@ -3,7 +3,7 @@ import type { ItemKind } from '../store/schema.js';
 import { ITEM_KINDS } from '../store/schema.js';
 import type { TokenCounter } from './tokens.js';
 import { countItemTokens } from './tokens.js';
-import type { KindQuotas, PackRequest, PackedSlice, ScoredItem } from './types.js';
+import type { KindQuotas, PackedSlice, PackRequest, ScoredItem } from './types.js';
 
 export const DEFAULT_KIND_QUOTAS: KindQuotas = {
   constraint: 0.3,

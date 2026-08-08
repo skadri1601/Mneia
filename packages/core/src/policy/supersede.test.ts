@@ -4,9 +4,9 @@ import type { AccessScope, ActorKind, ItemStatus } from '../store/schema.js';
 import { ACCESS_SCOPES, ACTOR_KINDS, ITEM_STATUSES } from '../store/schema.js';
 import type { SupersedeOutcome, SupersedeRequest } from './supersede.js';
 import {
-  SupersedeNotAllowedError,
   assertSupersedeAllowed,
   evaluateSupersede,
+  SupersedeNotAllowedError,
 } from './supersede.js';
 
 const WORKSPACE_ID: Uuid = '5a1d0000-0000-4000-8000-000000000001';

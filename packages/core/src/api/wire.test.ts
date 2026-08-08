@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '../domain/types.js';
 import {
   ContextItemWireSchema,
-  NewContextItemWireSchema,
   decodeContextItem,
   encodeContextItem,
+  NewContextItemWireSchema,
 } from './wire.js';
 
 const item: ContextItem = {

@@ -1,7 +1,7 @@
-export type { HostedIdentity } from './identity.js';
-export { fetchIdentity } from './identity.js';
 export type { ApiErrorCode, FetchLike, HttpTransport, HttpTransportOptions } from './http.js';
 export { API_ERROR_CODES, ApiError, ApiErrorWireSchema, createHttpTransport } from './http.js';
+export type { HostedIdentity } from './identity.js';
+export { fetchIdentity } from './identity.js';
 export type {
   RemoteRehydrateRequest,
   RemoteStore,
@@ -33,19 +33,6 @@ export {
   ContextItemFilterWireSchema,
   ContextItemSearchWireSchema,
   ContextItemWireSchema,
-  MAX_BODY_LENGTH,
-  MAX_CHECKPOINT_ITEMS,
-  MAX_ITEM_LIMIT,
-  MAX_SOURCE_REF_LENGTH,
-  MAX_TITLE_LENGTH,
-  MAX_TOKEN_BUDGET,
-  MIN_TOKEN_BUDGET,
-  NewContextItemWireSchema,
-  ProjectWireSchema,
-  RehydrateRequestWireSchema,
-  ScoredItemWireSchema,
-  SessionWireSchema,
-  SliceWireSchema,
   decodeActor,
   decodeCheckpoint,
   decodeCheckpointItem,
@@ -64,4 +51,17 @@ export {
   encodeScoredItem,
   encodeSession,
   encodeSlice,
+  MAX_BODY_LENGTH,
+  MAX_CHECKPOINT_ITEMS,
+  MAX_ITEM_LIMIT,
+  MAX_SOURCE_REF_LENGTH,
+  MAX_TITLE_LENGTH,
+  MAX_TOKEN_BUDGET,
+  MIN_TOKEN_BUDGET,
+  NewContextItemWireSchema,
+  ProjectWireSchema,
+  RehydrateRequestWireSchema,
+  ScoredItemWireSchema,
+  SessionWireSchema,
+  SliceWireSchema,
 } from './wire.js';

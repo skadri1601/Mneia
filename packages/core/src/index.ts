@@ -1,6 +1,7 @@
 export const VERSION = '0.1.0';
 
 export * from './api/index.js';
+export { isStorableText, NULL_BYTE_ERROR } from './domain/text.js';
 export type {
   Actor,
   Checkpoint,
@@ -17,7 +18,6 @@ export type {
   Uuid,
   Workspace,
 } from './domain/types.js';
-export { isStorableText, NULL_BYTE_ERROR } from './domain/text.js';
 export type {
   SupersedeBlockedOutcome,
   SupersedeOutcome,
@@ -29,6 +29,16 @@ export {
   evaluateSupersede,
   SupersedeNotAllowedError,
 } from './policy/index.js';
+export type { AssembleSliceRequest } from './rehydrate/assemble.js';
+export {
+  assembleSlice,
+  candidateLimitFor,
+  MANDATORY_ITEM_LIMIT,
+  MAX_CANDIDATES,
+  mergeCandidates,
+  RECENT_SUPERSEDED_LIMIT,
+  resolveProject,
+} from './rehydrate/assemble.js';
 export type { PackOptions } from './rehydrate/pack.js';
 export {
   DEFAULT_KIND_QUOTAS,
@@ -41,8 +51,8 @@ export { renderSlice, SLICE_SECTION_HEADINGS, shortenItemIds } from './rehydrate
 export { DEFAULT_SCORING_WEIGHTS, scoreItems } from './rehydrate/score.js';
 export type { TokenCounter } from './rehydrate/tokens.js';
 export {
-  countItemTokens,
   bpeTokenCounter,
+  countItemTokens,
   defaultTokenCounter,
   heuristicTokenCounter,
   truncateToTokens,
@@ -89,16 +99,6 @@ export type {
   StoreAdapter,
   WorkspaceScope,
 } from './store/adapter/types.js';
-export {
-  assembleSlice,
-  candidateLimitFor,
-  mergeCandidates,
-  MAX_CANDIDATES,
-  MANDATORY_ITEM_LIMIT,
-  RECENT_SUPERSEDED_LIMIT,
-  resolveProject,
-} from './rehydrate/assemble.js';
-export type { AssembleSliceRequest } from './rehydrate/assemble.js';
 export type { MigrationDriver, SqlExecutor, SqlResult, SqlValue } from './store/driver.js';
 export type { MigrateOptions, MigrateResult } from './store/migrate.js';
 export {
@@ -133,13 +133,13 @@ export type {
   CheckpointTrigger,
   ConflictResolution,
   CoreEntityTable,
+  DeviceAuthorizationStatus,
   ItemKind,
   ItemStatus,
-  DeviceAuthorizationStatus,
   TeamFunction,
   TeamRole,
-  WorkspaceRole,
   WorkspacePlan,
+  WorkspaceRole,
 } from './store/schema.js';
 export {
   ACCESS_SCOPE_ORDER,
@@ -162,9 +162,9 @@ export {
   ITEM_STATUSES,
   TEAM_FUNCTIONS,
   TEAM_ROLES,
-  WORKSPACE_ROLES,
   teamRoleForWorkspaceRole,
   WORKSPACE_PLANS,
+  WORKSPACE_ROLES,
   WORKSPACE_SETTING,
 } from './store/schema.js';
 export type {
@@ -181,12 +181,12 @@ export {
   createNoopEmitter,
   createRemoteSink,
   createTelemetryEmitter,
-  redactEvent,
   REMOTE_ENDPOINT_ENV_VAR,
   REMOTE_TOKEN_ENV_VAR,
+  redactEvent,
   remoteSinkFromEnv,
-  TelemetryTransmitError,
   TelemetrySinkError,
+  TelemetryTransmitError,
   TelemetryValidationError,
   TelemetryWriteError,
   telemetryEnabledIn,
@@ -199,13 +199,30 @@ export type {
   TelemetrySink,
 } from './telemetry/types.js';
 export { TELEMETRY_EVENT_NAMES } from './telemetry/types.js';
-export { createClaudeCodeReader, parseClaudeCodeJsonl, projectSlug } from './trajectory/claude-code.js';
-export { claudeDesktopSessionsRoot, createClaudeDesktopReader } from './trajectory/claude-desktop.js';
+export {
+  createClaudeCodeReader,
+  parseClaudeCodeJsonl,
+  projectSlug,
+} from './trajectory/claude-code.js';
+export {
+  claudeDesktopSessionsRoot,
+  createClaudeDesktopReader,
+} from './trajectory/claude-desktop.js';
 export { createCodexReader, parseCodexRollout } from './trajectory/codex.js';
 export { composerFolders, createCursorReader } from './trajectory/cursor.js';
 export type { DiscoveredTrajectory } from './trajectory/discover.js';
 export { createReaders, discoverTrajectories, readTrajectory } from './trajectory/discover.js';
 export { readTrajectoryFile } from './trajectory/jsonl.js';
+export type { ReducedTrajectory, ReduceOptions } from './trajectory/reduce.js';
+export {
+  DEFAULT_MAX_CHARS,
+  DEFAULT_TOOL_CALL_CHARS,
+  DEFAULT_TOOL_RESULT_CHARS,
+  DROP_ORDER,
+  reduceTrajectory,
+} from './trajectory/reduce.js';
+export type { Redacted, SecretPattern } from './trajectory/secrets.js';
+export { redactSecrets, SECRET_PATTERNS, SECRET_PLACEHOLDER } from './trajectory/secrets.js';
 export type {
   ListTrajectoriesRequest,
   Trajectory,

@@ -1,7 +1,7 @@
 import type { MigrationDriver, SqlExecutor } from './driver.js';
 import type { AppliedMigration, Migration } from './migrations/index.js';
 import { MIGRATIONS } from './migrations/index.js';
-import { MigrationError, checksumOf, planMigrations } from './plan.js';
+import { checksumOf, MigrationError, planMigrations } from './plan.js';
 
 export const BOOKKEEPING_TABLE = 'mneia_schema_migration';
 

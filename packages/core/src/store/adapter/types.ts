@@ -1,7 +1,7 @@
 import type {
   Actor,
-  CheckpointItem,
   Checkpoint,
+  CheckpointItem,
   Conflict,
   ContextItem,
   Embedding,

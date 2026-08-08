@@ -1,11 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { ContextItem, Project, Uuid } from '../domain/types.js';
-import type { Slice } from './types.js';
 import type { ScopedStore } from '../store/adapter/types.js';
 import type { ItemKind, ItemStatus } from '../store/schema.js';
 import { DEFAULT_KIND_QUOTAS, packSlice } from './pack.js';
 import { renderSlice } from './render.js';
 import { DEFAULT_SCORING_WEIGHTS, scoreItems } from './score.js';
+import type { Slice } from './types.js';
 
 export const MANDATORY_ITEM_LIMIT = 1000;
 export const RECENT_SUPERSEDED_LIMIT = 5;

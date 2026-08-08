@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  createNoopEmitter,
+  createTelemetryEmitter,
   DEFAULT_SINK_CONCURRENCY,
   TELEMETRY_ENV_VAR,
   TELEMETRY_OFF_VALUES,
   TelemetrySinkError,
   TelemetryValidationError,
-  createNoopEmitter,
-  createTelemetryEmitter,
   telemetryEnabledIn,
 } from './emitter.js';
 import { createMemorySink } from './sinks/memory.js';

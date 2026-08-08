@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '../domain/types.js';
 import {
-  ITEM_MARKUP_TOKENS,
-  TRUNCATION_MARKER,
-  type TokenCounter,
   countItemTokens,
   defaultTokenCounter,
   heuristicTokenCounter,
+  ITEM_MARKUP_TOKENS,
+  type TokenCounter,
+  TRUNCATION_MARKER,
   truncateToTokens,
 } from './tokens.js';
 

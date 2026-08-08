@@ -26,6 +26,7 @@ import { migration as projectFileBinding } from './0025-project-file-binding.js'
 import { migration as workspaceUsagePeriod } from './0026-workspace-usage-period.js';
 import { migration as apiTokenScopes } from './0027-api-token-scopes.js';
 import { migration as auditEvent } from './0028-audit-event.js';
+import { migration as checkpointSourceAndUsage } from './0029-checkpoint-source-and-usage.js';
 import type { Migration } from './migration.js';
 
 export type { AppliedMigration, Migration } from './migration.js';
@@ -59,4 +60,5 @@ export const MIGRATIONS: readonly Migration[] = [
   workspaceUsagePeriod,
   apiTokenScopes,
   auditEvent,
+  checkpointSourceAndUsage,
 ];
