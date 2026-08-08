@@ -20,7 +20,7 @@ export type LegalDoc = {
 
 export const LEGAL_ENTITY = 'Saad Kadri, trading as Mneia';
 export const LEGAL_EFFECTIVE = '1 August 2026';
-export const PRIVACY_UPDATED = '3 August 2026';
+export const PRIVACY_UPDATED = '8 August 2026';
 
 export const CONTACT = {
   privacy: 'privacy@mneia.dev',
@@ -54,12 +54,12 @@ const SUBPROCESSORS: LegalBlock = {
     ['Anthropic PBC', 'Extraction and contradiction detection on checkpoint', 'United States'],
     [
       'Google LLC',
-      'Website analytics, and advertising measurement and remarketing, where you have not refused',
+      'Website analytics and advertising measurement — configured but not enabled; receives nothing today',
       'United States',
     ],
     [
       'Meta Platforms Ireland Ltd.',
-      'Advertising measurement and remarketing, where you have not refused',
+      'Advertising measurement and remarketing — configured but not enabled; receives nothing today',
       'Ireland and United States',
     ],
   ],
@@ -176,8 +176,8 @@ export const PRIVACY: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            '**This website uses analytics and advertising cookies, and you control them.** We use Google Analytics to see which pages get read, and Google Ads and the Meta Pixel to measure whether our advertising works and to show ads to people who have visited. **There is no session recording and no data broker relationship.**',
-            '**In the EEA, the UK, and Switzerland nothing is set until you accept it** — no tag loads, no cookie is written, and refusing takes exactly one click, in the same place as accepting. Elsewhere these cookies are on by default and you can turn them off at any time from the Cookie Policy link in the footer. Full detail, cookie by cookie, is in the **Cookie Policy**.',
+            '**This website sets no cookies at all today, and loads no analytics or advertising tags.** Not Google Analytics, not Google Ads, not the Meta Pixel. There is no session recording, no data broker relationship, and nothing is written to your browser by us when you read these pages.',
+            '**If that changes, you will be asked before anything is set.** The consent controls are already built and already refuse by default: in the EEA, the UK, and Switzerland no tag would load until you accept, and elsewhere you could turn them off from the Cookie Policy link in the footer. The **Cookie Policy** lists what would be set, and says plainly that none of it is set today.',
             'Three other things happen when you use this site.',
           ],
         },
@@ -325,7 +325,7 @@ export const PRIVACY: LegalDoc = {
           kind: 'text',
           paragraphs: [
             '**We do not sell your personal information for money, and we never have.** We have no data broker relationships to register.',
-            '**We do share it for cross-context behavioural advertising, and that is a defined term we do not get to dodge.** Running Google Ads remarketing and the Meta Pixel on this website discloses identifiers and browsing activity to Google and Meta so they can measure our advertising and show it to you elsewhere. Under the CCPA as amended by the CPRA that is “sharing”, and several other US state statutes call the same activity “targeted advertising”. **You can stop it** with the Do Not Sell or Share My Personal Information link in the footer, by rejecting advertising cookies, or by sending Global Privacy Control — each takes effect immediately and none requires an account.',
+            '**We do not share it for cross-context behavioural advertising either.** No advertising tag runs on this website, so no identifier and no browsing activity reaches Google, Meta, or anyone else for advertising. Under the CCPA as amended by the CPRA there is currently no “sharing” to disclose, and nothing that other US state statutes would call “targeted advertising”. **If we ever start**, this section will say so before it happens, and the Do Not Sell or Share My Personal Information link in the footer, rejecting advertising cookies, and Global Privacy Control will each stop it immediately without an account. Those controls are live now, and today they have nothing to switch off.',
             'This applies to the website only. **Content you put into the Service is never disclosed to any advertising platform**, and neither is the waitlist.',
             'We do use service providers to run the product. Each is bound by contract to process data only on our instructions and to standards no weaker than this policy.',
           ],
@@ -442,7 +442,7 @@ export const PRIVACY: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            'The California Consumer Privacy Act, as amended by the California Privacy Rights Act, gives California residents the rights below. **We do not sell personal information, but we do share it for cross-context behavioural advertising**, so the right to opt out is a live one rather than a formality. Use the Do Not Sell or Share My Personal Information link in the footer, or send Global Privacy Control and we will treat it as a valid opt-out without asking you to prove anything.',
+            'The California Consumer Privacy Act, as amended by the California Privacy Rights Act, gives California residents the rights below. **We neither sell personal information nor share it for cross-context behavioural advertising**, so today the right to opt out has nothing to act on. We keep the controls working anyway: use the Do Not Sell or Share My Personal Information link in the footer, or send Global Privacy Control, and we will record it as a valid opt-out without asking you to prove anything — so it is already in force if we ever do enable advertising.',
           ],
         },
         {
@@ -531,11 +531,11 @@ export const PRIVACY: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            '**This website sets analytics and advertising cookies.** Every one of them is listed by name, purpose, and lifetime in the **Cookie Policy**, which is part of this policy and is where you change your choices.',
-            '**Consent.** In the EEA, the UK, and Switzerland, the ePrivacy Directive and the UK PECR require your consent before a non-essential cookie is set, so we ask first and set nothing until you answer. Rejecting is one click, in the same place and of the same prominence as accepting. Everywhere else these cookies are set by default and you may withdraw at any time; withdrawing is as easy as giving.',
+            '**This website sets no cookies today.** The **Cookie Policy** lists what would be set if we ever enable analytics or advertising, by name, purpose, and lifetime — and states plainly that none of it is set now. That policy is part of this one, and is where you change your choices.',
+            '**Consent, if it ever becomes relevant.** In the EEA, the UK, and Switzerland, the ePrivacy Directive and the UK PECR require your consent before a non-essential cookie is set. Our banner is built and defaults to refusing, so nothing would load until you answered, and rejecting would be one click in the same place and of the same prominence as accepting. Elsewhere such cookies would be on by default and you could withdraw at any time. **None of this is running today, so you will not see a banner** — asking permission for something we do not do would tell you something untrue.',
             'When the Service launches, it will also set **strictly necessary** cookies for authentication and security. Those are exempt from consent requirements because without them you cannot stay logged in, and they cannot be switched off while you are using an account.',
-            '**Sharing for advertising.** Running the Meta Pixel and Google Ads remarketing means personal information is disclosed to those companies for cross-context behavioural advertising. **Under the CCPA as amended by the CPRA, that counts as “sharing”, and we disclose it plainly rather than hiding behind the fact that no money changes hands.** We do not sell personal information for money, we do not share the waitlist with anyone, and we do not upload waitlist addresses to any advertising platform. You can stop the sharing using the **Do Not Sell or Share My Personal Information** link in the footer, which requires no account and no verification.',
-            '**Global Privacy Control.** We honour the GPC browser signal as a valid opt-out of sale and sharing, as California and Colorado require. **Since we now share for advertising, this signal does something real**: when your browser sends it, advertising and analytics tags do not load, in every region, whether or not you have ever seen our banner.',
+            '**Sharing for advertising.** There is none. No Meta Pixel and no Google Ads remarketing runs on this website, so no personal information is disclosed to either company, and there is nothing that the CCPA as amended by the CPRA would count as “sharing”. We do not sell personal information for money, we do not share the waitlist with anyone, and we do not upload waitlist addresses to any advertising platform. **If that ever changes we will say so here first.** The **Do Not Sell or Share My Personal Information** link in the footer works today, requires no account and no verification, and records your objection in advance.',
+            '**Global Privacy Control.** We honour the GPC browser signal as a valid opt-out of sale and sharing, as California and Colorado require. Today there is nothing for it to stop, because no tag loads for anyone. The handling is live rather than promised: when your browser sends GPC, advertising and analytics are treated as refused in every region, whether or not you have ever seen a banner — so it will already be in force if we ever do enable a tag.',
             '**Do Not Track.** There is still no common standard for how sites should respond to DNT, so like most sites we do not respond to it differently. California law requires us to tell you that plainly, so we have.',
           ],
         },
@@ -897,8 +897,8 @@ export const TERMS: LegalDoc = {
 export const COOKIES: LegalDoc = {
   title: 'Cookie Policy',
   effective: LEGAL_EFFECTIVE,
-  updated: '2 August 2026',
-  lead: 'Every cookie this website sets, what it is for, how long it lasts, and how to refuse it. This page is part of the Privacy Policy and is where your choices are actually made.',
+  updated: '8 August 2026',
+  lead: 'This website sets no cookies today. This page lists what would be set if that ever changed, what each one would be for, how long it would last, and how to refuse it before it happens. It is part of the Privacy Policy and is where your choices are actually made.',
   sections: [
     {
       id: 'what-changed',
@@ -907,8 +907,8 @@ export const COOKIES: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            'Until 2 August 2026 this website set **no cookies at all**, and said so. That is no longer true, and pretending otherwise would be worse than the cookies.',
-            'We now use Google Analytics, Google Ads, and the Meta Pixel, because we are about to spend money on advertising and cannot tell whether it works without measuring it. **Nothing about the Service changed** — this is the marketing website only.',
+            '**This website still sets no cookies at all.** An earlier version of this page said we had started using Google Analytics, Google Ads, and the Meta Pixel. The consent machinery for those was built, but the tags were never switched on, and the page should not have described them as live. It is corrected here.',
+            'What is true today: no analytics tag, no advertising tag, no cookie written by us, and nothing disclosed to Google or Meta. The controls below are real and already working — they simply have nothing to switch off yet. **If we do enable a tag, this page changes first**, and in the EEA, the UK, and Switzerland nothing would load until you accepted.',
           ],
         },
       ],
@@ -933,7 +933,7 @@ export const COOKIES: LegalDoc = {
         },
         {
           kind: 'note',
-          text: 'If you are in the EEA, the UK, or Switzerland, none of these cookies is set until you accept. Refusing is one click, in the same place and of the same size as accepting, and we do not ask again afterwards.',
+          text: 'None of these cookies is set anywhere today. If we ever enable them, then in the EEA, the UK, and Switzerland none would be set until you accept, refusing would be one click in the same place and of the same size as accepting, and we would not ask again afterwards.',
         },
       ],
     },
@@ -944,7 +944,7 @@ export const COOKIES: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            'Durations are the maximum set by the provider. Cookies in the analytics and advertising rows are set only after you accept, or, outside the EEA, the UK, and Switzerland, until you refuse.',
+            '**None of the cookies in the analytics and advertising rows is set today** — the tags that would write them are not enabled. They are listed so you can see exactly what would appear if we turned them on. Durations are the maximum set by the provider. If enabled, they would be set only after you accept, or, outside the EEA, the UK, and Switzerland, until you refuse.',
           ],
         },
         {
@@ -987,9 +987,9 @@ export const COOKIES: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            '**Google LLC** receives analytics and advertising identifiers. We use Google Consent Mode v2, which means Google is told your consent state alongside every request and must restrict its own processing accordingly. IP addresses are truncated by Google Analytics before storage.',
-            '**Meta Platforms Ireland Ltd.** receives advertising identifiers via the Meta Pixel. For visitors we identify as being in California, we set Meta’s **Limited Data Use** flag, which restricts what Meta may do with the data. Where we cannot determine the US state, we apply that restriction anyway rather than guess in our own favour.',
-            '**Both are independent controllers for their own purposes.** We can tell them what we consent to on your behalf and we can stop sending them data, but we cannot delete what they hold. Their own policies govern that, and both offer their own opt-outs.',
+            '**Neither Google nor Meta receives anything from this website today.** Their tags are configured in our code but not enabled, so no request is made to either of them and no identifier leaves your browser. They remain in the subprocessor table above because the integration exists and could be switched on; the table says plainly that it has not been.',
+            '**If we do enable them, this is what would apply.** Google LLC would receive analytics and advertising identifiers under Google Consent Mode v2, which tells Google your consent state alongside every request and requires it to restrict processing accordingly, with IP addresses truncated by Google Analytics before storage. Meta Platforms Ireland Ltd. would receive advertising identifiers via the Meta Pixel, with Meta’s **Limited Data Use** flag set for visitors we identify as being in California — and applied anyway where we cannot determine the US state, rather than guessing in our own favour.',
+            '**Both would be independent controllers for their own purposes.** We could tell them what we consent to on your behalf and stop sending them data, but we could not delete what they hold. Their own policies would govern that, and both offer their own opt-outs.',
           ],
         },
         {
