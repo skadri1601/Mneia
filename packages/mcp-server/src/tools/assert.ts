@@ -1,7 +1,9 @@
 import {
   ACCESS_SCOPES,
+  isStorableText,
   ITEM_KINDS,
   type NewContextItem,
+  NULL_BYTE_ERROR,
   type TelemetryEmitter,
   type TelemetryEvent,
   evaluateSupersede,
@@ -11,6 +13,7 @@ import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const KIND_ERROR = `kind must be one of: ${ITEM_KINDS.join(', ')}`;
 const SCOPE_ERROR = `accessScope must be one of: ${ACCESS_SCOPES.join(', ')}`;
+const NO_NULL_BYTE = { error: NULL_BYTE_ERROR } as const;
 
 const AssertInputSchema = z.object({
   projectId: z.uuid().describe('Id of the project this item belongs to.'),
@@ -24,12 +27,14 @@ const AssertInputSchema = z.object({
     .trim()
     .min(1)
     .max(300)
+    .refine(isStorableText, NO_NULL_BYTE)
     .describe(
       'The item in one line, written so it still reads correctly weeks later without the surrounding conversation.',
     ),
   body: z
     .string()
     .max(8000)
+    .refine(isStorableText, NO_NULL_BYTE)
     .optional()
     .describe('Rationale and supporting detail. Omit when the title already says everything.'),
   sessionId: z
@@ -39,6 +44,7 @@ const AssertInputSchema = z.object({
   sourceRef: z
     .string()
     .max(500)
+    .refine(isStorableText, NO_NULL_BYTE)
     .optional()
     .describe('Where this came from: a PR url, file path, ticket key, or message id.'),
   confidence: z

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isStorableText, NULL_BYTE_ERROR } from '../domain/text.js';
 import type {
   Actor,
   Checkpoint,
@@ -28,6 +29,7 @@ export const MAX_TOKEN_BUDGET = 32_000;
 
 const uuid = z.string().min(1);
 const isoDate = z.iso.datetime({ offset: true });
+const NO_NULL_BYTE = { error: NULL_BYTE_ERROR } as const;
 
 const toDate = (value: string): Date => new Date(value);
 const toNullableDate = (value: string | null): Date | null =>
@@ -369,10 +371,15 @@ export type ContextItemSearchWire = z.infer<typeof ContextItemSearchWireSchema>;
 export const NewContextItemWireSchema = z.object({
   projectId: uuid,
   kind: z.enum(ITEM_KINDS),
-  title: z.string().trim().min(1).max(MAX_TITLE_LENGTH),
-  body: z.string().max(MAX_BODY_LENGTH).nullable().optional(),
+  title: z.string().trim().min(1).max(MAX_TITLE_LENGTH).refine(isStorableText, NO_NULL_BYTE),
+  body: z.string().max(MAX_BODY_LENGTH).refine(isStorableText, NO_NULL_BYTE).nullable().optional(),
   sourceSessionId: uuid.nullable().optional(),
-  sourceRef: z.string().max(MAX_SOURCE_REF_LENGTH).nullable().optional(),
+  sourceRef: z
+    .string()
+    .max(MAX_SOURCE_REF_LENGTH)
+    .refine(isStorableText, NO_NULL_BYTE)
+    .nullable()
+    .optional(),
   confidence: z.number().min(0).max(1).optional(),
   loadBearing: z.boolean().optional(),
   accessScope: z.enum(ACCESS_SCOPES).optional(),
@@ -387,7 +394,12 @@ export const CheckpointWriteWireSchema = z.object({
     projectId: uuid,
     sessionId: uuid.nullable().optional(),
     trigger: z.enum(CHECKPOINT_TRIGGERS),
-    summary: z.string().max(MAX_BODY_LENGTH).nullable().optional(),
+    summary: z
+      .string()
+      .max(MAX_BODY_LENGTH)
+      .refine(isStorableText, NO_NULL_BYTE)
+      .nullable()
+      .optional(),
   }),
   items: z
     .array(

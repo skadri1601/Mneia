@@ -188,7 +188,9 @@ function renderText(input: SearchInput, project: Project, items: readonly Contex
 }
 
 async function run(input: SearchInput, context: ToolContext): Promise<ToolResult> {
-  if (input.project === undefined) {
+  const requestedProject = input.project ?? context.defaultProject ?? undefined;
+
+  if (requestedProject === undefined) {
     return failure(
       'project_not_bound',
       'No project was supplied and this server has no project bound. Call mneia_search again with "project" set to the project slug, for example {"project": "payments-migration", "text": "idempotency key"}, or run `mneia init` in the repository to bind one.',
@@ -197,12 +199,12 @@ async function run(input: SearchInput, context: ToolContext): Promise<ToolResult
   }
 
   try {
-    const project = await resolveProject(context, input.project);
+    const project = await resolveProject(context, requestedProject);
     if (project === null) {
       return failure(
         'project_not_found',
-        `No project matching "${input.project}" is visible in this workspace. Check the slug against \`mneia status\`, or pass the project id instead of the slug.`,
-        { project: input.project, workspaceId: context.store.scope.workspaceId },
+        `No project matching "${requestedProject}" is visible in this workspace. Check the slug against \`mneia status\`, or pass the project id instead of the slug.`,
+        { project: requestedProject, workspaceId: context.store.scope.workspaceId },
       );
     }
 
@@ -236,7 +238,7 @@ async function run(input: SearchInput, context: ToolContext): Promise<ToolResult
     return failure(
       'store_unavailable',
       `The search could not be run: ${messageOf(cause)}. This is a transport or authentication failure, not a bad argument. Retry once; if it persists, report it rather than assuming nothing was recorded.`,
-      { project: input.project },
+      { project: requestedProject },
     );
   }
 }

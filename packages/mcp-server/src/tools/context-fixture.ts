@@ -10,6 +10,7 @@ export interface ToolContextFixtureOptions {
   readonly slices?: SliceLog | undefined;
   readonly reviewQueue?: ReviewQueue | undefined;
   readonly sessionIdFor?: ((projectId: Uuid) => Uuid | null) | undefined;
+  readonly defaultProject?: string | null | undefined;
 }
 
 export function createToolContextFixture(
@@ -25,5 +26,6 @@ export function createToolContextFixture(
     slices: options.slices ?? createSliceLog(),
     reviewQueue: options.reviewQueue ?? createNoopReviewQueue(),
     sessionIdFor: options.sessionIdFor ?? (() => null),
+    defaultProject: options.defaultProject ?? null,
   };
 }

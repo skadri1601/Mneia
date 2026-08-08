@@ -481,6 +481,21 @@ describe('mneia_search errors', () => {
     expect(textOf(result)).toContain('"nope"');
   });
 
+  it('reads the project this server is bound to when the call omits one', async () => {
+    const fake = createStore();
+    const telemetry = createTelemetry();
+    const result = await searchTool.run(
+      searchTool.parse({}),
+      createToolContextFixture(fake.store, telemetry.emitter, {
+        now: NOW,
+        defaultProject: 'payments-migration',
+      }),
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result)).toContain('payments-migration');
+  });
+
   it('distinguishes an unreachable store from a bad argument', async () => {
     const fake = createStore({ failOn: 'searchContextItems' });
     const telemetry = createTelemetry();

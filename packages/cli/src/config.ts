@@ -117,7 +117,7 @@ export async function requireProjectConfig(
     return config;
   }
 
-  const { loadLocalBinding, localConfigPath } = await import('./local-store.js');
+  const { loadLocalBinding, localConfigPath } = await import('./local-binding.js');
   const binding = await loadLocalBinding(env);
   if (binding === null) {
     throw notConfiguredError(cwd);

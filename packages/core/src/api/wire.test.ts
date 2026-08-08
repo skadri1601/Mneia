@@ -85,4 +85,25 @@ describe('new context item wire format', () => {
 
     expect(parsed.success).toBe(false);
   });
+
+  it('rejects a null byte, which Postgres cannot store, before it reaches the store', () => {
+    const nullByte = String.fromCharCode(0);
+
+    expect(
+      NewContextItemWireSchema.safeParse({
+        projectId: item.projectId,
+        kind: 'decision',
+        title: `ship${nullByte}it`,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      NewContextItemWireSchema.safeParse({
+        projectId: item.projectId,
+        kind: 'decision',
+        title: 'ship it',
+        body: `why${nullByte}not`,
+      }).success,
+    ).toBe(false);
+  });
 });

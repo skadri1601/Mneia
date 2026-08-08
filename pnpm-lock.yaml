@@ -125,16 +125,9 @@ importers:
       '@mneia/core':
         specifier: workspace:^
         version: link:../core
-      pg:
-        specifier: ^8.13.1
-        version: 8.22.0
       zod:
         specifier: ^4.4.3
         version: 4.4.3
-    devDependencies:
-      '@types/pg':
-        specifier: ^8.11.10
-        version: 8.20.0
 
   packages/core:
     dependencies:

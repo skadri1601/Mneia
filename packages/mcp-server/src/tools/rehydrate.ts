@@ -166,7 +166,9 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
   const startedAt = performance.now();
   const now = context.now();
 
-  if (input.project === undefined) {
+  const requestedProject = input.project ?? context.defaultProject ?? undefined;
+
+  if (requestedProject === undefined) {
     return toolError(
       'project_not_bound',
       'mneia_rehydrate has no project to read: none was supplied and this server has no project bound.',
@@ -175,11 +177,11 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
   }
 
   try {
-    const project = await resolveProject(context, input.project);
+    const project = await resolveProject(context, requestedProject);
     if (project === null) {
       return toolError(
         'project_not_found',
-        `mneia_rehydrate found no project matching "${input.project}" in this workspace.`,
+        `mneia_rehydrate found no project matching "${requestedProject}" in this workspace.`,
         'Check the slug against `mneia status`, or call mneia_search to confirm the project exists before retrying.',
       );
     }

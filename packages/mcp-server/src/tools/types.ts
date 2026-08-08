@@ -9,6 +9,7 @@ export interface ToolContext {
   readonly slices: SliceLog;
   readonly reviewQueue: ReviewQueue;
   readonly sessionIdFor: (projectId: Uuid) => Uuid | null;
+  readonly defaultProject?: string | null;
 }
 
 export interface ToolResult {

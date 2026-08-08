@@ -227,6 +227,7 @@ function createLocalRuntime(
     slices,
     reviewQueue,
     sessionIdFor,
+    defaultProject: binding.projectId ?? binding.projectSlug,
   });
 
   const scope: ToolContextScope = <T>(run: (context: ToolContext) => Promise<T>): Promise<T> =>
@@ -356,6 +357,7 @@ function createHostedRuntime(
       slices,
       reviewQueue,
       sessionIdFor,
+      defaultProject: config.project === null ? null : config.project.project,
     });
   };
 
