@@ -95,6 +95,10 @@ mneia init           # bind this repo to a project, import constraints from AGEN
 In CI, set `MNEIA_TOKEN` instead of logging in. The surface is otherwise identical, which makes an
 ephemeral runner a first-class client rather than a special case.
 
+Step by step, including per-client MCP configuration: [`docs/INSTALL.md`](./docs/INSTALL.md). Which
+clients have actually been verified, and how far each check reached:
+[`docs/CLIENTS.md`](./docs/CLIENTS.md).
+
 ## Development
 
 Node 20.11+ and pnpm 9+. Copy `.env.example` to `.env` and put a Postgres connection string in
