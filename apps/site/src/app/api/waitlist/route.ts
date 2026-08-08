@@ -1,10 +1,10 @@
 import * as Sentry from '@sentry/nextjs';
 import {
-  WaitlistError,
   markNotified,
   normaliseEmail,
   sendConfirmation,
   storeSignup,
+  WaitlistError,
 } from '@/lib/waitlist';
 
 export const runtime = 'nodejs';

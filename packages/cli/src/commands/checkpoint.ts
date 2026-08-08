@@ -48,6 +48,9 @@ export interface CheckpointProposal {
   readonly sourceSessionRef: string;
   readonly watermark: string | null;
   readonly candidates: readonly CheckpointCandidate[];
+  readonly pendingTurns: number;
+  readonly incompleteReason: string | null;
+  readonly droppedBeforeUpload: number;
 }
 
 export interface ProposeRequest {
@@ -487,6 +490,11 @@ function renderJson(
   pending: readonly CheckpointCandidate[],
   automatic: readonly CheckpointCandidate[],
   config: ProjectConfig,
+  session: {
+    readonly pendingTurns: number;
+    readonly incompleteReason: string | null;
+    readonly droppedBeforeUpload: number;
+  } = { pendingTurns: 0, incompleteReason: null, droppedBeforeUpload: 0 },
 ): string {
   const payload = {
     project: `${config.workspace}/${config.project}`,
@@ -494,6 +502,10 @@ function renderJson(
     interactive: false,
     automaticCount: automatic.length,
     pendingCount: pending.length,
+    pendingTurns: session.pendingTurns,
+    droppedBeforeUpload: session.droppedBeforeUpload,
+    complete: session.pendingTurns === 0 && session.droppedBeforeUpload === 0,
+    incompleteReason: session.incompleteReason,
     pending: pending.map((candidate) => ({
       index: candidate.index,
       kind: candidate.kind,
@@ -526,9 +538,22 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
         deps.api.propose({ config, trigger }),
       );
 
+      if (!invocation.json) {
+        if (proposal.pendingTurns > 0) {
+          invocation.io.stderr(
+            `${proposal.pendingTurns} turn${proposal.pendingTurns === 1 ? '' : 's'} were not read this time, so run mneia checkpoint again to cover them — nothing was skipped${proposal.incompleteReason === null ? '' : `: ${proposal.incompleteReason}`}\n`,
+          );
+        }
+        if (proposal.droppedBeforeUpload > 0) {
+          invocation.io.stderr(
+            `${proposal.droppedBeforeUpload} turns of this session were too large to upload and were left out of the checkpoint entirely. Running again will not pick them up — this is MNE-265's remaining client-side gap, not a transient failure.\n`,
+          );
+        }
+      }
+
       if (proposal.candidates.length === 0) {
         invocation.io.stdout(
-          invocation.json ? renderJson(null, [], [], config) : renderNothingToDo(config),
+          invocation.json ? renderJson(null, [], [], config, proposal) : renderNothingToDo(config),
         );
         return EXIT_OK;
       }
@@ -555,7 +580,7 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
         }
         invocation.io.stdout(
           invocation.json
-            ? renderJson(null, review, automatic, config)
+            ? renderJson(null, review, automatic, config, proposal)
             : renderPendingWithoutTty(review, automatic),
         );
         return EXIT_FAILED;
@@ -604,7 +629,7 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
 
       invocation.io.stdout(
         invocation.json
-          ? renderJson(outcome, [], automatic, config)
+          ? renderJson(outcome, [], automatic, config, proposal)
           : renderOutcome(outcome, config),
       );
 

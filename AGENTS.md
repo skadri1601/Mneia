@@ -64,22 +64,28 @@ which is the inventory of what the deployed app reads.
 **The same endpoint reports whether the models are reachable**, because the failure is otherwise
 invisible: `extraction`, `extractionFallback` and `embeddings` each read `configured` or `no_key`.
 
-> ⚠️ **As of 2026-08-08 there are no model API keys yet.** `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`
-> are unset in `/etc/mneia/web.env`, and the founder is provisioning them. Until they are set:
->
-> - `mneia checkpoint` **cannot propose anything** — the extraction call has no key to use
-> - `mneia brief` still works, but ranks on recency alone: `semanticRelevance` carries the largest
->   weight in the §10.2 formula at 0.30 and falls back to a neutral constant with no embeddings
-> - Checkpoints written through MCP still store items; they are written with a null vector and are
->   backfillable (MNE-56)
->
-> **This is by design, not a bug.** Every one of those paths degrades rather than failing, so a
-> missing key looks like a working product returning worse answers. Read `/api/health` before
-> concluding that ranking or extraction is broken. `status` deliberately stays `ok` — a 503 here
-> would take the app down for something that still serves.
->
-> Tracked on MNE-265. Delete this block when both keys are set and `/api/health` reports
-> `configured` for all three.
+**Both keys are set and funded as of 2026-08-08** (MNE-265), and `/api/health` reports `configured`
+for all three. Extraction is verified end to end against real sessions on this repo: a 1,357-turn
+Claude Code session reduced from 1.31M to 700K characters and returned 7 candidates in 12.5s for
+$0.05; an 18-turn session returned 1 for $0.0017.
+
+**The keys are not on the droplet.** They are the `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`
+repository secrets, which `deploy-web.yml` passes to the container. `/etc/mneia/web.env` still holds
+everything else. Rotating a model key is `gh secret set` plus a re-run of the deploy — do not edit
+the droplet, or the next deploy will overwrite what you wrote.
+
+**Two defects in that path are open and unticketed** — Linear is refusing new issues on the free
+plan, so both are written up in the comments on MNE-265:
+
+- The **watermark advances over turns the reducer dropped**. `propose.ts` reduces with the default
+  700,000-character cap and then advances the watermark to the last turn *fed in* rather than the
+  last turn *sent*, so on a large session hundreds of turns are skipped permanently. The chunking
+  that was meant to prevent this was never built.
+- **Failover sends prompts Haiku cannot fit.** `contextTokens` is declared on both models and read
+  by nothing, so a 242K-token prompt goes to a 200K-token model and fails naming the wrong cause.
+
+Neither stops a normal session. Both matter before MNE-86's dogfood, which will hit the first one on
+day one.
 
 ## Repo map
 
@@ -118,12 +124,26 @@ pnpm db:snapshot      # regenerate db/structure.sql from DATABASE_URL — run it
 pnpm db:snapshot --check  # fail if db/structure.sql and the migrations disagree — CI runs this
 pnpm waitlist:notify  # preview or send a waitlist campaign — local only, see below
 pnpm check:publish    # refuse an npm publish that would fail or ship a broken manifest
+pnpm changeset        # record a user-visible change against the client packages
+pnpm version:packages # apply pending changesets: bump versions and write CHANGELOGs
+pnpm release:dry      # changeset publish --dry-run
 ```
 
 **Publishing to npm is manual, on purpose.** `.github/workflows/release.yml` is `workflow_dispatch`
 only and defaults to a dry run — nothing publishes on a merge or a tag, the same shape as
-`db:migrate`. It needs an `NPM_TOKEN` secret on the `npm` environment, and the `@mneia` scope has to
-exist on npm before the first publish; as of 2026-08-07 it does not.
+`db:migrate`. It needs an `NPM_TOKEN` secret on the `npm` environment. The `@mneia` scope **does**
+now exist: `0.1.0` of all three client packages is live, published some time after 2026-08-07.
+
+**The registry is behind the repo.** `0.1.1` was bumped by MNE-261 to carry the MNE-257 client fixes
+and `release.yml` was never run, so nothing a customer installs contains them. Check with
+`npm view @mneia/cli version` rather than reading a package.json.
+
+**Versioning goes through changesets** (MNE-38). A PR that changes the client packages adds one with
+`pnpm changeset`; at release time `pnpm version:packages` applies every pending changeset, bumps, and
+writes the `CHANGELOG.md` files. The three client packages are `fixed` in `.changeset/config.json`,
+so they always move together — which is what MNE-261 did by hand. `release.yml` refuses a real
+publish while any changeset is still unconsumed, because that would ship a version whose changelog
+omits the change.
 
 **`ci.yml` does not run tests or typecheck.** Ruled by the founder 2026-07-30: both were judged
 noise. That job is format, lint errors, build, and git policy. It builds with `pnpm -r --if-present

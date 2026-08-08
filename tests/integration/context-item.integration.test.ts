@@ -5,8 +5,8 @@ import {
   EMBEDDING_DIMENSIONS,
   ITEM_KINDS,
   ITEM_STATUSES,
-  WORKSPACE_SETTING,
   migrate,
+  WORKSPACE_SETTING,
 } from '../../packages/core/src/index.js';
 import { PgDriver } from './pg-driver.js';
 

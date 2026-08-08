@@ -10,14 +10,14 @@ import {
   type PostgresConnectionSource,
   type PostgresSession,
   type SqlRow,
-  type WorkspaceRole,
+  teamRoleForWorkspaceRole,
   toActor,
   toTeam,
   toTeamMember,
   toWorkspace,
   type Uuid,
   WORKSPACE_SETTING,
-  teamRoleForWorkspaceRole,
+  type WorkspaceRole,
 } from '@mneia/core';
 import {
   type AccountContext,

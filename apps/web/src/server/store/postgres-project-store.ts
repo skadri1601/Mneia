@@ -102,8 +102,8 @@ export class PostgresProjectStore implements ProjectControlStore {
   async createProject(account: AccountContext, input: CreateProjectInput): Promise<ManagedProject> {
     return this.inTransaction(account, async (session) => {
       const result = await session.execute<SqlRow>(
-        `INSERT INTO project (workspace_id, slug, display_name)
-         VALUES ($1, $2, $3)
+        `INSERT INTO project (id, workspace_id, slug, display_name)
+         VALUES (gen_random_uuid(), $1, $2, $3)
          ON CONFLICT (workspace_id, slug) DO NOTHING
          RETURNING ${PROJECT_COLUMNS}`,
         [account.workspace.id, input.slug, input.displayName],

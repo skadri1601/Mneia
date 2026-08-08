@@ -4,8 +4,8 @@ import {
   evaluateRateLimit,
   type RateLimitBucket,
   readRateLimitConfig,
-  windowsFor,
   windowStartFor,
+  windowsFor,
 } from './rate-limit.js';
 
 const TOKEN = '9f1c2b3a-0000-4000-8000-000000000001';

@@ -1,7 +1,7 @@
 import { SignIn } from '@clerk/nextjs';
-import { AUTH_APPEARANCE } from '../../auth-appearance.js';
-import styles from '../../auth.module.css';
 import { MARKETING_SITE_URL } from '../../../site.js';
+import styles from '../../auth.module.css';
+import { AUTH_APPEARANCE } from '../../auth-appearance.js';
 
 export default function SignInPage() {
   return (

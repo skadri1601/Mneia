@@ -1,6 +1,6 @@
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { CORE_ENTITY_TABLES, WORKSPACE_SETTING, migrate } from '../../packages/core/src/index.js';
+import { CORE_ENTITY_TABLES, migrate, WORKSPACE_SETTING } from '../../packages/core/src/index.js';
 import { PgDriver } from './pg-driver.js';
 
 const connectionString = process.env.DATABASE_URL;

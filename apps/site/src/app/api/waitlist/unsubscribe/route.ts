@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/nextjs';
-import { WaitlistError, forgetSignup, unsubscribePageUrl } from '@/lib/waitlist';
+import { forgetSignup, unsubscribePageUrl, WaitlistError } from '@/lib/waitlist';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

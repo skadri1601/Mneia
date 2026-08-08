@@ -20,6 +20,8 @@ export type {
 } from './domain/types.js';
 export type { EmbeddingErrorCode, EmbeddingProvider } from './embed/types.js';
 export { assertEmbeddingDimensions, EmbeddingError, embeddableText } from './embed/types.js';
+export type { ChunkedTurns, ChunkOptions, TrajectoryChunk } from './extract/chunk.js';
+export { chunkTurns } from './extract/chunk.js';
 export type {
   PrecisionFilterOptions,
   PrecisionFilterResult,
@@ -30,7 +32,11 @@ export {
   DEFAULT_CONFIDENCE_FLOOR,
   DEFAULT_MAX_CANDIDATES,
 } from './extract/filter.js';
-export { buildExtractionPrompt, EXTRACTION_SYSTEM_PROMPT } from './extract/prompt.js';
+export {
+  buildExtractionPrompt,
+  EXTRACTION_SYSTEM_PROMPT,
+  renderTurn,
+} from './extract/prompt.js';
 export type {
   ContradictionSignal,
   ExistingItemSnapshot,

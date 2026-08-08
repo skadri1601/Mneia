@@ -39,6 +39,16 @@ jobs:
       - name: build the publishable packages
         run: pnpm build
 
+      - name: refuse to publish while a changeset is still unconsumed
+        if: ${{ inputs.dry_run == false }}
+        run: |
+          pending=$(find .changeset -name '*.md' ! -name 'README.md' | wc -l)
+          if [ "$pending" -ne 0 ]; then
+            echo "::error::$pending changeset(s) have not been applied, so this version's CHANGELOG would omit them. Run pnpm version:packages, commit the bump, then release."
+            find .changeset -name '*.md' ! -name 'README.md'
+            exit 1
+          fi
+
       - name: refuse to publish a package that already exists at this version
         run: node scripts/check-publish.mjs
 

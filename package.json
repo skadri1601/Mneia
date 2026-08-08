@@ -28,10 +28,14 @@
     "db:snapshot": "node scripts/db-snapshot.mjs",
     "dogfood:report": "node scripts/dogfood-report.mjs",
     "latency:rehydrate": "node scripts/rehydrate-latency.mjs",
-    "funnel:report": "node scripts/funnel-report.mjs"
+    "funnel:report": "node scripts/funnel-report.mjs",
+    "changeset": "changeset",
+    "version:packages": "changeset version",
+    "release:dry": "changeset publish --dry-run"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",
+    "@changesets/cli": "^2.31.1",
     "@types/node": "^26.1.2",
     "@types/pg": "^8.20.0",
     "pg": "^8.22.0",

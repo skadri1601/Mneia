@@ -273,6 +273,9 @@ export const httpCheckpointApi: CheckpointApi = {
       source: reduced.trajectory.source,
       sourceSessionRef: reduced.trajectory.sessionRef,
       watermark: proposal.watermark,
+      pendingTurns: proposal.pendingTurns,
+      incompleteReason: proposal.incompleteReason,
+      droppedBeforeUpload: trajectory.turns.length - reduced.trajectory.turns.length,
       candidates: proposal.candidates.map((candidate) => ({
         index: candidate.index,
         kind: candidate.kind,

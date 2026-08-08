@@ -3,12 +3,15 @@ import 'server-only';
 import type {
   CheckpointProposalWire,
   CheckpointProposeWire,
+  ExtractionCandidate,
   ScopedStore,
   TrajectoryTurn,
 } from '@mneia/core';
 import {
   applyPrecisionFilter,
   buildExtractionPrompt,
+  chunkTurns,
+  defaultTokenCounter,
   ExtractionError,
   parseExtractionOutput,
   reconcileCandidates,
@@ -20,6 +23,15 @@ import { ApiRequestError } from './handlers.js';
 
 const EXISTING_ITEM_LIMIT = 200;
 const MAX_OUTPUT_TOKENS = 8192;
+const CONTEXT_SAFETY_MARGIN = 4096;
+const MIN_CHUNK_TOKENS = 1024;
+
+const promptOverheadTokens = (
+  existingItems: readonly { readonly id: string; readonly title: string }[],
+): number => {
+  const empty = buildExtractionPrompt({ turns: [], existingItems });
+  return defaultTokenCounter.count(empty.system) + defaultTokenCounter.count(empty.user);
+};
 
 export interface ExtractionAttemptRecord {
   readonly model: string;
@@ -44,6 +56,7 @@ export interface ProposeDependencies {
     projectId: string;
     attempts: readonly ExtractionAttemptRecord[];
   }) => Promise<void>;
+  readonly servableContextTokens: number;
 }
 
 const decodeTurns = (wire: CheckpointProposeWire): readonly TrajectoryTurn[] =>
@@ -87,16 +100,21 @@ export const handleProposeCheckpoint = async (
         watermark,
         consumedTurns: 0,
         model: '',
+        pendingTurns: 0,
+        incompleteReason: null,
       },
     };
   }
 
-  const reduced = reduceTrajectory({
-    source: input.source,
-    sessionRef: input.sessionRef,
-    cwd: null,
-    turns: pending.turns,
-  });
+  const reduced = reduceTrajectory(
+    {
+      source: input.source,
+      sessionRef: input.sessionRef,
+      cwd: null,
+      turns: pending.turns,
+    },
+    { maxChars: Number.MAX_SAFE_INTEGER },
+  );
 
   const existing = await store.listContextItems({
     projectId: project.id,
@@ -104,38 +122,80 @@ export const handleProposeCheckpoint = async (
     limit: EXISTING_ITEM_LIMIT,
   });
 
-  const prompt = buildExtractionPrompt({
-    turns: reduced.trajectory.turns,
-    existingItems: existing.map((item) => ({ id: item.id, title: item.title })),
-  });
+  const existingItems = existing.map((item) => ({ id: item.id, title: item.title }));
+  const overhead = promptOverheadTokens(existingItems);
+  const budget = deps.servableContextTokens - overhead - MAX_OUTPUT_TOKENS - CONTEXT_SAFETY_MARGIN;
 
-  const run = await deps.run({
-    system: prompt.system,
-    user: prompt.user,
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
-  });
-
-  await deps.recordUsage({ projectId: project.id, attempts: run.attempts });
-
-  let output: ReturnType<typeof parseExtractionOutput>;
-  try {
-    output = parseExtractionOutput(run.text);
-  } catch (error) {
-    if (error instanceof ExtractionError) {
-      throw new ApiRequestError(
-        'invalid_request',
-        `${run.model} returned an extraction this server could not validate, so nothing was written: ${error.message}`,
-      );
-    }
-    throw error;
+  if (budget < MIN_CHUNK_TOKENS) {
+    throw new ApiRequestError(
+      'invalid_request',
+      `the extraction prompt overhead leaves ${budget} tokens for the transcript, which is below the ${MIN_CHUNK_TOKENS} minimum — the project carries ${existingItems.length} active item titles against a ${deps.servableContextTokens} token window`,
+    );
   }
 
-  const filtered = applyPrecisionFilter(output.candidates);
+  const { chunks } = chunkTurns(reduced.trajectory.turns, { budgetTokens: budget });
+
+  const candidates: ExtractionCandidate[] = [];
+  const attempts: ExtractionAttemptRecord[] = [];
+  const sent = reduced.trajectory.turns;
+  let completedThrough = -1;
+  let model = '';
+  let incompleteReason: string | null = null;
+
+  for (const [index, chunk] of chunks.entries()) {
+    const prompt = buildExtractionPrompt({ turns: chunk.turns, existingItems });
+
+    let run: Awaited<ReturnType<ProposeDependencies['run']>>;
+    try {
+      run = await deps.run({
+        system: prompt.system,
+        user: prompt.user,
+        maxOutputTokens: MAX_OUTPUT_TOKENS,
+      });
+    } catch (error) {
+      incompleteReason = `chunk ${index + 1} of ${chunks.length} did not complete, so the watermark stops before it and those turns are re-read on the next checkpoint: ${error instanceof Error ? error.message : String(error)}`;
+      break;
+    }
+
+    attempts.push(...run.attempts);
+    model = run.model;
+
+    let output: ReturnType<typeof parseExtractionOutput>;
+    try {
+      output = parseExtractionOutput(run.text);
+    } catch (error) {
+      if (error instanceof ExtractionError) {
+        incompleteReason = `${run.model} returned an extraction this server could not validate for chunk ${index + 1} of ${chunks.length}, so nothing from it was kept and those turns are re-read: ${error.message}`;
+        break;
+      }
+      throw error;
+    }
+
+    candidates.push(...output.candidates);
+    completedThrough = chunk.completedThrough;
+  }
+
+  if (attempts.length > 0) {
+    await deps.recordUsage({ projectId: project.id, attempts });
+  }
+
+  const lastCommitted = completedThrough < 0 ? null : sent[completedThrough];
+  if (lastCommitted === undefined || lastCommitted === null) {
+    throw new ApiRequestError(
+      'invalid_request',
+      incompleteReason ??
+        'the extraction completed no whole turn, so nothing was written and the trajectory is unconsumed',
+    );
+  }
+
+  const consumedTurns = completedThrough + 1;
+
+  const filtered = applyPrecisionFilter(candidates);
+
   const reconciled = reconcileCandidates({
     candidates: filtered.kept,
     existing: existing.map((item) => ({ id: item.id, kind: item.kind, title: item.title })),
   });
-  const lastConsumed = pending.turns[pending.turns.length - 1];
 
   const carried = [...reconciled.novel, ...reconciled.contradictions].sort(
     (left, right) => left.index - right.index,
@@ -175,9 +235,11 @@ export const handleProposeCheckpoint = async (
       })),
       rejectedCount: filtered.rejected.length,
       duplicateCount: reconciled.duplicates.length,
-      watermark: lastConsumed?.ref ?? watermark,
-      consumedTurns: pending.turns.length,
-      model: run.model,
+      watermark: lastCommitted.ref,
+      consumedTurns,
+      model,
+      pendingTurns: sent.length - consumedTurns,
+      incompleteReason,
     },
   };
 };

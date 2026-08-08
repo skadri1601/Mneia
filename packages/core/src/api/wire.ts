@@ -558,6 +558,8 @@ export const CheckpointProposalWireSchema = z.object({
   watermark: z.string().nullable(),
   consumedTurns: z.number().int().min(0),
   model: z.string(),
+  pendingTurns: z.number().int().min(0).default(0),
+  incompleteReason: z.string().nullable().default(null),
 });
 
 export type CheckpointProposalWire = z.infer<typeof CheckpointProposalWireSchema>;

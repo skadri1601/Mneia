@@ -87,6 +87,7 @@ class FakeSession implements PostgresSession {
 
 const sourceOf = (session: PostgresSession): PostgresConnectionSource => ({
   acquire: async () => session,
+  close: async () => {},
 });
 
 const storeWith = (respond: Responder) => {

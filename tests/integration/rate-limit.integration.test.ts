@@ -3,6 +3,15 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../apps/web/node_modules/server-only/index.js', () => ({}));
 
+import {
+  DEFAULT_RATE_LIMIT_CONFIG,
+  evaluateRateLimit,
+  RATE_LIMIT_RETENTION_SECONDS,
+  type RateLimitConfig,
+  type RequestCost,
+  windowsFor,
+} from '../../apps/web/src/server/rate-limit.js';
+import { PostgresRateLimitStore } from '../../apps/web/src/server/store/postgres-rate-limit-store.js';
 import type {
   PostgresConnectionSource,
   PostgresSession,
@@ -10,15 +19,6 @@ import type {
   SqlValue,
 } from '../../packages/core/src/index.js';
 import { migrate, WORKSPACE_SETTING } from '../../packages/core/src/index.js';
-import {
-  DEFAULT_RATE_LIMIT_CONFIG,
-  evaluateRateLimit,
-  type RateLimitConfig,
-  RATE_LIMIT_RETENTION_SECONDS,
-  type RequestCost,
-  windowsFor,
-} from '../../apps/web/src/server/rate-limit.js';
-import { PostgresRateLimitStore } from '../../apps/web/src/server/store/postgres-rate-limit-store.js';
 import { APP_ROLE, ensureAppRole, grantSchemaToAppRole } from './app-role.js';
 import { PgDriver } from './pg-driver.js';
 

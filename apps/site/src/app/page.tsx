@@ -11,8 +11,8 @@ import {
   HOME_INTRO,
   HOME_OPERATIONS_INTRO,
   HOME_PROBLEM,
-  HOME_SURFACES,
   HOME_START,
+  HOME_SURFACES,
   OPERATIONS,
 } from '@/content/pages';
 import { breadcrumbSchema, webPageSchema } from '@/lib/schema';

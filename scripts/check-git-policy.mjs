@@ -4,10 +4,10 @@ import { readFileSync } from 'node:fs';
 import {
   BRANCH_RE,
   BRANCH_TYPES,
+  classify,
   PR_BODY_RE,
   SUBJECT_RE,
   TICKET_RE,
-  classify,
 } from './git-lanes.mjs';
 
 const SQUASHED_PR_RE = /\(#\d+\)$/;

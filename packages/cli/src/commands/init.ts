@@ -11,6 +11,7 @@ import {
   type ProjectConfigFile,
   resolveToken,
 } from '../config.js';
+import { httpInitApi } from '../http-api.js';
 import {
   AGENTS_FILE,
   assertFenceIntact,
@@ -21,7 +22,6 @@ import {
   type WriteBackResult,
   writeGeneratedSection,
 } from '../interop.js';
-import { httpInitApi } from '../http-api.js';
 
 export interface AttachRequest {
   readonly workspace: string | null;

@@ -157,6 +157,42 @@ describe('createExtractionRunner', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('reports the window both models can serve, not the larger one', () => {
+    const fetchImpl = vi.fn(async () => ok(OPENAI_BODY)) as unknown as typeof globalThis.fetch;
+
+    expect(runnerWith(fetchImpl).servableContextTokens).toBe(200_000);
+    expect(runnerWith(fetchImpl, { fallbackModel: null }).servableContextTokens).toBe(1_050_000);
+  });
+
+  it('does not try a fallback that cannot hold the prompt, and says why', async () => {
+    const fetchImpl = vi.fn(async () => failure(429)) as unknown as typeof globalThis.fetch;
+    const runner = runnerWith(fetchImpl);
+    const oversized = {
+      system: 'system',
+      user: Array.from({ length: 400_000 }, () => 'settled').join(' '),
+      maxOutputTokens: 4096,
+    };
+
+    await expect(runner.run(oversized)).rejects.toThrow(
+      /claude-haiku-4-5 was not tried.*200,000 token window/s,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the primary failed rather than fell_back when the fallback cannot fit', async () => {
+    const fetchImpl = vi.fn(async () => failure(429)) as unknown as typeof globalThis.fetch;
+    const runner = runnerWith(fetchImpl);
+    const oversized = {
+      system: 'system',
+      user: Array.from({ length: 400_000 }, () => 'settled').join(' '),
+      maxOutputTokens: 4096,
+    };
+
+    const error = await runner.run(oversized).catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(ExtractionProviderError);
+    expect((error as { retryable: boolean }).retryable).toBe(false);
+  });
+
   it('sends each vendor its own credential and auth header', async () => {
     const headers: Record<string, string>[] = [];
     const fetchImpl = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {

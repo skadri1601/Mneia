@@ -10,7 +10,18 @@ export async function ensureAppRole(client: Client): Promise<void> {
        END IF;
      END $$`,
   );
-  await client.query(`GRANT ${APP_ROLE} TO CURRENT_USER`);
+
+  try {
+    await client.query(`GRANT ${APP_ROLE} TO CURRENT_USER`);
+  } catch (cause) {
+    throw new Error(
+      `expected to be able to enter ${APP_ROLE}, which the RLS tests SET ROLE into; the grant was refused. ` +
+        `This happens when ${APP_ROLE} already exists and belongs to another role — a Neon branch inherits ` +
+        `its parent's roles, so one stray creation upstream breaks every later branch. ` +
+        `Fix: DROP ROLE ${APP_ROLE} on the parent, or connect as a role that administers it.`,
+      { cause },
+    );
+  }
 }
 
 export async function grantSchemaToAppRole(client: Client, schema: string): Promise<void> {

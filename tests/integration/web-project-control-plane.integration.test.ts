@@ -280,6 +280,41 @@ describe.skipIf(connectionString === undefined)(
       });
     });
 
+    it('creates a project with a generated id, because the column has no default', async () => {
+      await withProjectSchema(async ({ store }) => {
+        const created = await store.createProject(ACCOUNT_A, {
+          slug: 'ledger',
+          displayName: 'Ledger',
+        });
+
+        expect(created.id).toMatch(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        );
+        expect(created).toEqual(
+          expect.objectContaining({
+            workspaceId: ACCOUNT_A.workspace.id,
+            slug: 'ledger',
+            displayName: 'Ledger',
+            teamId: null,
+            archivedAt: null,
+          }),
+        );
+
+        const listed = await store.listProjects(ACCOUNT_A, { includeArchived: false });
+        expect(listed.map((project) => project.slug)).toContain('ledger');
+      });
+    });
+
+    it('refuses a slug already taken in the workspace rather than silently returning nothing', async () => {
+      await withProjectSchema(async ({ store }) => {
+        await store.createProject(ACCOUNT_A, { slug: 'ledger', displayName: 'Ledger' });
+
+        await expect(
+          store.createProject(ACCOUNT_A, { slug: 'ledger', displayName: 'Ledger Again' }),
+        ).rejects.toMatchObject({ code: 'slug_taken' });
+      });
+    });
+
     it('renames only the display name and archives idempotently', async () => {
       await withProjectSchema(async ({ store }) => {
         const renamed = await store.renameProject(ACCOUNT_A, {
