@@ -4,6 +4,9 @@ services:
     restart: unless-stopped
     env_file:
       - /etc/mneia/web.env
+    environment:
+      - OPENAI_API_KEY
+      - ANTHROPIC_API_KEY
     ports:
       - '127.0.0.1:3000:3000'
 

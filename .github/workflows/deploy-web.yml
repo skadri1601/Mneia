@@ -74,12 +74,19 @@ jobs:
             "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:/opt/mneia/"
 
       - name: Pull and restart
+        env:
+          IMAGE: ${{ needs.build.outputs.image }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin \
              && cd /opt/mneia \
-             && MNEIA_WEB_IMAGE='${{ needs.build.outputs.image }}' docker compose pull \
-             && MNEIA_WEB_IMAGE='${{ needs.build.outputs.image }}' docker compose up -d --remove-orphans \
+             && export MNEIA_WEB_IMAGE='${IMAGE}' \
+             && export OPENAI_API_KEY='${OPENAI_API_KEY}' \
+             && export ANTHROPIC_API_KEY='${ANTHROPIC_API_KEY}' \
+             && docker compose pull \
+             && docker compose up -d --remove-orphans \
              && docker image prune -f"
 
       - name: Wait for the health endpoint
@@ -93,3 +100,14 @@ jobs:
           done
           echo "the deploy never became healthy; the previous container may still be serving"
           exit 1
+
+      - name: Confirm the deployed app can reach the models
+        run: |
+          health=$(curl -fsS "https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health")
+          echo "$health"
+          for field in extraction extractionFallback embeddings; do
+            if ! echo "$health" | grep -q "\"${field}\":\"configured\""; then
+              echo "::error::${field} is not configured, so this deploy degrades silently rather than failing"
+              exit 1
+            fi
+          done
