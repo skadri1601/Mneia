@@ -1,0 +1,97 @@
+export const TRAJECTORY_SOURCES = [
+  'claude-code',
+  'claude-desktop',
+  'codex',
+  'cursor',
+  'warp',
+  'file',
+] as const;
+
+export type TrajectorySource = (typeof TRAJECTORY_SOURCES)[number];
+
+export const TURN_ROLES = ['user', 'assistant'] as const;
+
+export type TurnRole = (typeof TURN_ROLES)[number];
+
+export const TURN_KINDS = ['text', 'thinking', 'tool_call', 'tool_result'] as const;
+
+export type TurnKind = (typeof TURN_KINDS)[number];
+
+export interface TrajectoryTurn {
+  readonly ref: string;
+  readonly role: TurnRole;
+  readonly kind: TurnKind;
+  readonly text: string;
+  readonly toolName: string | null;
+  readonly at: Date | null;
+}
+
+export interface Trajectory {
+  readonly source: TrajectorySource;
+  readonly sessionRef: string;
+  readonly cwd: string | null;
+  readonly turns: readonly TrajectoryTurn[];
+}
+
+export interface TrajectorySummary {
+  readonly source: TrajectorySource;
+  readonly sessionRef: string;
+  readonly cwd: string | null;
+  readonly startedAt: Date | null;
+  readonly lastActivityAt: Date | null;
+}
+
+export interface ListTrajectoriesRequest {
+  readonly cwd?: string | undefined;
+  readonly limit?: number | undefined;
+}
+
+export interface TrajectoryReader {
+  readonly source: TrajectorySource;
+  list(request?: ListTrajectoriesRequest): Promise<readonly TrajectorySummary[]>;
+  read(sessionRef: string): Promise<Trajectory>;
+}
+
+export type TrajectoryErrorCode =
+  | 'not_found'
+  | 'unreadable'
+  | 'unsupported_runtime'
+  | 'unrecognised_format';
+
+export class TrajectoryError extends Error {
+  readonly code: TrajectoryErrorCode;
+  readonly source: TrajectorySource;
+
+  constructor(
+    code: TrajectoryErrorCode,
+    source: TrajectorySource,
+    message: string,
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = 'TrajectoryError';
+    this.code = code;
+    this.source = source;
+  }
+}
+
+export interface TurnsSinceResult {
+  readonly turns: readonly TrajectoryTurn[];
+  readonly resolved: boolean;
+}
+
+export function turnsSince(
+  turns: readonly TrajectoryTurn[],
+  watermark: string | null,
+): TurnsSinceResult {
+  if (watermark === null) {
+    return { turns, resolved: true };
+  }
+
+  const index = turns.findIndex((turn) => turn.ref === watermark);
+  if (index >= 0) {
+    return { turns: turns.slice(index + 1), resolved: true };
+  }
+
+  return { turns, resolved: false };
+}

@@ -199,3 +199,30 @@ export type {
   TelemetrySink,
 } from './telemetry/types.js';
 export { TELEMETRY_EVENT_NAMES } from './telemetry/types.js';
+export { createClaudeCodeReader, parseClaudeCodeJsonl, projectSlug } from './trajectory/claude-code.js';
+export { claudeDesktopSessionsRoot, createClaudeDesktopReader } from './trajectory/claude-desktop.js';
+export { createCodexReader, parseCodexRollout } from './trajectory/codex.js';
+export { composerFolders, createCursorReader } from './trajectory/cursor.js';
+export type { DiscoveredTrajectory } from './trajectory/discover.js';
+export { createReaders, discoverTrajectories, readTrajectory } from './trajectory/discover.js';
+export { readTrajectoryFile } from './trajectory/jsonl.js';
+export type {
+  ListTrajectoriesRequest,
+  Trajectory,
+  TrajectoryErrorCode,
+  TrajectoryReader,
+  TrajectorySource,
+  TrajectorySummary,
+  TrajectoryTurn,
+  TurnKind,
+  TurnRole,
+  TurnsSinceResult,
+} from './trajectory/types.js';
+export {
+  TRAJECTORY_SOURCES,
+  TrajectoryError,
+  TURN_KINDS,
+  TURN_ROLES,
+  turnsSince,
+} from './trajectory/types.js';
+export { createWarpReader, parseWarpConversation } from './trajectory/warp.js';
