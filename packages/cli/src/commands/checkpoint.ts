@@ -48,6 +48,8 @@ export interface CheckpointProposal {
   readonly sourceSessionRef: string;
   readonly watermark: string | null;
   readonly candidates: readonly CheckpointCandidate[];
+  readonly pendingTurns: number;
+  readonly incompleteReason: string | null;
 }
 
 export interface ProposeRequest {
@@ -525,6 +527,12 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
       const proposal = await callApi(config.endpoint, 'checkpoint', () =>
         deps.api.propose({ config, trigger }),
       );
+
+      if (proposal.pendingTurns > 0 && !invocation.json) {
+        invocation.io.stderr(
+          `${proposal.pendingTurns} turn${proposal.pendingTurns === 1 ? '' : 's'} were not read this time, so run mneia checkpoint again to cover them — nothing was skipped${proposal.incompleteReason === null ? '' : `: ${proposal.incompleteReason}`}\n`,
+        );
+      }
 
       if (proposal.candidates.length === 0) {
         invocation.io.stdout(

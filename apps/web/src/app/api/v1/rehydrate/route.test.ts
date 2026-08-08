@@ -1,7 +1,11 @@
 import type { EmbeddingProvider, ScopedStore } from '@mneia/core';
 import { describe, expect, it, vi } from 'vitest';
 
-const provider = { model: 'text-embedding-3-small', embed: async () => [] } as EmbeddingProvider;
+const provider: EmbeddingProvider = {
+  model: 'text-embedding-3-small',
+  dimensions: 1536,
+  embed: async () => [],
+};
 
 const captured: { deps?: Record<string, unknown> } = {};
 
