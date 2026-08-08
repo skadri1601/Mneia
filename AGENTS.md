@@ -64,22 +64,28 @@ which is the inventory of what the deployed app reads.
 **The same endpoint reports whether the models are reachable**, because the failure is otherwise
 invisible: `extraction`, `extractionFallback` and `embeddings` each read `configured` or `no_key`.
 
-> ⚠️ **As of 2026-08-08 there are no model API keys yet.** `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`
-> are unset in `/etc/mneia/web.env`, and the founder is provisioning them. Until they are set:
->
-> - `mneia checkpoint` **cannot propose anything** — the extraction call has no key to use
-> - `mneia brief` still works, but ranks on recency alone: `semanticRelevance` carries the largest
->   weight in the §10.2 formula at 0.30 and falls back to a neutral constant with no embeddings
-> - Checkpoints written through MCP still store items; they are written with a null vector and are
->   backfillable (MNE-56)
->
-> **This is by design, not a bug.** Every one of those paths degrades rather than failing, so a
-> missing key looks like a working product returning worse answers. Read `/api/health` before
-> concluding that ranking or extraction is broken. `status` deliberately stays `ok` — a 503 here
-> would take the app down for something that still serves.
->
-> Tracked on MNE-265. Delete this block when both keys are set and `/api/health` reports
-> `configured` for all three.
+**Both keys are set and funded as of 2026-08-08** (MNE-265), and `/api/health` reports `configured`
+for all three. Extraction is verified end to end against real sessions on this repo: a 1,357-turn
+Claude Code session reduced from 1.31M to 700K characters and returned 7 candidates in 12.5s for
+$0.05; an 18-turn session returned 1 for $0.0017.
+
+**The keys are not on the droplet.** They are the `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`
+repository secrets, which `deploy-web.yml` passes to the container. `/etc/mneia/web.env` still holds
+everything else. Rotating a model key is `gh secret set` plus a re-run of the deploy — do not edit
+the droplet, or the next deploy will overwrite what you wrote.
+
+**Two defects in that path are open and unticketed** — Linear is refusing new issues on the free
+plan, so both are written up in the comments on MNE-265:
+
+- The **watermark advances over turns the reducer dropped**. `propose.ts` reduces with the default
+  700,000-character cap and then advances the watermark to the last turn *fed in* rather than the
+  last turn *sent*, so on a large session hundreds of turns are skipped permanently. The chunking
+  that was meant to prevent this was never built.
+- **Failover sends prompts Haiku cannot fit.** `contextTokens` is declared on both models and read
+  by nothing, so a 242K-token prompt goes to a 200K-token model and fails naming the wrong cause.
+
+Neither stops a normal session. Both matter before MNE-86's dogfood, which will hit the first one on
+day one.
 
 ## Repo map
 
