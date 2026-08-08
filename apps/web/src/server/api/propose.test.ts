@@ -44,13 +44,18 @@ const turn = (ref: string, text: string) => ({
   at: '2026-08-08T00:00:00.000Z',
 });
 
-const input = (refs: readonly string[]): CheckpointProposeWire => ({
+const input = (refs: readonly string[], text?: (ref: string) => string): CheckpointProposeWire => ({
   project: 'mneia',
   source: 'claude-code',
   sessionRef: 'session-1',
   trigger: 'task_boundary',
-  turns: refs.map((ref) => turn(ref, `A decision worth keeping about ${ref}`)),
+  turns: refs.map((ref) =>
+    turn(ref, text === undefined ? `A decision worth keeping about ${ref}` : text(ref)),
+  ),
 });
+
+const bulky = (ref: string): string =>
+  `Turn ${ref}: ${Array.from({ length: 400 }, () => 'settled').join(' ')}`;
 
 const CANDIDATES = JSON.stringify({
   candidates: [
@@ -87,6 +92,7 @@ const depsWith = (overrides: Partial<Parameters<typeof handleProposeCheckpoint>[
     recordUsage: vi.fn(async (usage: unknown) => {
       seen.usage.push(usage);
     }),
+    servableContextTokens: 200_000,
     ...overrides,
   };
   return { deps, seen };
@@ -182,5 +188,119 @@ describe('handleProposeCheckpoint', () => {
     await expect(handleProposeCheckpoint(missing, input(['a']), deps)).rejects.toThrow(
       /check the slug with mneia status/,
     );
+  });
+
+  describe('the lossless invariant', () => {
+    const refs = Array.from({ length: 24 }, (_, index) => `t${index}`);
+
+    it('sends every turn to the model when they do not fit one window', async () => {
+      const { deps, seen } = depsWith({ servableContextTokens: 20_000 });
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(refs, bulky), deps);
+
+      expect(seen.prompts.length).toBeGreaterThan(1);
+
+      const combined = seen.prompts.join('\n');
+      for (const ref of refs) {
+        expect(combined).toContain(`Turn ${ref}:`);
+      }
+
+      expect(proposal.consumedTurns).toBe(refs.length);
+      expect(proposal.watermark).toBe('t23');
+      expect(proposal.pendingTurns).toBe(0);
+      expect(proposal.incompleteReason).toBeNull();
+    });
+
+    it('stops the watermark at the last committed chunk when a later one fails', async () => {
+      let call = 0;
+      const { deps, seen } = depsWith({
+        servableContextTokens: 20_000,
+        run: vi.fn(async (request: { system: string; user: string; maxOutputTokens: number }) => {
+          call += 1;
+          if (call === 2) {
+            throw new Error('the provider reset the connection');
+          }
+          return {
+            text: CANDIDATES,
+            model: 'gpt-5.6-luna',
+            attempts: [
+              {
+                model: 'gpt-5.6-luna',
+                outcome: 'succeeded' as const,
+                inputTokens: 100,
+                outputTokens: 20,
+                durationMs: 5,
+              },
+            ],
+          };
+        }),
+      });
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(refs, bulky), deps);
+
+      expect(call).toBe(2);
+      expect(proposal.incompleteReason).toMatch(/chunk 2 of/);
+      expect(proposal.consumedTurns).toBeLessThan(refs.length);
+      expect(proposal.pendingTurns).toBe(refs.length - proposal.consumedTurns);
+
+      const committed = refs.slice(0, proposal.consumedTurns);
+      expect(proposal.watermark).toBe(committed[committed.length - 1]);
+
+      const uncommitted = refs.slice(proposal.consumedTurns);
+      const combined = seen.prompts.join('\n');
+      expect(uncommitted.length).toBeGreaterThan(0);
+      for (const ref of uncommitted) {
+        expect(combined).not.toContain(`Turn ${ref}:`);
+      }
+    });
+
+    it('writes nothing and does not move the watermark when the first chunk fails', async () => {
+      const { deps } = depsWith({
+        servableContextTokens: 20_000,
+        run: vi.fn(async () => {
+          throw new Error('the provider reset the connection');
+        }),
+      });
+
+      await expect(handleProposeCheckpoint(storeStub(), input(refs, bulky), deps)).rejects.toThrow(
+        /re-read on the next checkpoint/,
+      );
+    });
+
+    it('does not move the watermark onto a turn whose later parts were never sent', async () => {
+      const giant = Array.from({ length: 60_000 }, () => 'settled').join(' ');
+      let call = 0;
+      const { deps } = depsWith({
+        servableContextTokens: 20_000,
+        run: vi.fn(async () => {
+          call += 1;
+          if (call === 2) {
+            throw new Error('the provider reset the connection');
+          }
+          return {
+            text: CANDIDATES,
+            model: 'gpt-5.6-luna',
+            attempts: [],
+          };
+        }),
+      });
+
+      const { proposal } = await handleProposeCheckpoint(
+        storeStub(),
+        input(['first', 'giant', 'last'], (ref) => (ref === 'giant' ? giant : `Turn ${ref}`)),
+        deps,
+      );
+
+      expect(proposal.watermark).toBe('first');
+      expect(proposal.watermark).not.toBe('giant');
+      expect(proposal.pendingTurns).toBeGreaterThan(0);
+    });
+
+    it('refuses when existing item titles leave no room for the transcript', async () => {
+      const { deps } = depsWith({ servableContextTokens: 2_000 });
+
+      await expect(handleProposeCheckpoint(storeStub(), input(refs, bulky), deps)).rejects.toThrow(
+        /below the 1024 minimum/,
+      );
+    });
   });
 });

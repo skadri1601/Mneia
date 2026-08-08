@@ -1,6 +1,10 @@
 import 'server-only';
 
-import type { ExtractionProvider, ExtractionProviderRequest } from '@mneia/core';
+import {
+  defaultTokenCounter,
+  type ExtractionProvider,
+  type ExtractionProviderRequest,
+} from '@mneia/core';
 import {
   createAnthropicExtractionProvider,
   createOpenAiExtractionProvider,
@@ -29,8 +33,15 @@ export interface ExtractionRunResult {
 export interface ExtractionRunner {
   readonly primary: string;
   readonly fallback: string | null;
+  readonly servableContextTokens: number;
   run(request: ExtractionProviderRequest): Promise<ExtractionRunResult>;
 }
+
+const estimatePromptTokens = (request: ExtractionProviderRequest): number =>
+  defaultTokenCounter.count(request.system) + defaultTokenCounter.count(request.user);
+
+const fitsWindow = (request: ExtractionProviderRequest, model: ExtractionModel): boolean =>
+  estimatePromptTokens(request) + (request.maxOutputTokens ?? 0) <= model.contextTokens;
 
 const providerFor = (
   model: ExtractionModel,
@@ -84,6 +95,10 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
   return {
     primary: primary.id,
     fallback: fallback === null ? null : fallback.id,
+    servableContextTokens:
+      fallback === null
+        ? primary.contextTokens
+        : Math.min(primary.contextTokens, fallback.contextTokens),
 
     async run(request: ExtractionProviderRequest): Promise<ExtractionRunResult> {
       const attempts: ExtractionAttempt[] = [];
@@ -101,9 +116,10 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
         return { text: response.text, model: primary.id, attempts };
       } catch (error) {
         const retryable = error instanceof ExtractionProviderError && error.retryable;
+        const fits = fallback === null ? false : fitsWindow(request, fallback);
         attempts.push({
           model: primary.id,
-          outcome: retryable && fallback !== null ? 'fell_back' : 'failed',
+          outcome: retryable && fallback !== null && fits ? 'fell_back' : 'failed',
           inputTokens: 0,
           outputTokens: 0,
           durationMs: now() - startedAt,
@@ -111,6 +127,13 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
 
         if (!retryable || fallback === null) {
           throw error;
+        }
+
+        if (!fits) {
+          throw new ExtractionProviderError(
+            `${primary.id} failed and ${fallback.id} was not tried: the prompt is about ${estimatePromptTokens(request).toLocaleString()} tokens against its ${fallback.contextTokens.toLocaleString()} token window. Nothing was written and the trajectory is unconsumed, so it is re-read on the next checkpoint. The primary failed with: ${error instanceof Error ? error.message : String(error)}`,
+            { retryable: false, cause: error },
+          );
         }
 
         const fallbackStartedAt = now();

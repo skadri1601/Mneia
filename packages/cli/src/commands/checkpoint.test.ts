@@ -114,6 +114,9 @@ function proposalOf(candidates: readonly CheckpointCandidate[]): CheckpointPropo
     actorId: ACTOR_ID,
     sessionId: null,
     candidates,
+    pendingTurns: 0,
+    incompleteReason: null,
+    droppedBeforeUpload: 0,
   };
 }
 
@@ -413,6 +416,106 @@ describe('mneia checkpoint', () => {
     expect(api.commits[0]?.automatic).toHaveLength(2);
     expect(api.commits[0]?.reviewed).toHaveLength(0);
     expect(sink.out.join('')).toContain('2 items recorded without asking');
+  });
+
+  it('says when turns were left unread, so a partial run is not mistaken for a whole one', async () => {
+    const proposal = {
+      ...proposalOf([candidate({ index: 0 })]),
+      pendingTurns: 412,
+      incompleteReason: 'chunk 2 of 3 did not complete',
+    };
+    const api = new FakeApi(proposal);
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    await command.run({ args: [], flags: {}, json: false, io: sink.io });
+
+    const errors = sink.err.join('');
+    expect(errors).toContain('412 turns were not read');
+    expect(errors).toContain('run mneia checkpoint again');
+    expect(errors).toContain('nothing was skipped');
+    expect(errors).toContain('chunk 2 of 3');
+  });
+
+  it('marks JSON output incomplete when chunks were left unread, so an agent knows to run again', async () => {
+    const proposal = {
+      ...proposalOf([candidate({ index: 0 })]),
+      pendingTurns: 412,
+      incompleteReason: 'chunk 2 of 3 did not complete',
+    };
+    const api = new FakeApi(proposal);
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    await command.run({ args: [], flags: {}, json: true, io: sink.io });
+
+    const payload = JSON.parse(sink.out.join(''));
+    expect(payload.complete).toBe(false);
+    expect(payload.pendingTurns).toBe(412);
+    expect(payload.incompleteReason).toBe('chunk 2 of 3 did not complete');
+  });
+
+  it('marks JSON output complete only when nothing was left behind', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    await command.run({ args: [], flags: {}, json: true, io: sink.io });
+
+    const payload = JSON.parse(sink.out.join(''));
+    expect(payload.complete).toBe(true);
+    expect(payload.pendingTurns).toBe(0);
+    expect(payload.droppedBeforeUpload).toBe(0);
+  });
+
+  it('says plainly that turns dropped before upload will not come back on a retry', async () => {
+    const api = new FakeApi({
+      ...proposalOf([candidate({ index: 0 })]),
+      droppedBeforeUpload: 428,
+    });
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    await command.run({ args: [], flags: {}, json: false, io: sink.io });
+
+    const errors = sink.err.join('');
+    expect(errors).toContain('428 turns');
+    expect(errors).toContain('Running again will not pick them up');
+  });
+
+  it('stays quiet about pending turns when the whole session was read', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    await command.run({ args: [], flags: {}, json: false, io: sink.io });
+
+    expect(sink.err.join('')).not.toContain('were not read');
   });
 
   it('refuses to confirm anything when there is no interactive terminal', async () => {

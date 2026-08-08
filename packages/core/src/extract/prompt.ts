@@ -91,7 +91,7 @@ function renderExistingItems(items: readonly ExistingItemRef[]): string {
   ].join('\n');
 }
 
-function renderTurn(turn: TrajectoryTurn): string {
+export function renderTurn(turn: TrajectoryTurn): string {
   const tool = turn.toolName === null ? '' : ` tool="${turn.toolName}"`;
   return `<turn ref="${turn.ref}" role="${turn.role}" kind="${turn.kind}"${tool}>\n${turn.text}\n</turn>`;
 }

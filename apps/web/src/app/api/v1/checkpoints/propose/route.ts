@@ -16,8 +16,10 @@ export const POST = (request: Request): Promise<Response> =>
     schema: CheckpointProposeWireSchema,
     run: (store, input) => {
       const sourceStore = checkpointSourceStore();
+      const runner = extractionRunner();
       return handleProposeCheckpoint(store, input, {
-        run: (prompt) => extractionRunner().run(prompt),
+        run: (prompt) => runner.run(prompt),
+        servableContextTokens: runner.servableContextTokens,
         watermarkFor: (query) =>
           sourceStore.watermarkFor({ ...query, workspaceId: store.scope.workspaceId }),
         recordUsage: (usage) =>
