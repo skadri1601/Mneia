@@ -1,3 +1,4 @@
+import { WorkspaceSwitcher } from '../../components/WorkspaceSwitcher.js';
 import { getCurrentAccount } from '../../server/current-account.js';
 import { projectStore } from '../../server/project-runtime.js';
 import { listProjects } from '../../server/projects.js';
@@ -24,6 +25,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
     <main className={styles.page}>
       <header className={styles.pageHeader}>
         <p>{account.workspace.displayName}</p>
+        <WorkspaceSwitcher current={account.workspace.id} workspaces={account.workspaces} />
         <h1>Projects</h1>
         <p>Projects are attached from the CLI. Their repository bindings remain stable.</p>
       </header>

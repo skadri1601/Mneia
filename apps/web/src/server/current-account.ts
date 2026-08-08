@@ -6,6 +6,7 @@ import { bootstrapSoloAccount, redeemInvitation } from './account.js';
 import { database } from './database.js';
 import type { AccountContext, AccountStore } from './store/account-store.js';
 import { PostgresAccountStore } from './store/postgres-account-store.js';
+import { readSelectedWorkspace } from './workspace-selection.js';
 
 export interface ClerkAuthentication {
   readonly userId: string | null;
@@ -25,6 +26,7 @@ export interface CurrentAccountDependencies {
   readonly authenticate: () => Promise<ClerkAuthentication>;
   readonly loadCurrentUser: () => Promise<ClerkProfile | null>;
   readonly store: AccountStore;
+  readonly readSelectedWorkspace?: (() => Promise<string | null>) | undefined;
 }
 
 export type CurrentAccountResolver = () => Promise<AccountContext>;
@@ -63,7 +65,14 @@ export const resolveCurrentAccount = async (
     return joined;
   }
 
-  return bootstrapSoloAccount({ subject: userId, displayName, store: dependencies.store });
+  const preferredWorkspaceId = (await dependencies.readSelectedWorkspace?.()) ?? null;
+
+  return bootstrapSoloAccount({
+    subject: userId,
+    displayName,
+    preferredWorkspaceId,
+    store: dependencies.store,
+  });
 };
 
 export const createCurrentAccountResolver = (
@@ -93,6 +102,7 @@ export const currentAccountDependencies: CurrentAccountDependencies = {
     };
   },
   store: accountStore,
+  readSelectedWorkspace,
 };
 
 export const getCurrentAccount = createCurrentAccountResolver(currentAccountDependencies);

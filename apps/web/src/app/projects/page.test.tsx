@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   listProjects: vi.fn(),
 }));
 
+vi.mock('../workspace-actions.js', () => ({
+  selectWorkspaceAction: vi.fn(),
+}));
+
 vi.mock('../../server/current-account.js', () => ({
   getCurrentAccount: mocks.getCurrentAccount,
 }));

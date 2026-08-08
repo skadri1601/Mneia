@@ -138,6 +138,7 @@ describe('bootstrapSoloAccount', () => {
     expect(persist).toHaveBeenCalledWith({
       subject: 'user_123',
       displayName: ' Ada Lovelace ',
+      preferredWorkspaceId: null,
     });
   });
 });

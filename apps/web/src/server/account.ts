@@ -18,12 +18,14 @@ export const MAX_EMAIL_LENGTH = 320;
 export interface BootstrapSoloAccountRequest {
   readonly subject: string | null;
   readonly displayName: string;
+  readonly preferredWorkspaceId?: string | null;
   readonly store: AccountStore;
 }
 
 export const bootstrapSoloAccount = async ({
   subject,
   displayName,
+  preferredWorkspaceId,
   store,
 }: BootstrapSoloAccountRequest): Promise<AccountContext> => {
   if (subject === null || subject.trim().length === 0) {
@@ -34,7 +36,11 @@ export const bootstrapSoloAccount = async ({
     throw new AccountError('invalid_profile', 'A profile display name is required');
   }
 
-  return store.bootstrapSoloAccount({ subject, displayName });
+  return store.bootstrapSoloAccount({
+    subject,
+    displayName,
+    preferredWorkspaceId: preferredWorkspaceId ?? null,
+  });
 };
 
 export const normalizeEmail = (value: string): string => {
