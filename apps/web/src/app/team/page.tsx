@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { WorkspaceSwitcher } from '../../components/WorkspaceSwitcher.js';
 import { accountStore, getCurrentAccount } from '../../server/current-account.js';
 import { inviteTeammateAction, revokeInvitationAction } from './actions.js';
 import styles from './team.module.css';
@@ -41,6 +42,7 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
     <main className={styles.page}>
       <header className={styles.pageHeader}>
         <p>{account.workspace.displayName}</p>
+        <WorkspaceSwitcher current={account.workspace.id} workspaces={account.workspaces} />
         <h1>Team</h1>
         <p>
           Invite a colleague and they land in this workspace, not one of their own. An invitation is

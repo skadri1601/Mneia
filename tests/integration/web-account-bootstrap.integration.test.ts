@@ -28,6 +28,7 @@ const ACTOR_A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ACTOR_B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const AGENT_A = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const TEAM_A = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const TEAM_B = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 const DENIED_ACTOR = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
 const connect = async (): Promise<Client> => {
@@ -310,6 +311,50 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
     });
   });
 
+  it('resolves the workspace the cookie asked for, and falls back when it names one you left', async () => {
+    await withAccountSchema(async ({ admin, source }) => {
+      await seedIdentityRows(admin);
+
+      for (const [workspaceId, teamId, actorId] of [
+        [WORKSPACE_A, TEAM_A, ACTOR_A],
+        [WORKSPACE_B, TEAM_B, ACTOR_B],
+      ] as const) {
+        await admin.query('SELECT set_config($1, $2, false)', [WORKSPACE_SETTING, workspaceId]);
+        await admin.query(
+          `INSERT INTO team (id, workspace_id, slug, display_name, function)
+           VALUES ($1, $2, 'default', 'Default', 'engineering')`,
+          [teamId, workspaceId],
+        );
+        await admin.query(
+          `INSERT INTO team_member (workspace_id, team_id, actor_id, role)
+           VALUES ($1, $2, $3, 'lead')`,
+          [workspaceId, teamId, actorId],
+        );
+      }
+
+      await admin.query(`UPDATE actor SET external_ref = $1 WHERE id = $2`, [SUBJECT_A, ACTOR_B]);
+
+      const store = await accountStore(source);
+
+      const chosen = await store.bootstrapSoloAccount({
+        subject: SUBJECT_A,
+        displayName: 'Human A',
+        preferredWorkspaceId: WORKSPACE_B,
+      });
+      expect(chosen.workspace.id).toBe(WORKSPACE_B);
+      expect([...chosen.workspaces].map((choice) => choice.id).sort()).toEqual(
+        [WORKSPACE_A, WORKSPACE_B].sort(),
+      );
+
+      const stale = await store.bootstrapSoloAccount({
+        subject: SUBJECT_A,
+        displayName: 'Human A',
+        preferredWorkspaceId: '99999999-9999-4999-8999-999999999999',
+      });
+      expect(stale.workspace.id).toBe(WORKSPACE_A);
+    });
+  });
+
   it('lets one person hold an actor in a second workspace, but only one per workspace', async () => {
     await withAccountSchema(async ({ admin }) => {
       await seedIdentityRows(admin);
@@ -451,6 +496,9 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
           role: 'lead',
           addedAt: expect.any(Date),
         },
+        workspaces: [
+          { id: WORKSPACE_A, slug: `workspace-${WORKSPACE_A}`, displayName: 'Ada Lovelace' },
+        ],
       });
       expect(reused).toEqual(created);
       expect(await accountCounts(admin)).toEqual({

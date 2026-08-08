@@ -179,6 +179,8 @@ const existingSteps = (
   [],
   [],
   [workspaceRow({ plan })],
+  [],
+  [workspaceRow({ plan })],
   memberships,
   [teamRow()],
   [],
@@ -228,6 +230,9 @@ describe('PostgresAccountStore', () => {
         role: 'lead',
         addedAt: CREATED_AT,
       },
+      workspaces: [
+        { id: WORKSPACE_ID, slug: `workspace-${WORKSPACE_ID}`, displayName: DISPLAY_NAME },
+      ],
     });
 
     expect(idFactory).toHaveBeenCalledTimes(3);
@@ -240,7 +245,7 @@ describe('PostgresAccountStore', () => {
       'SELECT set_config($1, $2, true)',
       'SELECT set_config($1, $2, true)',
       'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-      "SELECT id, workspace_id, kind, display_name, external_ref, created_at FROM actor WHERE kind = 'human' AND external_ref = $1",
+      "SELECT id, workspace_id, kind, display_name, external_ref, created_at FROM actor WHERE kind = 'human' AND external_ref = $1 ORDER BY created_at ASC, id ASC",
       "SELECT set_config($1, '', true)",
       'SELECT set_config($1, $2, true)',
       "INSERT INTO workspace (id, slug, display_name, plan) VALUES ($1, $2, $3, 'solo') RETURNING id, slug, display_name, plan, billing_status, billing_customer_ref, seats_purchased, checkpoint_allowance, trial_ends_at, created_at",
@@ -294,8 +299,10 @@ describe('PostgresAccountStore', () => {
         'SELECT set_config($1, $2, true)',
         'SELECT set_config($1, $2, true)',
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-        "SELECT id, workspace_id, kind, display_name, external_ref, created_at FROM actor WHERE kind = 'human' AND external_ref = $1",
+        "SELECT id, workspace_id, kind, display_name, external_ref, created_at FROM actor WHERE kind = 'human' AND external_ref = $1 ORDER BY created_at ASC, id ASC",
         "SELECT set_config($1, '', true)",
+        'SELECT set_config($1, $2, true)',
+        'SELECT id, slug, display_name FROM workspace WHERE id = $1',
         'SELECT set_config($1, $2, true)',
         'SELECT id, slug, display_name, plan, billing_status, billing_customer_ref, seats_purchased, checkpoint_allowance, trial_ends_at, created_at FROM workspace WHERE id = $1',
         'SELECT workspace_id, team_id, actor_id, role, added_at FROM team_member WHERE workspace_id = $1 AND actor_id = $2 ORDER BY added_at ASC LIMIT 1',
@@ -450,6 +457,7 @@ describe('PostgresAccountStore', () => {
 });
 
 const INVITATION_ID = '44444444-4444-4444-8444-444444444444';
+const OTHER_WORKSPACE_ID = '9b9b9b9b-9b9b-4b9b-8b9b-9b9b9b9b9b9b';
 const IDENTITY_ID = '0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a';
 const INVITED_ACTOR_ID = '55555555-5555-4555-8555-555555555555';
 const INVITED_EMAIL = 'grace@example.com';
@@ -580,8 +588,14 @@ describe('PostgresAccountStore invitations', () => {
     expect(statements(session).at(-1)).toBe('COMMIT');
   });
 
-  it('leaves an existing actor alone rather than redeeming again', async () => {
-    const session = new FakeSession([...blanks(7), [actorRow()], []]);
+  it('declines an invitation to a workspace the subject is already in', async () => {
+    const session = new FakeSession([
+      ...blanks(7),
+      [actorRow()],
+      ...blanks(4),
+      [invitationRow()],
+      [],
+    ]);
     const store = new PostgresAccountStore(new FakeSource(session), ids());
 
     await expect(
@@ -591,7 +605,38 @@ describe('PostgresAccountStore invitations', () => {
         displayName: DISPLAY_NAME,
       }),
     ).resolves.toBeNull();
-    expect(statements(session).some((sql) => sql.includes('workspace_invitation'))).toBe(false);
+    expect(statements(session).some((sql) => sql.includes('INSERT INTO actor'))).toBe(false);
+    expect(statements(session).at(-1)).toBe('COMMIT');
+  });
+
+  it('accepts when the subject already has an actor in a different workspace', async () => {
+    const session = new FakeSession([
+      ...blanks(7),
+      [actorRow({ workspace_id: OTHER_WORKSPACE_ID })],
+      ...blanks(4),
+      [invitationRow()],
+      ...blanks(4),
+      [{ id: IDENTITY_ID }],
+      [],
+      [actorRow({ id: INVITED_ACTOR_ID, external_ref: SUBJECT })],
+      [membershipRow({ actor_id: INVITED_ACTOR_ID, role: 'member' })],
+      [invitationRow({ accepted_at: CREATED_AT })],
+      [workspaceRow()],
+      [teamRow()],
+      [],
+    ]);
+    const store = new PostgresAccountStore(
+      new FakeSource(session),
+      vi.fn<() => string>().mockReturnValue(INVITED_ACTOR_ID),
+    );
+
+    const context = await store.redeemInvitation({
+      subject: SUBJECT,
+      verifiedEmail: INVITED_EMAIL,
+      displayName: DISPLAY_NAME,
+    });
+
+    expect(context?.workspace.id).toBe(WORKSPACE_ID);
     expect(statements(session).at(-1)).toBe('COMMIT');
   });
 

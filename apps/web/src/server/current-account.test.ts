@@ -47,6 +47,7 @@ const ACCOUNT_CONTEXT = {
     role: 'lead',
     addedAt: new Date('2026-08-01T00:00:00.000Z'),
   },
+  workspaces: [{ id: '11111111-1111-4111-8111-111111111111', slug: 'acme', displayName: 'Acme' }],
 } satisfies AccountContext;
 
 const JOINED_CONTEXT: AccountContext = {
@@ -63,6 +64,7 @@ const harness = () => {
     .fn<AccountStore['bootstrapSoloAccount']>()
     .mockResolvedValue(ACCOUNT_CONTEXT);
   const redeemInvitation = vi.fn<AccountStore['redeemInvitation']>().mockResolvedValue(null);
+  const readSelectedWorkspace = vi.fn<() => Promise<string | null>>().mockResolvedValue(null);
   const store = {
     bootstrapSoloAccount,
     redeemInvitation,
@@ -72,11 +74,17 @@ const harness = () => {
   } satisfies AccountStore;
 
   return {
-    dependencies: { authenticate, loadCurrentUser, store } satisfies CurrentAccountDependencies,
+    dependencies: {
+      authenticate,
+      loadCurrentUser,
+      store,
+      readSelectedWorkspace,
+    } satisfies CurrentAccountDependencies,
     authenticate,
     loadCurrentUser,
     bootstrapSoloAccount,
     redeemInvitation,
+    readSelectedWorkspace,
   };
 };
 
@@ -105,6 +113,42 @@ describe('verifiedEmailOf', () => {
 });
 
 describe('resolveCurrentAccount', () => {
+  it('passes the selected workspace from the cookie to the store', async () => {
+    const {
+      dependencies,
+      authenticate,
+      loadCurrentUser,
+      bootstrapSoloAccount,
+      readSelectedWorkspace,
+    } = harness();
+    authenticate.mockResolvedValue({ userId: 'user_123' });
+    loadCurrentUser.mockResolvedValue({
+      fullName: 'Ada Lovelace',
+      primaryEmailAddress: verifiedEmail('ada@example.com'),
+    });
+    readSelectedWorkspace.mockResolvedValue('44444444-4444-4444-8444-444444444444');
+
+    await resolveCurrentAccount(dependencies);
+
+    expect(bootstrapSoloAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredWorkspaceId: '44444444-4444-4444-8444-444444444444' }),
+    );
+  });
+
+  it('resolves with no preference when no workspace cookie is set', async () => {
+    const { dependencies, authenticate, loadCurrentUser, bootstrapSoloAccount } = harness();
+    authenticate.mockResolvedValue({ userId: 'user_123' });
+    loadCurrentUser.mockResolvedValue({
+      fullName: 'Ada Lovelace',
+      primaryEmailAddress: verifiedEmail('ada@example.com'),
+    });
+
+    await expect(resolveCurrentAccount(dependencies)).resolves.toBe(ACCOUNT_CONTEXT);
+    expect(bootstrapSoloAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ preferredWorkspaceId: null }),
+    );
+  });
+
   it('rejects a signed-out request without loading a Clerk profile', async () => {
     const { dependencies, authenticate, loadCurrentUser, bootstrapSoloAccount } = harness();
     authenticate.mockResolvedValue({ userId: null });
@@ -144,6 +188,7 @@ describe('resolveCurrentAccount', () => {
       expect(bootstrapSoloAccount).toHaveBeenCalledWith({
         subject: 'user_123',
         displayName: expected,
+        preferredWorkspaceId: null,
       });
     },
   );
@@ -182,6 +227,7 @@ describe('resolveCurrentAccount', () => {
     expect(bootstrapSoloAccount).toHaveBeenCalledWith({
       subject: 'user_123',
       displayName: 'Grace Hopper',
+      preferredWorkspaceId: null,
     });
   });
 });

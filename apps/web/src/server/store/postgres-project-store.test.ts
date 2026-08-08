@@ -57,6 +57,7 @@ const account: AccountContext = {
     role: 'lead',
     addedAt: CREATED_AT,
   },
+  workspaces: [{ id: '11111111-1111-4111-8111-111111111111', slug: 'acme', displayName: 'Acme' }],
 };
 
 interface SqlCall {

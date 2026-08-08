@@ -28,6 +28,7 @@ import {
   type ListPendingInvitationsInput,
   type RedeemInvitationInput,
   type RevokeInvitationInput,
+  type WorkspaceChoice,
   type WorkspaceInvitation,
 } from './account-store.js';
 
@@ -121,6 +122,31 @@ const setScope = async (
   }
 };
 
+const toChoice = (row: SqlRow): WorkspaceChoice => ({
+  id: readString(row, 'id'),
+  slug: readString(row, 'slug'),
+  displayName: readString(row, 'display_name'),
+});
+
+const readWorkspaceChoices = async (
+  session: PostgresSession,
+  workspaceIds: readonly string[],
+): Promise<readonly WorkspaceChoice[]> => {
+  const choices: WorkspaceChoice[] = [];
+  for (const workspaceId of workspaceIds) {
+    await session.execute('SELECT set_config($1, $2, true)', [WORKSPACE_SETTING, workspaceId]);
+    const rows = await session.execute<SqlRow>(
+      'SELECT id, slug, display_name FROM workspace WHERE id = $1',
+      [workspaceId],
+    );
+    const row = rows.rows[0];
+    if (row !== undefined) {
+      choices.push(toChoice(row));
+    }
+  }
+  return choices;
+};
+
 export class PostgresAccountStore implements AccountStore {
   constructor(
     private readonly source: PostgresConnectionSource,
@@ -209,9 +235,7 @@ export class PostgresAccountStore implements AccountStore {
         `SELECT ${ACTOR_COLUMNS} FROM actor WHERE kind = 'human' AND external_ref = $1`,
         [input.subject],
       );
-      if (existing.rows.length > 0) {
-        return null;
-      }
+      const alreadyIn = new Set(existing.rows.map((row) => readString(row, 'workspace_id')));
 
       const lookupScope: Record<string, string> = {
         [INVITATION_EMAIL_SETTING]: input.verifiedEmail,
@@ -233,6 +257,9 @@ export class PostgresAccountStore implements AccountStore {
       }
 
       const invitation = mapExactlyOne(pending.rows, 'pending workspace invitation', toInvitation);
+      if (alreadyIn.has(invitation.workspaceId)) {
+        return null;
+      }
       return this.acceptInTransaction(session, invitation, input);
     });
   }
@@ -309,11 +336,14 @@ export class PostgresAccountStore implements AccountStore {
       [invitation.workspaceId, invitation.teamId],
     );
 
+    const workspace = mapExactlyOne(workspaceRows.rows, 'inviting workspace', toWorkspace);
+
     return {
-      workspace: mapExactlyOne(workspaceRows.rows, 'inviting workspace', toWorkspace),
+      workspace,
       actor: mapExactlyOne(actorRows.rows, 'invited human actor', toActor),
       team: mapExactlyOne(teamRows.rows, 'invited team', toTeam),
       membership: mapExactlyOne(membershipRows.rows, 'invited team membership', toTeamMember),
+      workspaces: [{ id: workspace.id, slug: workspace.slug, displayName: workspace.displayName }],
     };
   }
 
@@ -325,7 +355,8 @@ export class PostgresAccountStore implements AccountStore {
     await session.execute('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [input.subject]);
 
     const actorRows = await session.execute<SqlRow>(
-      `SELECT ${ACTOR_COLUMNS} FROM actor WHERE kind = 'human' AND external_ref = $1`,
+      `SELECT ${ACTOR_COLUMNS} FROM actor WHERE kind = 'human' AND external_ref = $1
+        ORDER BY created_at ASC, id ASC`,
       [input.subject],
     );
     await session.execute("SELECT set_config($1, '', true)", [IDENTITY_SUBJECT_SETTING]);
@@ -333,21 +364,27 @@ export class PostgresAccountStore implements AccountStore {
     if (actorRows.rows.length === 0) {
       return this.createAccount(session, input);
     }
-    if (actorRows.rows.length !== 1) {
-      throw corrupt(
-        `Expected at most one human actor for the verified subject; found ${actorRows.rows.length}`,
-      );
-    }
-
-    let actor: Actor;
+    let candidates: Actor[];
     try {
-      actor = toActor(actorRows.rows[0] as SqlRow);
+      candidates = actorRows.rows.map((row) => toActor(row as SqlRow));
     } catch (error) {
       throw corrupt('Could not read the existing human actor', error);
     }
+
+    const preferred = input.preferredWorkspaceId ?? null;
+    const actor =
+      (preferred === null
+        ? undefined
+        : candidates.find((candidate) => candidate.workspaceId === preferred)) ??
+      (candidates[0] as Actor);
     if (actor.kind !== 'human' || actor.externalRef !== input.subject) {
       throw corrupt('The existing actor does not match the verified human subject');
     }
+
+    const workspaces = await readWorkspaceChoices(
+      session,
+      candidates.map((candidate) => candidate.workspaceId),
+    );
 
     await session.execute('SELECT set_config($1, $2, true)', [
       WORKSPACE_SETTING,
@@ -385,7 +422,7 @@ export class PostgresAccountStore implements AccountStore {
       throw corrupt('The existing membership is inconsistent with the account');
     }
 
-    return { workspace, actor, team, membership };
+    return { workspace, actor, team, membership, workspaces };
   }
 
   private async createAccount(
@@ -423,8 +460,11 @@ export class PostgresAccountStore implements AccountStore {
       [workspaceId, teamId, actorId],
     );
 
+    const created = mapExactlyOne(workspaceRows.rows, 'created solo workspace', toWorkspace);
+
     return {
-      workspace: mapExactlyOne(workspaceRows.rows, 'created solo workspace', toWorkspace),
+      workspace: created,
+      workspaces: [{ id: created.id, slug: created.slug, displayName: created.displayName }],
       actor: mapExactlyOne(actorRows.rows, 'created human actor', toActor),
       team: mapExactlyOne(teamRows.rows, 'created default team', toTeam),
       membership: mapExactlyOne(

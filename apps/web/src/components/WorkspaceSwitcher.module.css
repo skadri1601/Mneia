@@ -1,0 +1,39 @@
+.form {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.select {
+  min-height: var(--target-min);
+  padding-inline: var(--space-xs);
+  color: var(--ink);
+  background: var(--canvas);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+}
+
+.submit {
+  min-height: var(--target-min);
+  padding-inline: var(--space-sm);
+  color: var(--ink);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.submit:active {
+  transform: scale(var(--press-scale));
+}

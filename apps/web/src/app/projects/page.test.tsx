@@ -8,6 +8,10 @@ const mocks = vi.hoisted(() => ({
   listProjects: vi.fn(),
 }));
 
+vi.mock('../workspace-actions.js', () => ({
+  selectWorkspaceAction: vi.fn(),
+}));
+
 vi.mock('../../server/current-account.js', () => ({
   getCurrentAccount: mocks.getCurrentAccount,
 }));
@@ -56,6 +60,7 @@ const ACCOUNT = {
     role: 'lead',
     addedAt: new Date('2026-08-01T00:00:00.000Z'),
   },
+  workspaces: [{ id: '11111111-1111-4111-8111-111111111111', slug: 'acme', displayName: 'Acme' }],
 } satisfies AccountContext;
 
 const PROJECT = {
