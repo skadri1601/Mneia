@@ -1,5 +1,6 @@
 import type { ExtractionCandidate } from './schema.js';
 import { ExtractionError } from './schema.js';
+import { jaccard, normalizeText, tokenize } from './similarity.js';
 
 export const DEFAULT_CONFIDENCE_FLOOR = 0.35;
 export const DEFAULT_MAX_CANDIDATES = 25;
@@ -38,31 +39,6 @@ interface Surviving {
   readonly tokens: ReadonlySet<string>;
 }
 
-const normalize = (title: string): string =>
-  title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-
-const tokensOf = (normalized: string): ReadonlySet<string> =>
-  new Set(normalized.split(' ').filter((token) => token.length > 0));
-
-function similarity(left: ReadonlySet<string>, right: ReadonlySet<string>): number {
-  if (left.size === 0 || right.size === 0) {
-    return 0;
-  }
-
-  let shared = 0;
-  for (const token of left) {
-    if (right.has(token)) {
-      shared += 1;
-    }
-  }
-
-  return shared / (left.size + right.size - shared);
-}
-
 function fillerReason(title: string, normalized: string): string | null {
   if (normalized === '') {
     return 'The title is empty once punctuation is removed, so it carries nothing a reader could act on.';
@@ -84,7 +60,7 @@ function duplicateReason(
   survivors: readonly Surviving[],
 ): string | null {
   for (const survivor of survivors) {
-    const score = similarity(tokens, survivor.tokens);
+    const score = jaccard(tokens, survivor.tokens);
     if (score >= NEAR_DUPLICATE_SIMILARITY) {
       return `The title duplicates candidate ${survivor.position} ("${survivor.candidate.title}") at ${score.toFixed(2)} token overlap; the same item recorded twice costs two reviews and settles nothing.`;
     }
@@ -155,8 +131,8 @@ export function applyPrecisionFilter(
   const survivors: Surviving[] = [];
 
   for (const [position, candidate] of candidates.entries()) {
-    const normalized = normalize(candidate.title);
-    const tokens = tokensOf(normalized);
+    const normalized = normalizeText(candidate.title);
+    const tokens = tokenize(normalized);
 
     const reason =
       fillerReason(candidate.title, normalized) ??

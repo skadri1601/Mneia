@@ -4,6 +4,7 @@ import type {
   Actor,
   Checkpoint,
   CheckpointItem,
+  Conflict,
   ContextItem,
   Project,
   Session,
@@ -15,6 +16,7 @@ import {
   ACTOR_KINDS,
   CHECKPOINT_ACTIONS,
   CHECKPOINT_TRIGGERS,
+  CONFLICT_RESOLUTIONS,
   ITEM_KINDS,
   ITEM_STATUSES,
 } from '../store/schema.js';
@@ -328,10 +330,52 @@ export const decodeCheckpointItem = (wire: CheckpointItemWire): CheckpointItem =
   action: wire.action,
 });
 
+export const ConflictWireSchema = z.object({
+  id: uuid,
+  workspaceId: uuid,
+  projectId: uuid,
+  itemA: uuid,
+  itemB: uuid,
+  detectedAt: isoDate,
+  resolvedAt: isoDate.nullable(),
+  resolvedBy: uuid.nullable(),
+  resolution: z.enum(CONFLICT_RESOLUTIONS).nullable(),
+  rationale: z.string().nullable(),
+});
+
+export type ConflictWire = z.infer<typeof ConflictWireSchema>;
+
+export const encodeConflict = (conflict: Conflict): ConflictWire => ({
+  id: conflict.id,
+  workspaceId: conflict.workspaceId,
+  projectId: conflict.projectId,
+  itemA: conflict.itemA,
+  itemB: conflict.itemB,
+  detectedAt: conflict.detectedAt.toISOString(),
+  resolvedAt: conflict.resolvedAt === null ? null : conflict.resolvedAt.toISOString(),
+  resolvedBy: conflict.resolvedBy,
+  resolution: conflict.resolution,
+  rationale: conflict.rationale,
+});
+
+export const decodeConflict = (wire: ConflictWire): Conflict => ({
+  id: wire.id,
+  workspaceId: wire.workspaceId,
+  projectId: wire.projectId,
+  itemA: wire.itemA,
+  itemB: wire.itemB,
+  detectedAt: toDate(wire.detectedAt),
+  resolvedAt: wire.resolvedAt === null ? null : toDate(wire.resolvedAt),
+  resolvedBy: wire.resolvedBy,
+  resolution: wire.resolution,
+  rationale: wire.rationale,
+});
+
 export const CheckpointWriteResultWireSchema = z.object({
   checkpoint: CheckpointWireSchema,
   items: z.array(CheckpointItemWireSchema),
   written: z.array(ContextItemWireSchema),
+  conflicts: z.array(ConflictWireSchema).default([]),
 });
 
 export type CheckpointWriteResultWire = z.infer<typeof CheckpointWriteResultWireSchema>;
@@ -342,6 +386,7 @@ export const encodeCheckpointWriteResult = (
   checkpoint: encodeCheckpoint(result.checkpoint),
   items: result.items.map(encodeCheckpointItem),
   written: result.written.map(encodeContextItem),
+  conflicts: result.conflicts.map(encodeConflict),
 });
 
 export const decodeCheckpointWriteResult = (
@@ -350,6 +395,7 @@ export const decodeCheckpointWriteResult = (
   checkpoint: decodeCheckpoint(wire.checkpoint),
   items: wire.items.map(decodeCheckpointItem),
   written: wire.written.map(decodeContextItem),
+  conflicts: wire.conflicts.map(decodeConflict),
 });
 
 export const ContextItemFilterWireSchema = z.object({
@@ -432,6 +478,7 @@ export const CheckpointWriteWireSchema = z.object({
       z.object({
         action: z.enum(CHECKPOINT_ACTIONS),
         item: NewContextItemWireSchema,
+        conflictsWith: uuid.nullable().optional(),
       }),
     )
     .min(1)
@@ -472,6 +519,19 @@ export const CheckpointProposeWireSchema = z.object({
 
 export type CheckpointProposeWire = z.infer<typeof CheckpointProposeWireSchema>;
 
+export const ContradictionEvidenceWireSchema = z.object({
+  matchedItemId: uuid,
+  matchedTitle: z.string(),
+  matchedHumanConfirmed: z.boolean(),
+  matchedLoadBearing: z.boolean(),
+  subjectSimilarity: z.number().min(0).max(1),
+  sharedSubjectTokens: z.array(z.string()),
+  signal: z.enum(['stance_flip', 'value_conflict']),
+  reason: z.string(),
+});
+
+export type ContradictionEvidenceWire = z.infer<typeof ContradictionEvidenceWireSchema>;
+
 export const ProposedCandidateWireSchema = z.object({
   index: z.number().int().min(0),
   kind: z.enum(ITEM_KINDS),
@@ -482,6 +542,8 @@ export const ProposedCandidateWireSchema = z.object({
   loadBearing: z.boolean(),
   accessScope: z.enum(ACCESS_SCOPES),
   sourceRef: z.string().nullable(),
+  supersedesId: uuid.nullable().optional(),
+  contradiction: ContradictionEvidenceWireSchema.nullable().optional(),
 });
 
 export type ProposedCandidateWire = z.infer<typeof ProposedCandidateWireSchema>;
@@ -492,6 +554,7 @@ export const CheckpointProposalWireSchema = z.object({
   actorId: uuid,
   candidates: z.array(ProposedCandidateWireSchema),
   rejectedCount: z.number().int().min(0),
+  duplicateCount: z.number().int().min(0).optional(),
   watermark: z.string().nullable(),
   consumedTurns: z.number().int().min(0),
   model: z.string(),

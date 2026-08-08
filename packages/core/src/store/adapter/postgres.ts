@@ -1054,12 +1054,14 @@ class PostgresScopedStore implements ReviewCapableStore {
       const created = toCheckpoint(checkpointRow);
       const written: ContextItem[] = [];
       const links: CheckpointItem[] = [];
+      const conflicts: Conflict[] = [];
 
       for (const entry of items) {
         const supersedesId = assertOptionalUuid(entry.item.supersedesId, 'item.supersedesId');
         if (supersedesId !== null) {
           await this.guardSupersede(supersedesId);
         }
+        const conflictsWith = assertOptionalUuid(entry.conflictsWith, 'item.conflictsWith');
 
         const item = toContextItem(await this.insertContextItemRow(entry.item, null));
         written.push(item);
@@ -1078,9 +1080,23 @@ class PostgresScopedStore implements ReviewCapableStore {
           `attributing context item ${item.id} to checkpoint ${created.id}`,
         );
         links.push(toCheckpointItem(linkRow));
+
+        if (conflictsWith !== null && conflictsWith !== item.id) {
+          const conflictRows = await this.rows(
+            `INSERT INTO conflict (id, workspace_id, project_id, item_a, item_b)
+             VALUES (gen_random_uuid(), $1, $2, $3, $4)
+             ON CONFLICT DO NOTHING
+             RETURNING ${CONFLICT_COLUMNS}`,
+            [this.scope.workspaceId, item.projectId, conflictsWith, item.id],
+          );
+          const conflictRow = conflictRows[0];
+          if (conflictRow !== undefined) {
+            conflicts.push(toConflict(conflictRow));
+          }
+        }
       }
 
-      return { checkpoint: created, items: links, written };
+      return { checkpoint: created, items: links, written, conflicts };
     });
   }
 

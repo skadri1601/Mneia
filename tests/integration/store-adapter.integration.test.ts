@@ -570,6 +570,102 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
     });
   });
 
+  it('records a conflict row for a detected contradiction in the same transaction as the item', async () => {
+    await withAdapter(async (adapter) => {
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const existing = await store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'rehydration p95 stays under 300ms'),
+          kind: 'constraint',
+        });
+
+        const result = await store.writeCheckpoint({
+          checkpoint: { projectId: PROJECT_A, actorId: ACTOR_A, trigger: 'task_boundary' },
+          items: [
+            {
+              action: 'created',
+              item: {
+                ...newItem(PROJECT_A, ACTOR_A, 'rehydration p95 stays under 500ms'),
+                kind: 'constraint',
+              },
+              conflictsWith: existing.id,
+            },
+          ],
+        });
+
+        expect(result.conflicts).toHaveLength(1);
+        const [conflict] = result.conflicts;
+        expect(conflict?.itemA).toBe(existing.id);
+        expect(conflict?.itemB).toBe(result.written[0]?.id);
+        expect(conflict?.resolvedAt).toBeNull();
+
+        const open = await store.listOpenConflicts(PROJECT_A);
+        expect(open.map((entry) => entry.id)).toEqual([conflict?.id]);
+      });
+    });
+  });
+
+  it('leaves the existing item active when a contradiction is only detected, never auto-resolving it', async () => {
+    await withAdapter(async (adapter) => {
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const existing = await store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'never log user content'),
+          kind: 'constraint',
+        });
+
+        await store.writeCheckpoint({
+          checkpoint: { projectId: PROJECT_A, actorId: ACTOR_A, trigger: 'task_boundary' },
+          items: [
+            {
+              action: 'created',
+              item: {
+                ...newItem(PROJECT_A, ACTOR_A, 'log user content for debugging'),
+                kind: 'constraint',
+              },
+              conflictsWith: existing.id,
+            },
+          ],
+        });
+
+        const stored = await store.getContextItem(existing.id);
+        expect(stored?.status).toBe('active');
+        expect(stored?.supersededById).toBeNull();
+      });
+    });
+  });
+
+  it('records the conflict and the supersession together when a human confirms a contradiction', async () => {
+    await withAdapter(async (adapter) => {
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const existing = await store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'deploy from main only'),
+          kind: 'constraint',
+        });
+
+        const result = await store.writeCheckpoint({
+          checkpoint: { projectId: PROJECT_A, actorId: ACTOR_A, trigger: 'manual' },
+          items: [
+            {
+              action: 'superseded',
+              item: {
+                ...newItem(PROJECT_A, ACTOR_A, 'deploy from any release branch'),
+                kind: 'constraint',
+                supersedesId: existing.id,
+              },
+              conflictsWith: existing.id,
+            },
+          ],
+        });
+
+        expect(result.conflicts).toHaveLength(1);
+        expect(result.written[0]?.supersedesId).toBe(existing.id);
+
+        const previous = await store.getContextItem(existing.id);
+        expect(previous?.status).toBe('superseded');
+        expect(previous?.supersededById).toBe(result.written[0]?.id);
+      });
+    });
+  });
+
   it('rolls a checkpoint back completely when one of its items fails', async () => {
     await withAdapter(async (adapter) => {
       await adapter.withScope(SCOPE_A, async (store) => {

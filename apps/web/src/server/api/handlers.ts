@@ -278,6 +278,7 @@ export const handleWriteCheckpoint = async (
         embedding: embedded.vectors[index] ?? null,
         embeddingModel: embedded.vectors[index] == null ? null : embedded.model,
       },
+      conflictsWith: entry.conflictsWith ?? null,
     })),
   });
 
@@ -309,6 +310,23 @@ export const handleWriteCheckpoint = async (
         nextItemId: written.id,
       });
     }
+  }
+
+  const writtenById = new Map(result.written.map((item) => [item.id, item]));
+
+  for (const conflict of result.conflicts) {
+    await emitQuietly(deps.telemetry, {
+      name: 'conflict.detected',
+      workspaceId: store.scope.workspaceId,
+      projectId: conflict.projectId,
+      actorId: actor.id,
+      sessionId: input.checkpoint.sessionId ?? null,
+      occurredAt: now,
+      conflictId: conflict.id,
+      itemA: conflict.itemA,
+      itemB: conflict.itemB,
+      loadBearing: writtenById.get(conflict.itemB)?.loadBearing ?? false,
+    });
   }
 
   return { result: encodeCheckpointWriteResult(result) };

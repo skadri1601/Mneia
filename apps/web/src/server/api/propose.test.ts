@@ -35,6 +35,26 @@ const storeStub = (items: readonly ContextItem[] = []): ScopedStore =>
     },
   }) as unknown as ScopedStore;
 
+let itemCounter = 0;
+
+const storedItem = (title: string, kind: ContextItem['kind']): ContextItem =>
+  ({
+    id: `55555555-5555-4555-8555-00000000000${++itemCounter}`,
+    workspaceId: WORKSPACE,
+    projectId: PROJECT.id,
+    kind,
+    title,
+    body: null,
+    status: 'active',
+    humanConfirmed: false,
+    loadBearing: false,
+    confidence: 0.9,
+    accessScope: 'project',
+    assertedBy: ACTOR,
+    supersedesId: null,
+    supersededById: null,
+  }) as unknown as ContextItem;
+
 const turn = (ref: string, text: string) => ({
   ref,
   role: 'user' as const,
@@ -135,6 +155,55 @@ describe('handleProposeCheckpoint', () => {
     expect(proposal.candidates).toHaveLength(1);
     expect(proposal.candidates[0]?.title).toContain('Postgres');
     expect(proposal.rejectedCount).toBe(1);
+  });
+
+  it('proposes nothing new when every candidate is already recorded', async () => {
+    const { deps } = depsWith();
+    const { proposal } = await handleProposeCheckpoint(
+      storeStub([
+        storedItem('Use Postgres as the single store rather than adding Redis', 'decision'),
+      ]),
+      input(['a']),
+      deps,
+    );
+
+    expect(proposal.candidates).toHaveLength(0);
+    expect(proposal.duplicateCount).toBe(1);
+  });
+
+  it('carries a contradicting candidate through with the item it contradicts attached', async () => {
+    const { deps } = depsWith({
+      run: vi.fn(async () => ({
+        text: JSON.stringify({
+          candidates: [
+            {
+              kind: 'constraint',
+              title: 'Rehydration p95 stays under 900ms',
+              rationale: 'The network budget turned out larger than assumed.',
+              confidence: 0.9,
+            },
+          ],
+        }),
+        model: 'gpt-5.6-luna',
+        attempts: [],
+      })),
+    });
+
+    const existing = storedItem('Rehydration p95 stays under 300ms', 'constraint');
+    const { proposal } = await handleProposeCheckpoint(
+      storeStub([{ ...existing, humanConfirmed: true, loadBearing: true }]),
+      input(['a']),
+      deps,
+    );
+
+    expect(proposal.candidates).toHaveLength(1);
+    const [candidate] = proposal.candidates;
+    expect(candidate?.supersedesId).toBe(existing.id);
+    expect(candidate?.contradiction?.signal).toBe('value_conflict');
+    expect(candidate?.contradiction?.matchedHumanConfirmed).toBe(true);
+    expect(candidate?.contradiction?.matchedLoadBearing).toBe(true);
+    expect(candidate?.contradiction?.reason).toContain('A human decides which one holds');
+    expect(proposal.duplicateCount).toBe(0);
   });
 
   it('refuses an unparseable extraction without proposing anything', async () => {

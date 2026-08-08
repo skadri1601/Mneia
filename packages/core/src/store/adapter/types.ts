@@ -149,12 +149,14 @@ export interface CheckpointWrite {
 export interface CheckpointWriteItem {
   readonly action: CheckpointAction;
   readonly item: NewContextItem;
+  readonly conflictsWith?: Uuid | null;
 }
 
 export interface CheckpointWriteResult {
   readonly checkpoint: Checkpoint;
   readonly items: readonly CheckpointItem[];
   readonly written: readonly ContextItem[];
+  readonly conflicts: readonly Conflict[];
 }
 
 export interface NewHandoff {
