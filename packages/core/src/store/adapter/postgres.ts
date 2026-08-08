@@ -90,18 +90,34 @@ const CHECKPOINT_ITEM_COLUMNS = 'workspace_id, checkpoint_id, item_id, action';
 const HANDOFF_COLUMNS =
   'id, workspace_id, project_id, from_actor, to_actor, created_at, received_at, next_action, rendered';
 const CONFLICT_COLUMNS =
-  'id, workspace_id, project_id, item_a, item_b, detected_at, resolved_at, resolved_by, resolution';
-const CONTEXT_ITEM_COLUMNS = `id, workspace_id, project_id, kind, title, body, status,
-       asserted_by, asserted_at, source_session_id, source_ref,
-       confidence, human_confirmed, load_bearing, last_verified_at,
-       (EXTRACT(EPOCH FROM decay_after) * 1000)::double precision AS decay_after,
-       valid_from, valid_to, supersedes_id, superseded_by_id,
-       access_scope, embedding_model`;
+  'id, workspace_id, project_id, item_a, item_b, detected_at, resolved_at, resolved_by, resolution, rationale';
+const CONTEXT_ITEM_COLUMNS = `context_item.id, context_item.workspace_id, context_item.project_id,
+       context_item.kind, context_item.title, context_item.body, context_item.status,
+       context_item.asserted_by, context_item.asserted_at, context_item.source_session_id,
+       context_item.source_ref, context_item.confidence, context_item.human_confirmed,
+       context_item.load_bearing, context_item.last_verified_at,
+       (EXTRACT(EPOCH FROM context_item.decay_after) * 1000)::double precision AS decay_after,
+       context_item.valid_from, context_item.valid_to, context_item.supersedes_id,
+       context_item.superseded_by_id, context_item.supersede_reason, context_item.access_scope`;
 
-const CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING = `${CONTEXT_ITEM_COLUMNS}, embedding::text AS embedding`;
+const CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING = `${CONTEXT_ITEM_COLUMNS},
+       context_item_embedding.model AS embedding_model,
+       context_item_embedding.embedding::text AS embedding`;
+
+const EMBEDDING_JOIN = `LEFT JOIN LATERAL (
+             SELECT model, embedding
+               FROM context_item_embedding
+              WHERE context_item_embedding.workspace_id = context_item.workspace_id
+                AND context_item_embedding.item_id = context_item.id
+              ORDER BY created_at DESC
+              LIMIT 1
+           ) AS context_item_embedding ON TRUE`;
 
 const contextItemColumns = (withEmbedding: boolean | undefined): string =>
   withEmbedding === true ? CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING : CONTEXT_ITEM_COLUMNS;
+
+const contextItemFrom = (withEmbedding: boolean | undefined): string =>
+  withEmbedding === true ? `context_item\n         ${EMBEDDING_JOIN}` : 'context_item';
 
 class SqlParams {
   private readonly values: SqlValue[] = [];
@@ -511,18 +527,34 @@ class PostgresScopedStore implements ScopedStore {
       conditions.push(`(title ILIKE ${pattern} ESCAPE '\\' OR body ILIKE ${pattern} ESCAPE '\\')`);
     }
 
-    let ordering = 'asserted_at DESC, id DESC';
+    let ordering = 'context_item.asserted_at DESC, context_item.id DESC';
+    let from = contextItemFrom(search.withEmbedding);
+
     if (search.embedding !== undefined) {
       assertEmbedding(search.embedding, 'search.embedding');
-      conditions.push('embedding IS NOT NULL');
-      ordering = `embedding <=> ${params.add(embeddingLiteral(search.embedding))}::vector`;
+      const model = search.embeddingModel ?? null;
+      if (model === null || model.trim() === '') {
+        throw new StoreError(
+          'invalid_argument',
+          'expected search.embeddingModel to name the model that produced search.embedding; received none — ' +
+            'a cosine distance between vectors from two different models is meaningless, so pass a ' +
+            'provider-qualified identifier such as "openai:text-embedding-3-small"',
+        );
+      }
+      const modelParam = params.add(model);
+      from = `context_item
+         JOIN context_item_embedding
+           ON context_item_embedding.workspace_id = context_item.workspace_id
+          AND context_item_embedding.item_id = context_item.id
+          AND context_item_embedding.model = ${modelParam}`;
+      ordering = `context_item_embedding.embedding <=> ${params.add(embeddingLiteral(search.embedding))}::vector`;
     }
 
     const limit = params.add(resolveLimit(search.limit, 'filter.limit'));
 
     const rows = await this.rows(
       `SELECT ${contextItemColumns(search.withEmbedding)}
-         FROM context_item
+         FROM ${from}
         WHERE ${conditions.join('\n          AND ')}
         ORDER BY ${ordering}
         LIMIT ${limit}`,
@@ -590,21 +622,35 @@ class PostgresScopedStore implements ScopedStore {
       params.add(asserter.kind === 'human'),
       params.add(item.loadBearing ?? false),
       params.add(item.accessScope ?? DEFAULT_ACCESS_SCOPE),
-      `${params.add(embeddingValue)}::vector`,
-      params.add(embeddingModel),
       params.add(supersedesId),
+      params.add(item.supersedeReason ?? null),
       `CASE WHEN ${params.add(decayAfterMs)}::double precision IS NULL THEN NULL
             ELSE make_interval(secs => ${params.add(decayAfterMs)}::double precision / 1000.0) END`,
     ];
 
+    const modelParam = params.add(embeddingModel);
+    const vectorParam = params.add(embeddingValue);
+    const dimParam = params.add(EMBEDDING_DIMENSIONS);
+
     const rows = await this.rows(
-      `INSERT INTO context_item (
-         id, workspace_id, project_id, kind, title, body,
-         asserted_by, source_session_id, source_ref,
-         confidence, human_confirmed, load_bearing,
-         access_scope, embedding, embedding_model, supersedes_id, decay_after)
-       VALUES (${values.join(', ')})
-       RETURNING ${CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING}`,
+      `WITH inserted AS (
+         INSERT INTO context_item (
+           id, workspace_id, project_id, kind, title, body,
+           asserted_by, source_session_id, source_ref,
+           confidence, human_confirmed, load_bearing,
+           access_scope, supersedes_id, supersede_reason, decay_after)
+         VALUES (${values.join(', ')})
+         RETURNING context_item.*
+       ), stored AS (
+         INSERT INTO context_item_embedding (workspace_id, item_id, model, dim, embedding)
+         SELECT inserted.workspace_id, inserted.id, ${modelParam}, ${dimParam}, ${vectorParam}::vector
+           FROM inserted
+          WHERE ${modelParam}::text IS NOT NULL
+         RETURNING item_id
+       )
+       SELECT ${CONTEXT_ITEM_COLUMNS}, ${modelParam}::text AS embedding_model,
+              ${vectorParam}::text AS embedding
+         FROM inserted AS context_item`,
       params.list(),
     );
 
@@ -653,7 +699,7 @@ class PostgresScopedStore implements ScopedStore {
             SET ${assignments.join(', ')}
           WHERE workspace_id = ${params.add(this.scope.workspaceId)}
             AND id = ${params.add(input.id)}
-          RETURNING ${CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING}`,
+          RETURNING ${CONTEXT_ITEM_COLUMNS}`,
         params.list(),
       );
 
@@ -893,6 +939,13 @@ class PostgresScopedStore implements ScopedStore {
   async resolveConflict(input: ConflictResolutionInput): Promise<Conflict> {
     assertUuid(input.conflictId, 'input.conflictId');
     assertUuid(input.resolvedBy, 'input.resolvedBy');
+    if (typeof input.rationale !== 'string' || input.rationale.trim() === '') {
+      throw new StoreError(
+        'invalid_argument',
+        `expected input.rationale to record why conflict ${input.conflictId} was resolved as ${input.resolution}; received none — ` +
+          'which side a human chose is derivable, but why they chose it is not, and §17 collects both',
+      );
+    }
 
     return this.atomic(`resolving conflict ${input.conflictId}`, async () => {
       const rows = await this.rows(
@@ -917,10 +970,16 @@ class PostgresScopedStore implements ScopedStore {
 
       const updated = await this.rows(
         `UPDATE conflict
-            SET resolved_at = now(), resolved_by = $1, resolution = $2
-          WHERE workspace_id = $3 AND id = $4
+            SET resolved_at = now(), resolved_by = $1, resolution = $2, rationale = $3
+          WHERE workspace_id = $4 AND id = $5
           RETURNING ${CONFLICT_COLUMNS}`,
-        [input.resolvedBy, input.resolution, this.scope.workspaceId, input.conflictId],
+        [
+          input.resolvedBy,
+          input.resolution,
+          input.rationale.trim(),
+          this.scope.workspaceId,
+          input.conflictId,
+        ],
       );
       return toConflict(expectOne(updated, `resolving conflict ${input.conflictId}`));
     });

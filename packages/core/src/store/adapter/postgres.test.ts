@@ -135,6 +135,7 @@ const targetItemRow = (overrides: Row = {}): Row => ({
   valid_to: null,
   supersedes_id: null,
   superseded_by_id: null,
+  supersede_reason: null,
   access_scope: 'project',
   embedding: null,
   embedding_model: null,
@@ -177,7 +178,7 @@ class SupersedeSession implements PostgresSession {
       };
     }
 
-    if (sql.includes('FROM context_item')) {
+    if (sql.includes('FROM context_item') && !sql.includes('INSERT INTO context_item')) {
       return { rows: this.target === null ? [] : [this.target as TRow] };
     }
 

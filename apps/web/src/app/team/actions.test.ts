@@ -124,7 +124,7 @@ describe('inviteTeammateAction', () => {
 
   it.each([
     { email: 'nonsense', role: 'member', expected: '/team?error=invalid_email' },
-    { email: 'grace@example.com', role: 'owner', expected: '/team?error=invalid_role' },
+    { email: 'grace@example.com', role: 'lead', expected: '/team?error=invalid_role' },
   ])('redirects to $expected', async ({ email, role, expected }) => {
     await inviteTeammateAction(form({ email, role }));
 

@@ -104,6 +104,7 @@ export interface ContextItem {
   readonly accessScope: AccessScope;
   readonly embedding: Embedding | null;
   readonly embeddingModel: string | null;
+  readonly supersedeReason: string | null;
 }
 
 export interface Checkpoint {
@@ -146,4 +147,5 @@ export interface Conflict {
   readonly resolvedAt: Date | null;
   readonly resolvedBy: Uuid | null;
   readonly resolution: ConflictResolution | null;
+  readonly rationale: string | null;
 }

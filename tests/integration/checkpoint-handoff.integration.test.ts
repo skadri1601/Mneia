@@ -18,9 +18,17 @@ const WS_B = '99999999-9999-4999-8999-999999999999';
 
 const CHECKPOINT_COLUMNS = [
   'actor_id',
+  'cost_micros',
   'created_at',
+  'extraction_duration_ms',
+  'extraction_model',
   'id',
+  'input_tokens',
+  'output_tokens',
   'project_id',
+  'review_state',
+  'reviewed_at',
+  'reviewed_by',
   'session_id',
   'summary',
   'trigger',
@@ -47,6 +55,7 @@ const CONFLICT_COLUMNS = [
   'item_a',
   'item_b',
   'project_id',
+  'rationale',
   'resolution',
   'resolved_at',
   'resolved_by',
@@ -484,7 +493,8 @@ describe.skipIf(connectionString === undefined)('checkpoint, handoff and conflic
       await openConflict(resolved);
       await client.query(
         `UPDATE conflict
-            SET resolved_at = '2026-03-05T12:00:00Z', resolved_by = $1, resolution = 'a_wins'
+            SET resolved_at = '2026-03-05T12:00:00Z', resolved_by = $1, resolution = 'a_wins',
+                rationale = 'the human constraint was confirmed first'
           WHERE id = $2`,
         [seed.actorId, resolved],
       );
@@ -504,6 +514,7 @@ describe.skipIf(connectionString === undefined)('checkpoint, handoff and conflic
       expect((closed.resolved_at as Date).toISOString()).toBe('2026-03-05T12:00:00.000Z');
       expect(closed.resolved_by).toBe(seed.actorId);
       expect(closed.resolution).toBe('a_wins');
+      expect(closed.rationale).toBe('the human constraint was confirmed first');
     });
   });
 
@@ -530,9 +541,20 @@ describe.skipIf(connectionString === undefined)('checkpoint, handoff and conflic
         expect((error as { constraint?: string }).constraint).toBe('conflict_resolution_is_whole');
       }
 
-      const whole = await insert('resolved_at, resolved_by, resolution', "now(), $5, 'merged'", [
-        seed.actorId,
-      ]);
+      const missingRationale = await insert(
+        'resolved_at, resolved_by, resolution',
+        "now(), $5, 'merged'",
+        [seed.actorId],
+      );
+      expect((missingRationale as { constraint?: string }).constraint).toBe(
+        'conflict_resolution_is_whole',
+      );
+
+      const whole = await insert(
+        'resolved_at, resolved_by, resolution, rationale',
+        "now(), $5, 'merged', 'both held, under different conditions'",
+        [seed.actorId],
+      );
       expect(whole).not.toBeInstanceOf(Error);
     });
   });
@@ -542,8 +564,8 @@ describe.skipIf(connectionString === undefined)('checkpoint, handoff and conflic
       const id = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
 
       await client.query(
-        `INSERT INTO conflict (id, workspace_id, project_id, item_a, item_b, resolved_at, resolved_by, resolution)
-         VALUES ($1, $2, $3, $4, $5, now(), $6, 'both_retired')`,
+        `INSERT INTO conflict (id, workspace_id, project_id, item_a, item_b, resolved_at, resolved_by, resolution, rationale)
+         VALUES ($1, $2, $3, $4, $5, now(), $6, 'both_retired', 'both were stale')`,
         [id, WS_A, seed.projectId, seed.itemA, seed.itemB, seed.actorId],
       );
 

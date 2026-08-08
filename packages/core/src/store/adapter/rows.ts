@@ -519,7 +519,8 @@ export const toContextItem = (row: SqlRow): ContextItem => ({
   supersededById: toNullableUuid(row, 'superseded_by_id'),
   accessScope: toEnum(row, 'access_scope', ACCESS_SCOPES),
   embedding: toOptionalEmbedding(row, 'embedding'),
-  embeddingModel: toNullableText(row, 'embedding_model'),
+  embeddingModel: 'embedding_model' in row ? toNullableText(row, 'embedding_model') : null,
+  supersedeReason: toNullableText(row, 'supersede_reason'),
 });
 
 export const toCheckpoint = (row: SqlRow): Checkpoint => ({
@@ -562,4 +563,5 @@ export const toConflict = (row: SqlRow): Conflict => ({
   resolvedAt: toNullableDate(row, 'resolved_at'),
   resolvedBy: toNullableUuid(row, 'resolved_by'),
   resolution: toNullableEnum(row, 'resolution', CONFLICT_RESOLUTIONS),
+  rationale: toNullableText(row, 'rationale'),
 });

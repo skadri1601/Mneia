@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 16
+-- schema version: 28
 
 -- extensions
 
@@ -16,12 +16,15 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TYPE access_scope AS ENUM ('private', 'project', 'team', 'workspace', 'restricted');
 CREATE TYPE actor_kind AS ENUM ('human', 'agent');
 CREATE TYPE checkpoint_action AS ENUM ('created', 'updated', 'superseded', 'rejected');
+CREATE TYPE checkpoint_review_state AS ENUM ('pending', 'reviewed', 'auto_accepted');
 CREATE TYPE checkpoint_trigger AS ENUM ('task_boundary', 'day_boundary', 'manual', 'pre_compaction');
 CREATE TYPE conflict_resolution AS ENUM ('a_wins', 'b_wins', 'merged', 'both_retired');
+CREATE TYPE grantee_kind AS ENUM ('actor', 'team');
 CREATE TYPE item_kind AS ENUM ('decision', 'constraint', 'open_question', 'fact', 'artifact_ref');
 CREATE TYPE item_status AS ENUM ('active', 'superseded', 'disputed', 'retired');
 CREATE TYPE team_function AS ENUM ('engineering', 'product', 'design', 'sales', 'marketing', 'support', 'success', 'operations', 'finance', 'other');
 CREATE TYPE team_role AS ENUM ('lead', 'member');
+CREATE TYPE workspace_role AS ENUM ('owner', 'admin', 'member');
 
 -- tables
 
@@ -31,17 +34,21 @@ CREATE TABLE actor (
   kind actor_kind NOT NULL,
   display_name text NOT NULL,
   external_ref text,
-  created_at timestamp with time zone DEFAULT now() NOT NULL
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  identity_id uuid
 );
 ALTER TABLE actor ADD CONSTRAINT actor_created_at_not_null NOT NULL created_at;
 ALTER TABLE actor ADD CONSTRAINT actor_display_name_not_null NOT NULL display_name;
 ALTER TABLE actor ADD CONSTRAINT actor_id_not_null NOT NULL id;
+ALTER TABLE actor ADD CONSTRAINT actor_identity_belongs_to_humans CHECK (((kind = 'human'::actor_kind) OR (identity_id IS NULL)));
+ALTER TABLE actor ADD CONSTRAINT actor_identity_id_fkey FOREIGN KEY (identity_id) REFERENCES identity(id);
 ALTER TABLE actor ADD CONSTRAINT actor_kind_not_null NOT NULL kind;
 ALTER TABLE actor ADD CONSTRAINT actor_pkey PRIMARY KEY (id);
 ALTER TABLE actor ADD CONSTRAINT actor_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE actor ADD CONSTRAINT actor_workspace_id_id_key UNIQUE (workspace_id, id);
 ALTER TABLE actor ADD CONSTRAINT actor_workspace_id_not_null NOT NULL workspace_id;
-CREATE UNIQUE INDEX actor_human_external_ref_unique ON public.actor USING btree (external_ref) WHERE ((external_ref IS NOT NULL) AND (kind = 'human'::actor_kind));
+CREATE UNIQUE INDEX actor_human_external_ref_unique ON public.actor USING btree (workspace_id, external_ref) WHERE ((external_ref IS NOT NULL) AND (kind = 'human'::actor_kind));
+CREATE INDEX actor_identity_idx ON public.actor USING btree (identity_id) WHERE (identity_id IS NOT NULL);
 ALTER TABLE actor ENABLE ROW LEVEL SECURITY;
 ALTER TABLE actor FORCE ROW LEVEL SECURITY;
 CREATE POLICY actor_identity_lookup ON actor FOR SELECT USING (((kind = 'human'::actor_kind) AND (external_ref = NULLIF(current_setting('mneia.identity_subject'::text, true), ''::text)) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
@@ -57,7 +64,8 @@ CREATE TABLE api_token (
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   last_used_at timestamp with time zone,
   expires_at timestamp with time zone,
-  revoked_at timestamp with time zone
+  revoked_at timestamp with time zone,
+  scopes text[] DEFAULT ARRAY['*'::text] NOT NULL
 );
 ALTER TABLE api_token ADD CONSTRAINT api_token_actor_id_not_null NOT NULL actor_id;
 ALTER TABLE api_token ADD CONSTRAINT api_token_created_at_not_null NOT NULL created_at;
@@ -65,6 +73,8 @@ ALTER TABLE api_token ADD CONSTRAINT api_token_device_authorization_id_fkey FORE
 ALTER TABLE api_token ADD CONSTRAINT api_token_id_not_null NOT NULL id;
 ALTER TABLE api_token ADD CONSTRAINT api_token_label_not_null NOT NULL label;
 ALTER TABLE api_token ADD CONSTRAINT api_token_pkey PRIMARY KEY (id);
+ALTER TABLE api_token ADD CONSTRAINT api_token_scopes_are_not_empty CHECK (((cardinality(scopes) > 0) AND (array_position(scopes, NULL::text) IS NULL) AND (NOT (''::text = ANY (scopes)))));
+ALTER TABLE api_token ADD CONSTRAINT api_token_scopes_not_null NOT NULL scopes;
 ALTER TABLE api_token ADD CONSTRAINT api_token_token_hash_not_null NOT NULL token_hash;
 ALTER TABLE api_token ADD CONSTRAINT api_token_workspace_id_actor_id_fkey FOREIGN KEY (workspace_id, actor_id) REFERENCES actor(workspace_id, id);
 ALTER TABLE api_token ADD CONSTRAINT api_token_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
@@ -77,6 +87,34 @@ ALTER TABLE api_token FORCE ROW LEVEL SECURITY;
 CREATE POLICY api_token_bearer_lookup ON api_token FOR SELECT USING (((token_hash = NULLIF(current_setting('mneia.api_token_hash'::text, true), ''::text)) AND (revoked_at IS NULL) AND ((expires_at IS NULL) OR (expires_at > now())) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
 CREATE POLICY api_token_workspace_isolation ON api_token USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
 
+CREATE TABLE audit_event (
+  id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  actor_id uuid,
+  action text NOT NULL,
+  target_kind text NOT NULL,
+  target_id uuid,
+  occurred_at timestamp with time zone DEFAULT now() NOT NULL,
+  metadata jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_action_is_not_blank CHECK ((action <> ''::text));
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_action_not_null NOT NULL action;
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_id_not_null NOT NULL id;
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_metadata_is_an_object CHECK ((jsonb_typeof(metadata) = 'object'::text));
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_metadata_not_null NOT NULL metadata;
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_occurred_at_not_null NOT NULL occurred_at;
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_pkey PRIMARY KEY (id);
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_target_kind_is_not_blank CHECK ((target_kind <> ''::text));
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_target_kind_not_null NOT NULL target_kind;
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_workspace_id_actor_id_fkey FOREIGN KEY (workspace_id, actor_id) REFERENCES actor(workspace_id, id);
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE audit_event ADD CONSTRAINT audit_event_workspace_id_not_null NOT NULL workspace_id;
+CREATE INDEX audit_event_target_idx ON public.audit_event USING btree (workspace_id, target_kind, target_id);
+CREATE INDEX audit_event_workspace_idx ON public.audit_event USING btree (workspace_id, occurred_at DESC);
+ALTER TABLE audit_event ENABLE ROW LEVEL SECURITY;
+ALTER TABLE audit_event FORCE ROW LEVEL SECURITY;
+CREATE POLICY audit_event_workspace_isolation ON audit_event USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
 CREATE TABLE checkpoint (
   id uuid NOT NULL,
   workspace_id uuid NOT NULL,
@@ -85,20 +123,34 @@ CREATE TABLE checkpoint (
   actor_id uuid NOT NULL,
   trigger checkpoint_trigger NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
-  summary text
+  summary text,
+  review_state checkpoint_review_state DEFAULT 'pending'::checkpoint_review_state NOT NULL,
+  reviewed_at timestamp with time zone,
+  reviewed_by uuid,
+  extraction_model text,
+  input_tokens integer,
+  output_tokens integer,
+  cost_micros bigint,
+  extraction_duration_ms integer
 );
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_actor_id_not_null NOT NULL actor_id;
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_created_at_not_null NOT NULL created_at;
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_extraction_model_is_not_blank CHECK (((extraction_model IS NULL) OR (extraction_model <> ''::text)));
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_id_not_null NOT NULL id;
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_pkey PRIMARY KEY (id);
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_project_id_not_null NOT NULL project_id;
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_review_is_whole CHECK (((review_state = 'reviewed'::checkpoint_review_state) = ((reviewed_at IS NOT NULL) AND (reviewed_by IS NOT NULL))));
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_review_state_not_null NOT NULL review_state;
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_token_counts_are_not_negative CHECK ((((input_tokens IS NULL) OR (input_tokens >= 0)) AND ((output_tokens IS NULL) OR (output_tokens >= 0)) AND ((cost_micros IS NULL) OR (cost_micros >= 0)) AND ((extraction_duration_ms IS NULL) OR (extraction_duration_ms >= 0))));
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_trigger_not_null NOT NULL trigger;
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_actor_id_fkey FOREIGN KEY (workspace_id, actor_id) REFERENCES actor(workspace_id, id);
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_id_key UNIQUE (workspace_id, id);
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_not_null NOT NULL workspace_id;
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_project_id_fkey FOREIGN KEY (workspace_id, project_id) REFERENCES project(workspace_id, id);
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_reviewed_by_fkey FOREIGN KEY (workspace_id, reviewed_by) REFERENCES actor(workspace_id, id);
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_session_id_fkey FOREIGN KEY (workspace_id, session_id) REFERENCES session(workspace_id, id);
+CREATE INDEX checkpoint_pending_review_idx ON public.checkpoint USING btree (workspace_id, project_id, created_at DESC) WHERE (review_state = 'pending'::checkpoint_review_state);
 CREATE INDEX checkpoint_workspace_id_project_id_created_at_idx ON public.checkpoint USING btree (workspace_id, project_id, created_at DESC);
 CREATE INDEX checkpoint_workspace_id_session_id_idx ON public.checkpoint USING btree (workspace_id, session_id);
 ALTER TABLE checkpoint ENABLE ROW LEVEL SECURITY;
@@ -133,7 +185,8 @@ CREATE TABLE conflict (
   detected_at timestamp with time zone DEFAULT now() NOT NULL,
   resolved_at timestamp with time zone,
   resolved_by uuid,
-  resolution conflict_resolution
+  resolution conflict_resolution,
+  rationale text
 );
 ALTER TABLE conflict ADD CONSTRAINT conflict_detected_at_not_null NOT NULL detected_at;
 ALTER TABLE conflict ADD CONSTRAINT conflict_id_not_null NOT NULL id;
@@ -142,7 +195,7 @@ ALTER TABLE conflict ADD CONSTRAINT conflict_item_b_not_null NOT NULL item_b;
 ALTER TABLE conflict ADD CONSTRAINT conflict_items_distinct CHECK ((item_a <> item_b));
 ALTER TABLE conflict ADD CONSTRAINT conflict_pkey PRIMARY KEY (id);
 ALTER TABLE conflict ADD CONSTRAINT conflict_project_id_not_null NOT NULL project_id;
-ALTER TABLE conflict ADD CONSTRAINT conflict_resolution_is_whole CHECK ((((resolved_at IS NULL) AND (resolved_by IS NULL) AND (resolution IS NULL)) OR ((resolved_at IS NOT NULL) AND (resolved_by IS NOT NULL) AND (resolution IS NOT NULL))));
+ALTER TABLE conflict ADD CONSTRAINT conflict_resolution_is_whole CHECK ((((resolved_at IS NULL) AND (resolved_by IS NULL) AND (resolution IS NULL) AND (rationale IS NULL)) OR ((resolved_at IS NOT NULL) AND (resolved_by IS NOT NULL) AND (resolution IS NOT NULL) AND (rationale IS NOT NULL) AND (rationale <> ''::text))));
 ALTER TABLE conflict ADD CONSTRAINT conflict_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE conflict ADD CONSTRAINT conflict_workspace_id_id_key UNIQUE (workspace_id, id);
 ALTER TABLE conflict ADD CONSTRAINT conflict_workspace_id_item_a_fkey FOREIGN KEY (workspace_id, item_a) REFERENCES context_item(workspace_id, id);
@@ -180,16 +233,14 @@ CREATE TABLE context_item (
   supersedes_id uuid,
   superseded_by_id uuid,
   access_scope access_scope DEFAULT 'project'::access_scope NOT NULL,
-  embedding vector(1536),
-  embedding_model text
+  supersede_reason text,
+  purge_after timestamp with time zone
 );
 ALTER TABLE context_item ADD CONSTRAINT context_item_access_scope_not_null NOT NULL access_scope;
 ALTER TABLE context_item ADD CONSTRAINT context_item_asserted_at_not_null NOT NULL asserted_at;
 ALTER TABLE context_item ADD CONSTRAINT context_item_asserted_by_not_null NOT NULL asserted_by;
 ALTER TABLE context_item ADD CONSTRAINT context_item_confidence_check CHECK (((confidence >= (0)::double precision) AND (confidence <= (1)::double precision)));
 ALTER TABLE context_item ADD CONSTRAINT context_item_confidence_not_null NOT NULL confidence;
-ALTER TABLE context_item ADD CONSTRAINT context_item_embedding_model_not_blank CHECK (((embedding_model IS NULL) OR (embedding_model <> ''::text)));
-ALTER TABLE context_item ADD CONSTRAINT context_item_embedding_model_present CHECK (((embedding IS NULL) = (embedding_model IS NULL)));
 ALTER TABLE context_item ADD CONSTRAINT context_item_human_confirmed_not_null NOT NULL human_confirmed;
 ALTER TABLE context_item ADD CONSTRAINT context_item_id_not_null NOT NULL id;
 ALTER TABLE context_item ADD CONSTRAINT context_item_kind_not_null NOT NULL kind;
@@ -197,6 +248,7 @@ ALTER TABLE context_item ADD CONSTRAINT context_item_load_bearing_not_null NOT N
 ALTER TABLE context_item ADD CONSTRAINT context_item_pkey PRIMARY KEY (id);
 ALTER TABLE context_item ADD CONSTRAINT context_item_project_id_not_null NOT NULL project_id;
 ALTER TABLE context_item ADD CONSTRAINT context_item_status_not_null NOT NULL status;
+ALTER TABLE context_item ADD CONSTRAINT context_item_supersede_reason_needs_a_predecessor CHECK (((supersede_reason IS NULL) OR ((supersedes_id IS NOT NULL) AND (supersede_reason <> ''::text))));
 ALTER TABLE context_item ADD CONSTRAINT context_item_title_not_null NOT NULL title;
 ALTER TABLE context_item ADD CONSTRAINT context_item_valid_from_not_null NOT NULL valid_from;
 ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_asserted_by_fkey FOREIGN KEY (workspace_id, asserted_by) REFERENCES actor(workspace_id, id);
@@ -207,11 +259,60 @@ ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_project_id_fke
 ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_source_session_id_fkey FOREIGN KEY (workspace_id, source_session_id) REFERENCES session(workspace_id, id);
 ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_superseded_by_id_fkey FOREIGN KEY (workspace_id, superseded_by_id) REFERENCES context_item(workspace_id, id);
 ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_supersedes_id_fkey FOREIGN KEY (workspace_id, supersedes_id) REFERENCES context_item(workspace_id, id);
-CREATE INDEX context_item_embedding_idx ON public.context_item USING ivfflat (embedding vector_cosine_ops);
+CREATE INDEX context_item_load_bearing_idx ON public.context_item USING btree (workspace_id, project_id) WHERE ((status = 'active'::item_status) AND load_bearing AND (valid_to IS NULL));
 CREATE INDEX context_item_project_id_status_kind_idx ON public.context_item USING btree (project_id, status, kind);
+CREATE INDEX context_item_purge_idx ON public.context_item USING btree (purge_after) WHERE (purge_after IS NOT NULL);
 ALTER TABLE context_item ENABLE ROW LEVEL SECURITY;
 ALTER TABLE context_item FORCE ROW LEVEL SECURITY;
 CREATE POLICY context_item_workspace_isolation ON context_item USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE context_item_embedding (
+  workspace_id uuid NOT NULL,
+  item_id uuid NOT NULL,
+  model text NOT NULL,
+  dim integer NOT NULL,
+  embedding vector(1536) NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_created_at_not_null NOT NULL created_at;
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_dim_matches CHECK ((dim = 1536));
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_dim_not_null NOT NULL dim;
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_embedding_not_null NOT NULL embedding;
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_item_id_not_null NOT NULL item_id;
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_model_is_not_blank CHECK ((model <> ''::text));
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_model_not_null NOT NULL model;
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_pkey PRIMARY KEY (item_id, model);
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_workspace_id_item_id_fkey FOREIGN KEY (workspace_id, item_id) REFERENCES context_item(workspace_id, id) ON DELETE CASCADE;
+ALTER TABLE context_item_embedding ADD CONSTRAINT context_item_embedding_workspace_id_not_null NOT NULL workspace_id;
+CREATE INDEX context_item_embedding_vector_idx ON public.context_item_embedding USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX context_item_embedding_workspace_item_idx ON public.context_item_embedding USING btree (workspace_id, item_id);
+ALTER TABLE context_item_embedding ENABLE ROW LEVEL SECURITY;
+ALTER TABLE context_item_embedding FORCE ROW LEVEL SECURITY;
+CREATE POLICY context_item_embedding_workspace_isolation ON context_item_embedding USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE context_item_grant (
+  workspace_id uuid NOT NULL,
+  item_id uuid NOT NULL,
+  grantee_kind grantee_kind NOT NULL,
+  grantee_id uuid NOT NULL,
+  granted_by uuid NOT NULL,
+  granted_at timestamp with time zone DEFAULT now() NOT NULL
+);
+ALTER TABLE context_item_grant ADD CONSTRAINT context_item_grant_granted_at_not_null NOT NULL granted_at;
+ALTER TABLE context_item_grant ADD CONSTRAINT context_item_grant_granted_by_not_null NOT NULL granted_by;
+ALTER TABLE context_item_grant ADD CONSTRAINT context_item_grant_grantee_id_not_null NOT NULL grantee_id;
+ALTER TABLE context_item_grant ADD CONSTRAINT context_item_grant_grantee_kind_not_null NOT NULL grantee_kind;
+ALTER TABLE context_item_grant ADD CONSTRAINT context_item_grant_item_id_not_null NOT NULL item_id;
+ALTER TABLE context_item_grant ADD CONSTRAINT context_item_grant_pkey PRIMARY KEY (item_id, grantee_kind, grantee_id);
+ALTER TABLE context_item_grant ADD CONSTRAINT context_item_grant_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE context_item_grant ADD CONSTRAINT context_item_grant_workspace_id_granted_by_fkey FOREIGN KEY (workspace_id, granted_by) REFERENCES actor(workspace_id, id);
+ALTER TABLE context_item_grant ADD CONSTRAINT context_item_grant_workspace_id_item_id_fkey FOREIGN KEY (workspace_id, item_id) REFERENCES context_item(workspace_id, id) ON DELETE CASCADE;
+ALTER TABLE context_item_grant ADD CONSTRAINT context_item_grant_workspace_id_not_null NOT NULL workspace_id;
+CREATE INDEX context_item_grant_grantee_idx ON public.context_item_grant USING btree (workspace_id, grantee_kind, grantee_id);
+ALTER TABLE context_item_grant ENABLE ROW LEVEL SECURITY;
+ALTER TABLE context_item_grant FORCE ROW LEVEL SECURITY;
+CREATE POLICY context_item_grant_workspace_isolation ON context_item_grant USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
 
 CREATE TABLE device_approval_attempt (
   workspace_id uuid NOT NULL,
@@ -304,6 +405,44 @@ ALTER TABLE handoff ENABLE ROW LEVEL SECURITY;
 ALTER TABLE handoff FORCE ROW LEVEL SECURITY;
 CREATE POLICY handoff_workspace_isolation ON handoff USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
 
+CREATE TABLE handoff_item (
+  workspace_id uuid NOT NULL,
+  handoff_id uuid NOT NULL,
+  item_id uuid NOT NULL,
+  section text NOT NULL
+);
+ALTER TABLE handoff_item ADD CONSTRAINT handoff_item_handoff_id_not_null NOT NULL handoff_id;
+ALTER TABLE handoff_item ADD CONSTRAINT handoff_item_item_id_not_null NOT NULL item_id;
+ALTER TABLE handoff_item ADD CONSTRAINT handoff_item_pkey PRIMARY KEY (handoff_id, item_id);
+ALTER TABLE handoff_item ADD CONSTRAINT handoff_item_section_is_not_blank CHECK ((section <> ''::text));
+ALTER TABLE handoff_item ADD CONSTRAINT handoff_item_section_not_null NOT NULL section;
+ALTER TABLE handoff_item ADD CONSTRAINT handoff_item_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE handoff_item ADD CONSTRAINT handoff_item_workspace_id_handoff_id_fkey FOREIGN KEY (workspace_id, handoff_id) REFERENCES handoff(workspace_id, id) ON DELETE CASCADE;
+ALTER TABLE handoff_item ADD CONSTRAINT handoff_item_workspace_id_item_id_fkey FOREIGN KEY (workspace_id, item_id) REFERENCES context_item(workspace_id, id);
+ALTER TABLE handoff_item ADD CONSTRAINT handoff_item_workspace_id_not_null NOT NULL workspace_id;
+CREATE INDEX handoff_item_item_idx ON public.handoff_item USING btree (workspace_id, item_id);
+ALTER TABLE handoff_item ENABLE ROW LEVEL SECURITY;
+ALTER TABLE handoff_item FORCE ROW LEVEL SECURITY;
+CREATE POLICY handoff_item_workspace_isolation ON handoff_item USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE identity (
+  id uuid NOT NULL,
+  subject text NOT NULL,
+  email text,
+  created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+ALTER TABLE identity ADD CONSTRAINT identity_created_at_not_null NOT NULL created_at;
+ALTER TABLE identity ADD CONSTRAINT identity_email_is_normalized CHECK (((email IS NULL) OR ((email = lower(btrim(email))) AND (POSITION(('@'::text) IN (email)) > 1))));
+ALTER TABLE identity ADD CONSTRAINT identity_id_not_null NOT NULL id;
+ALTER TABLE identity ADD CONSTRAINT identity_pkey PRIMARY KEY (id);
+ALTER TABLE identity ADD CONSTRAINT identity_subject_is_not_blank CHECK ((subject <> ''::text));
+ALTER TABLE identity ADD CONSTRAINT identity_subject_not_null NOT NULL subject;
+CREATE UNIQUE INDEX identity_subject_key ON public.identity USING btree (subject);
+ALTER TABLE identity ENABLE ROW LEVEL SECURITY;
+ALTER TABLE identity FORCE ROW LEVEL SECURITY;
+CREATE POLICY identity_subject_enrolment ON identity FOR INSERT WITH CHECK ((subject = NULLIF(current_setting('mneia.identity_subject'::text, true), ''::text)));
+CREATE POLICY identity_subject_lookup ON identity FOR SELECT USING ((subject = NULLIF(current_setting('mneia.identity_subject'::text, true), ''::text)));
+
 CREATE TABLE mneia_schema_migration (
   version integer NOT NULL,
   name text NOT NULL,
@@ -342,6 +481,25 @@ CREATE INDEX project_workspace_id_team_id_idx ON public.project USING btree (wor
 ALTER TABLE project ENABLE ROW LEVEL SECURITY;
 ALTER TABLE project FORCE ROW LEVEL SECURITY;
 CREATE POLICY project_workspace_isolation ON project USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE project_file_binding (
+  workspace_id uuid NOT NULL,
+  project_id uuid NOT NULL,
+  path text NOT NULL,
+  fence_checksum text,
+  last_imported_at timestamp with time zone,
+  last_written_at timestamp with time zone
+);
+ALTER TABLE project_file_binding ADD CONSTRAINT project_file_binding_path_is_relative CHECK (((path <> ''::text) AND (path !~~ '/%'::text) AND (path !~~ '%..%'::text)));
+ALTER TABLE project_file_binding ADD CONSTRAINT project_file_binding_path_not_null NOT NULL path;
+ALTER TABLE project_file_binding ADD CONSTRAINT project_file_binding_pkey PRIMARY KEY (workspace_id, project_id, path);
+ALTER TABLE project_file_binding ADD CONSTRAINT project_file_binding_project_id_not_null NOT NULL project_id;
+ALTER TABLE project_file_binding ADD CONSTRAINT project_file_binding_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE project_file_binding ADD CONSTRAINT project_file_binding_workspace_id_not_null NOT NULL workspace_id;
+ALTER TABLE project_file_binding ADD CONSTRAINT project_file_binding_workspace_id_project_id_fkey FOREIGN KEY (workspace_id, project_id) REFERENCES project(workspace_id, id) ON DELETE CASCADE;
+ALTER TABLE project_file_binding ENABLE ROW LEVEL SECURITY;
+ALTER TABLE project_file_binding FORCE ROW LEVEL SECURITY;
+CREATE POLICY project_file_binding_workspace_isolation ON project_file_binding USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
 
 CREATE TABLE rate_limit_counter (
   workspace_id uuid NOT NULL,
@@ -431,6 +589,33 @@ ALTER TABLE team_member ENABLE ROW LEVEL SECURITY;
 ALTER TABLE team_member FORCE ROW LEVEL SECURITY;
 CREATE POLICY team_member_workspace_isolation ON team_member USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
 
+CREATE TABLE telemetry_event (
+  id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  project_id uuid,
+  actor_id uuid,
+  session_id uuid,
+  name text NOT NULL,
+  occurred_at timestamp with time zone NOT NULL,
+  recorded_at timestamp with time zone DEFAULT now() NOT NULL,
+  payload jsonb DEFAULT '{}'::jsonb NOT NULL
+) PARTITION BY RANGE (occurred_at);
+ALTER TABLE telemetry_event ADD CONSTRAINT telemetry_event_id_not_null NOT NULL id;
+ALTER TABLE telemetry_event ADD CONSTRAINT telemetry_event_name_is_not_blank CHECK ((name <> ''::text));
+ALTER TABLE telemetry_event ADD CONSTRAINT telemetry_event_name_not_null NOT NULL name;
+ALTER TABLE telemetry_event ADD CONSTRAINT telemetry_event_occurred_at_not_null NOT NULL occurred_at;
+ALTER TABLE telemetry_event ADD CONSTRAINT telemetry_event_payload_is_an_object CHECK ((jsonb_typeof(payload) = 'object'::text));
+ALTER TABLE telemetry_event ADD CONSTRAINT telemetry_event_payload_not_null NOT NULL payload;
+ALTER TABLE telemetry_event ADD CONSTRAINT telemetry_event_pkey PRIMARY KEY (id, occurred_at);
+ALTER TABLE telemetry_event ADD CONSTRAINT telemetry_event_recorded_at_not_null NOT NULL recorded_at;
+ALTER TABLE telemetry_event ADD CONSTRAINT telemetry_event_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE telemetry_event ADD CONSTRAINT telemetry_event_workspace_id_not_null NOT NULL workspace_id;
+CREATE INDEX telemetry_event_metering_idx ON ONLY public.telemetry_event USING btree (workspace_id, name, occurred_at);
+CREATE INDEX telemetry_event_project_idx ON ONLY public.telemetry_event USING btree (workspace_id, project_id, occurred_at);
+ALTER TABLE telemetry_event ENABLE ROW LEVEL SECURITY;
+ALTER TABLE telemetry_event FORCE ROW LEVEL SECURITY;
+CREATE POLICY telemetry_event_workspace_isolation ON telemetry_event USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
 CREATE TABLE waitlist_broadcast_send (
   id uuid DEFAULT gen_random_uuid() NOT NULL,
   campaign text NOT NULL,
@@ -477,6 +662,7 @@ ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_status_not_null NOT N
 ALTER TABLE waitlist_signup ADD CONSTRAINT waitlist_signup_unsubscribe_token_not_null NOT NULL unsubscribe_token;
 CREATE UNIQUE INDEX waitlist_signup_email_key ON public.waitlist_signup USING btree (lower(email));
 CREATE INDEX waitlist_signup_pending_idx ON public.waitlist_signup USING btree (created_at, id) WHERE (status = 'pending'::text);
+CREATE INDEX waitlist_signup_purge_idx ON public.waitlist_signup USING btree (approved_at) WHERE (status = 'approved'::text);
 CREATE UNIQUE INDEX waitlist_signup_unsubscribe_token_key ON public.waitlist_signup USING btree (unsubscribe_token);
 
 CREATE TABLE workspace (
@@ -490,7 +676,9 @@ CREATE TABLE workspace (
   checkpoint_allowance integer,
   trial_ends_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
-  company_size text
+  company_size text,
+  retention_days integer,
+  region text
 );
 ALTER TABLE workspace ADD CONSTRAINT workspace_billing_status_check CHECK ((billing_status = ANY (ARRAY['active'::text, 'trialing'::text, 'past_due'::text, 'canceled'::text])));
 ALTER TABLE workspace ADD CONSTRAINT workspace_billing_status_not_null NOT NULL billing_status;
@@ -502,6 +690,8 @@ ALTER TABLE workspace ADD CONSTRAINT workspace_id_not_null NOT NULL id;
 ALTER TABLE workspace ADD CONSTRAINT workspace_pkey PRIMARY KEY (id);
 ALTER TABLE workspace ADD CONSTRAINT workspace_plan_check CHECK ((plan = ANY (ARRAY['solo'::text, 'team'::text, 'enterprise'::text])));
 ALTER TABLE workspace ADD CONSTRAINT workspace_plan_not_null NOT NULL plan;
+ALTER TABLE workspace ADD CONSTRAINT workspace_region_is_not_blank CHECK (((region IS NULL) OR (region <> ''::text)));
+ALTER TABLE workspace ADD CONSTRAINT workspace_retention_days_is_positive CHECK (((retention_days IS NULL) OR (retention_days > 0)));
 ALTER TABLE workspace ADD CONSTRAINT workspace_seats_purchased_check CHECK (((seats_purchased IS NULL) OR (seats_purchased > 0)));
 ALTER TABLE workspace ADD CONSTRAINT workspace_slug_key UNIQUE (slug);
 ALTER TABLE workspace ADD CONSTRAINT workspace_slug_not_null NOT NULL slug;
@@ -512,10 +702,10 @@ CREATE POLICY workspace_workspace_isolation ON workspace USING ((id = (NULLIF(cu
 CREATE TABLE workspace_invitation (
   id uuid NOT NULL,
   workspace_id uuid NOT NULL,
-  team_id uuid NOT NULL,
+  team_id uuid,
   invited_email text NOT NULL,
   token_hash text NOT NULL,
-  role team_role DEFAULT 'member'::team_role NOT NULL,
+  role workspace_role DEFAULT 'member'::workspace_role NOT NULL,
   invited_by uuid NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   expires_at timestamp with time zone NOT NULL,
@@ -534,7 +724,6 @@ ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_invited_ema
 ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_is_not_both_accepted_and_revoked CHECK (((accepted_at IS NULL) OR (revoked_at IS NULL)));
 ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_pkey PRIMARY KEY (id);
 ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_role_not_null NOT NULL role;
-ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_team_id_not_null NOT NULL team_id;
 ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_token_hash_not_null NOT NULL token_hash;
 ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_workspace_id_accepted_actor_id_fkey FOREIGN KEY (workspace_id, accepted_actor_id) REFERENCES actor(workspace_id, id);
 ALTER TABLE workspace_invitation ADD CONSTRAINT workspace_invitation_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
@@ -551,3 +740,44 @@ ALTER TABLE workspace_invitation FORCE ROW LEVEL SECURITY;
 CREATE POLICY workspace_invitation_email_lookup ON workspace_invitation FOR SELECT USING (((invited_email = NULLIF(current_setting('mneia.invitation_email'::text, true), ''::text)) AND (accepted_at IS NULL) AND (revoked_at IS NULL) AND (expires_at > now()) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
 CREATE POLICY workspace_invitation_token_lookup ON workspace_invitation FOR SELECT USING (((token_hash = NULLIF(current_setting('mneia.invitation_token_hash'::text, true), ''::text)) AND (accepted_at IS NULL) AND (revoked_at IS NULL) AND (expires_at > now()) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
 CREATE POLICY workspace_invitation_workspace_isolation ON workspace_invitation USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE workspace_member (
+  workspace_id uuid NOT NULL,
+  identity_id uuid NOT NULL,
+  role workspace_role DEFAULT 'member'::workspace_role NOT NULL,
+  joined_at timestamp with time zone DEFAULT now() NOT NULL,
+  invited_by uuid
+);
+ALTER TABLE workspace_member ADD CONSTRAINT workspace_member_identity_id_fkey FOREIGN KEY (identity_id) REFERENCES identity(id);
+ALTER TABLE workspace_member ADD CONSTRAINT workspace_member_identity_id_not_null NOT NULL identity_id;
+ALTER TABLE workspace_member ADD CONSTRAINT workspace_member_invited_by_fkey FOREIGN KEY (invited_by) REFERENCES identity(id);
+ALTER TABLE workspace_member ADD CONSTRAINT workspace_member_joined_at_not_null NOT NULL joined_at;
+ALTER TABLE workspace_member ADD CONSTRAINT workspace_member_pkey PRIMARY KEY (workspace_id, identity_id);
+ALTER TABLE workspace_member ADD CONSTRAINT workspace_member_role_not_null NOT NULL role;
+ALTER TABLE workspace_member ADD CONSTRAINT workspace_member_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE workspace_member ADD CONSTRAINT workspace_member_workspace_id_not_null NOT NULL workspace_id;
+CREATE INDEX workspace_member_identity_idx ON public.workspace_member USING btree (identity_id);
+ALTER TABLE workspace_member ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workspace_member FORCE ROW LEVEL SECURITY;
+CREATE POLICY workspace_member_identity_lookup ON workspace_member FOR SELECT USING (((NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL) AND (EXISTS ( SELECT 1
+   FROM identity
+  WHERE ((identity.id = workspace_member.identity_id) AND (identity.subject = NULLIF(current_setting('mneia.identity_subject'::text, true), ''::text)))))));
+CREATE POLICY workspace_member_workspace_isolation ON workspace_member USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE workspace_usage_period (
+  workspace_id uuid NOT NULL,
+  period_start date NOT NULL,
+  checkpoints_used integer DEFAULT 0 NOT NULL,
+  updated_at timestamp with time zone DEFAULT now() NOT NULL
+);
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_checkpoints_are_not_negative CHECK ((checkpoints_used >= 0));
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_checkpoints_used_not_null NOT NULL checkpoints_used;
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_period_start_not_null NOT NULL period_start;
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_pkey PRIMARY KEY (workspace_id, period_start);
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_starts_on_a_month CHECK ((period_start = (date_trunc('month'::text, (period_start)::timestamp with time zone))::date));
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_updated_at_not_null NOT NULL updated_at;
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id) ON DELETE CASCADE;
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_workspace_id_not_null NOT NULL workspace_id;
+ALTER TABLE workspace_usage_period ENABLE ROW LEVEL SECURITY;
+ALTER TABLE workspace_usage_period FORCE ROW LEVEL SECURITY;
+CREATE POLICY workspace_usage_period_workspace_isolation ON workspace_usage_period USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));

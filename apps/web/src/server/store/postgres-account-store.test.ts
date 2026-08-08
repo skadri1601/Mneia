@@ -450,6 +450,7 @@ describe('PostgresAccountStore', () => {
 });
 
 const INVITATION_ID = '44444444-4444-4444-8444-444444444444';
+const IDENTITY_ID = '0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a';
 const INVITED_ACTOR_ID = '55555555-5555-4555-8555-555555555555';
 const INVITED_EMAIL = 'grace@example.com';
 const TOKEN_HASH = 'a'.repeat(64);
@@ -537,6 +538,8 @@ describe('PostgresAccountStore invitations', () => {
       ...blanks(4),
       [invitationRow()],
       ...blanks(4),
+      [{ id: IDENTITY_ID }],
+      [],
       [actorRow({ id: INVITED_ACTOR_ID, external_ref: 'user_invited' })],
       [membershipRow({ actor_id: INVITED_ACTOR_ID, role: 'member' })],
       [invitationRow({ accepted_at: CREATED_AT })],

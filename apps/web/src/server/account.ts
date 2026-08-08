@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { TeamRole } from '@mneia/core';
+import type { WorkspaceRole } from '@mneia/core';
 import { createJoinToken, hashJoinToken } from './invitations.js';
 import {
   type AccountContext,
@@ -52,11 +52,11 @@ export const normalizeEmail = (value: string): string => {
   return candidate;
 };
 
-export const parseTeamRole = (value: string): TeamRole => {
-  if (value === 'lead' || value === 'member') return value;
+export const parseWorkspaceRole = (value: string): WorkspaceRole => {
+  if (value === 'owner' || value === 'admin' || value === 'member') return value;
   throw new AccountError(
     'invalid_role',
-    `Expected the role to be lead or member; received "${value}"`,
+    `Expected the role to be owner, admin or member; received "${value}"`,
   );
 };
 
@@ -94,7 +94,7 @@ export const inviteTeammate = async ({
     teamId,
     invitedByActorId,
     invitedEmail,
-    role: parseTeamRole(role),
+    role: parseWorkspaceRole(role),
     tokenHash: hashJoinToken(token),
     expiresAt: new Date(now().getTime() + INVITATION_TTL_MS),
   });

@@ -37,6 +37,7 @@ export interface ContextItemFilter {
 
 export interface ContextItemSearch extends ContextItemFilter {
   readonly embedding?: Embedding;
+  readonly embeddingModel?: string;
   readonly text?: string;
 }
 
@@ -54,6 +55,7 @@ export interface NewContextItem {
   readonly embedding?: Embedding | null;
   readonly embeddingModel?: string | null;
   readonly supersedesId?: Uuid | null;
+  readonly supersedeReason?: string | null;
   readonly decayAfter?: IntervalMs | null;
 }
 
@@ -119,6 +121,7 @@ export interface ConflictResolutionInput {
   readonly conflictId: Uuid;
   readonly resolvedBy: Uuid;
   readonly resolution: ConflictResolution;
+  readonly rationale: string;
 }
 
 export interface ScopedStore {

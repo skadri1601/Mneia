@@ -650,8 +650,10 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
           conflictId: conflict.id,
           resolvedBy: ACTOR_A,
           resolution: 'b_wins',
+          rationale: 'b cites the newer benchmark',
         });
         expect(resolved.resolution).toBe('b_wins');
+        expect(resolved.rationale).toBe('b cites the newer benchmark');
         expect(await store.listOpenConflicts(PROJECT_A)).toHaveLength(0);
 
         await expect(
@@ -659,6 +661,7 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
             conflictId: conflict.id,
             resolvedBy: ACTOR_A,
             resolution: 'a_wins',
+            rationale: 'a second opinion, arriving too late',
           }),
         ).rejects.toThrow(/expected conflict .* to be open/);
       });

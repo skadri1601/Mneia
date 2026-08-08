@@ -8,7 +8,7 @@ import {
   INVITATION_TTL_MS,
   inviteTeammate,
   normalizeEmail,
-  parseTeamRole,
+  parseWorkspaceRole,
   redeemInvitation,
 } from './account.js';
 import { hashJoinToken } from './invitations.js';
@@ -165,13 +165,13 @@ describe('normalizeEmail', () => {
   });
 });
 
-describe('parseTeamRole', () => {
-  it.each(['lead', 'member'] as const)('accepts %s', (role) => {
-    expect(parseTeamRole(role)).toBe(role);
+describe('parseWorkspaceRole', () => {
+  it.each(['owner', 'admin', 'member'] as const)('accepts %s', (role) => {
+    expect(parseWorkspaceRole(role)).toBe(role);
   });
 
-  it.each(['owner', 'admin', '', 'LEAD'])('rejects %j', (role) => {
-    expect(() => parseTeamRole(role)).toThrowError(
+  it.each(['lead', '', 'OWNER'])('rejects %j', (role) => {
+    expect(() => parseWorkspaceRole(role)).toThrowError(
       expect.objectContaining({ code: 'invalid_role' }),
     );
   });
@@ -208,7 +208,7 @@ describe('inviteTeammate', () => {
 
   it.each([
     { email: 'not-an-address', role: 'member', code: 'invalid_email' },
-    { email: 'grace@example.com', role: 'owner', code: 'invalid_role' },
+    { email: 'grace@example.com', role: 'lead', code: 'invalid_role' },
   ])('refuses $code before touching the store', async ({ email, role, code }) => {
     const { store, inviteToWorkspace } = accountStore();
 

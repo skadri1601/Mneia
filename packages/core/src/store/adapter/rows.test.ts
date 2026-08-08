@@ -57,6 +57,7 @@ const contextItemRow = (): Record<string, unknown> => ({
   valid_to: null,
   supersedes_id: OTHER_ITEM,
   superseded_by_id: null,
+  supersede_reason: null,
   access_scope: 'workspace',
   embedding: '[0.25,-0.5,1]',
   embedding_model: 'openai:text-embedding-3-small',
@@ -95,6 +96,7 @@ describe('toContextItem', () => {
       validTo: null,
       supersedesId: OTHER_ITEM,
       supersededById: null,
+      supersedeReason: null,
       accessScope: 'workspace',
       embedding: [0.25, -0.5, 1],
       embeddingModel: 'openai:text-embedding-3-small',
@@ -112,6 +114,7 @@ describe('toContextItem', () => {
       valid_to: null,
       supersedes_id: null,
       superseded_by_id: null,
+      supersede_reason: null,
       embedding: null,
       embedding_model: null,
     });
@@ -417,6 +420,7 @@ describe('toCheckpoint, toCheckpointItem, toHandoff and toConflict', () => {
         resolved_at: null,
         resolved_by: null,
         resolution: null,
+        rationale: null,
       }),
     ).toEqual({
       id: CONFLICT,
@@ -428,6 +432,7 @@ describe('toCheckpoint, toCheckpointItem, toHandoff and toConflict', () => {
       resolvedAt: null,
       resolvedBy: null,
       resolution: null,
+      rationale: null,
     });
   });
 
@@ -442,11 +447,13 @@ describe('toCheckpoint, toCheckpointItem, toHandoff and toConflict', () => {
       resolved_at: ASSERTED_AT,
       resolved_by: ACTOR,
       resolution: 'a_wins',
+      rationale: 'the human constraint wins',
     });
 
     expect(conflict.resolvedAt).toEqual(ASSERTED_AT);
     expect(conflict.resolvedBy).toBe(ACTOR);
     expect(conflict.resolution).toBe('a_wins');
+    expect(conflict.rationale).toBe('the human constraint wins');
   });
 });
 
