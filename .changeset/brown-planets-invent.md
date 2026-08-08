@@ -1,5 +1,6 @@
 ---
 '@mneia/core': minor
+'@mneia/cli': minor
 ---
 
 MNE-271: `mneia init` can create a project, so the CLI loop can be entered at all.
