@@ -25,10 +25,14 @@
     "db:provision-app-role": "node scripts/db-provision-app-role.mjs",
     "bootstrap:local": "node scripts/bootstrap-local.mjs",
     "waitlist:notify": "node scripts/waitlist-notify.mjs",
-    "db:snapshot": "node scripts/db-snapshot.mjs"
+    "db:snapshot": "node scripts/db-snapshot.mjs",
+    "changeset": "changeset",
+    "version:packages": "changeset version",
+    "release:dry": "changeset publish --dry-run"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",
+    "@changesets/cli": "^2.31.1",
     "@types/node": "^26.1.2",
     "@types/pg": "^8.20.0",
     "pg": "^8.22.0",
