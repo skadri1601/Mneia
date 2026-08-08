@@ -3,7 +3,7 @@ import type { MigrationDriver, SqlExecutor, SqlResult, SqlValue } from './driver
 import { BOOKKEEPING_TABLE, migrate, readAppliedMigrations } from './migrate.js';
 import type { Migration } from './migrations/index.js';
 import { MIGRATIONS } from './migrations/index.js';
-import { MigrationError, checksumOf } from './plan.js';
+import { checksumOf, MigrationError } from './plan.js';
 
 interface StoredRow {
   version: number;

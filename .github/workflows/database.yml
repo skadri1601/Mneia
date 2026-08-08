@@ -5,6 +5,9 @@ on:
     paths:
       - 'packages/core/src/store/**'
       - 'packages/core/src/api/**'
+      - 'packages/core/src/embed/**'
+      - 'packages/core/src/extract/**'
+      - 'packages/core/src/trajectory/**'
       - 'packages/cli/src/**'
       - 'packages/mcp-server/src/**'
       - 'apps/web/src/server/**'
@@ -19,6 +22,9 @@ on:
     paths:
       - 'packages/core/src/store/**'
       - 'packages/core/src/api/**'
+      - 'packages/core/src/embed/**'
+      - 'packages/core/src/extract/**'
+      - 'packages/core/src/trajectory/**'
       - 'packages/cli/src/**'
       - 'packages/mcp-server/src/**'
       - 'apps/web/src/server/**'

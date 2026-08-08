@@ -2,9 +2,9 @@ import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '../domain/types.js';
 import {
   DEFAULT_SCORING_WEIGHTS,
+  freshness,
   NEUTRAL_SEMANTIC_RELEVANCE,
   RECENCY_HALF_LIFE_MS,
-  freshness,
   recencyDecay,
   scoreComponents,
   scoreItems,

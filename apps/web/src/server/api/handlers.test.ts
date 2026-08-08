@@ -191,3 +191,55 @@ describe('handleWriteCheckpoint telemetry', () => {
     expect(sink.events.some((event) => event.name === 'item.superseded')).toBe(false);
   });
 });
+
+describe('handleWriteCheckpoint embeddings', () => {
+  const EMBEDDING = Array.from({ length: 1536 }, () => 0.1);
+
+  const provider = (
+    embed: (texts: readonly string[]) => Promise<readonly (readonly number[])[]>,
+  ) => ({
+    model: 'openai:text-embedding-3-small',
+    dimensions: 1536,
+    embed,
+  });
+
+  it('stores the vector alongside the model that produced it', async () => {
+    const sink = harness(actor(AGENT, 'agent'), [writtenItem()]);
+
+    await handleWriteCheckpoint(sink.store, request() as never, {
+      ...deps(sink.telemetry),
+      embeddings: provider(async (texts) => texts.map(() => EMBEDDING)),
+    });
+
+    const item = sink.writes[0]?.items[0]?.item;
+    expect(item?.embedding).toHaveLength(1536);
+    expect(item?.embeddingModel).toBe('openai:text-embedding-3-small');
+  });
+
+  it('still writes the item when the embedding provider fails, rather than losing the work', async () => {
+    const sink = harness(actor(AGENT, 'agent'), [writtenItem()]);
+
+    await handleWriteCheckpoint(sink.store, request() as never, {
+      ...deps(sink.telemetry),
+      embeddings: provider(async () => {
+        throw new Error('the embedding provider is down');
+      }),
+    });
+
+    const item = sink.writes[0]?.items[0]?.item;
+    expect(item?.embedding).toBeNull();
+    expect(item?.embeddingModel).toBeNull();
+    expect(sink.events.some((event) => event.name === 'checkpoint.item_extracted')).toBe(true);
+  });
+
+  it('writes a null vector when no provider is configured', async () => {
+    const sink = harness(actor(AGENT, 'agent'), [writtenItem()]);
+
+    await handleWriteCheckpoint(sink.store, request() as never, {
+      ...deps(sink.telemetry),
+      embeddings: null,
+    });
+
+    expect(sink.writes[0]?.items[0]?.item.embedding).toBeNull();
+  });
+});

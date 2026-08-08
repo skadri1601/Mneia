@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SqlExecutor, SqlResult } from './driver.js';
 import {
-  RLS_BYPASS_ESCAPE_HATCH,
-  RLS_POSTURE_SQL,
-  RlsGuardError,
   assertConnectionEnforcesRls,
   assertRlsEnforced,
   inspectRlsPosture,
+  RLS_BYPASS_ESCAPE_HATCH,
+  RLS_POSTURE_SQL,
+  RlsGuardError,
 } from './rls-guard.js';
 
 class FakeExecutor implements SqlExecutor {

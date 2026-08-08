@@ -5,7 +5,7 @@ export type {
   SupersedeVerdict,
 } from './supersede.js';
 export {
-  SupersedeNotAllowedError,
   assertSupersedeAllowed,
   evaluateSupersede,
+  SupersedeNotAllowedError,
 } from './supersede.js';

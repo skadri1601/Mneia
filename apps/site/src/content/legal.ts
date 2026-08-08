@@ -51,7 +51,16 @@ const SUBPROCESSORS: LegalBlock = {
       'United States',
     ],
     ['Stripe, Inc.', 'Payment processing and subscription billing', 'United States'],
-    ['Anthropic PBC', 'Extraction and contradiction detection on checkpoint', 'United States'],
+    [
+      'OpenAI, L.L.C.',
+      'Extraction on checkpoint, and the embeddings that rank what a rehydration returns',
+      'United States',
+    ],
+    [
+      'Anthropic PBC',
+      'Extraction on checkpoint, as the fallback when OpenAI is unavailable',
+      'United States',
+    ],
     [
       'Google LLC',
       'Website analytics and advertising measurement — configured but not enabled; receives nothing today',
@@ -257,7 +266,9 @@ export const PRIVACY: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            '**Checkpointing sends your content to a large language model.** When you checkpoint, the relevant portion of your session is sent to Anthropic PBC, under our commercial account, to extract structured items and detect contradictions. We pay for that call; you do not bring your own key. It is the only marginal cost in the product, which is why it is the only thing we meter.',
+            '**Checkpointing sends your content to a large language model.** When you checkpoint, the relevant portion of your session is sent to OpenAI, L.L.C., under our commercial account, to extract structured items. If OpenAI is unavailable, the same call goes to Anthropic PBC instead, under our commercial account there. We pay for that call; you do not bring your own key. It is the only marginal cost in the product, which is why it is the only thing we meter.',
+            '**Two things are removed before your session leaves your machine.** Tool output is truncated, and anything matching a credential — an API key, a password, a connection string, a private key — is replaced with a redaction marker. That scanning is best effort and not a guarantee: treat it as a second line of defence, not a reason to paste a secret into a session.',
+            'We also send the text of your context items to OpenAI to compute the embeddings that decide what a rehydration returns. Those calls carry the item text and nothing about who you are.',
           ],
         },
         {
@@ -268,7 +279,7 @@ export const PRIVACY: LegalDoc = {
           kind: 'text',
           paragraphs: [
             'That distinction is deliberate and we intend to keep it. If it ever changes, it will change by advance written notice and, where consent is the lawful basis, by asking you, not by an edit to this page.',
-            'Our agreement with Anthropic prohibits them from training their models on data submitted through our commercial account. We do not control Anthropic’s own practices beyond that contract, and their terms are worth reading if this matters to you.',
+            'Our agreements with OpenAI and with Anthropic both prohibit them from training their models on data submitted through our commercial accounts. We do not control either company’s own practices beyond those contracts, and their terms are worth reading if this matters to you.',
             '**Extraction is automated, but it does not decide anything about you.** It produces suggestions you confirm, edit, or reject. No legal or similarly significant decision about any person is made by automated means, so the right to object to solely automated decision-making under Article 22 of the GDPR does not arise. If that ever changes, we will say so here first.',
           ],
         },

@@ -1,14 +1,26 @@
 import type {
   Actor,
   HostedIdentity,
+  HttpTransport,
   NewContextItem,
   RemoteStore,
   ScopedStore,
+  Trajectory,
   Uuid,
 } from '@mneia/core';
-import { createHttpTransport, createRemoteStore, fetchIdentity, resolveProject } from '@mneia/core';
+import {
+  CheckpointProposalWireSchema,
+  createHttpTransport,
+  createRemoteStore,
+  discoverTrajectories,
+  fetchIdentity,
+  readTrajectory,
+  readTrajectoryFile,
+  reduceTrajectory,
+  resolveProject,
+} from '@mneia/core';
+import { z } from 'zod';
 import { CliError } from './command.js';
-import { resolveToken } from './config.js';
 import type { BriefApi, BriefRequest, ProjectConfig } from './commands/brief.js';
 import type {
   CheckpointApi,
@@ -21,12 +33,14 @@ import type {
 } from './commands/checkpoint.js';
 import type { LogApi, LogPage, LogRequest } from './commands/log.js';
 import type { StatusApi, StatusReport, StatusRequest } from './commands/status.js';
+import { resolveToken } from './config.js';
 
 const STATUS_ITEM_LIMIT = 500;
 
 interface Connection {
   readonly store: RemoteStore;
   readonly identity: HostedIdentity;
+  readonly transport: HttpTransport;
 }
 
 async function connect(config: ProjectConfig): Promise<Connection> {
@@ -37,7 +51,27 @@ async function connect(config: ProjectConfig): Promise<Connection> {
     transport,
     scope: { workspaceId: identity.workspaceId, actorId: identity.actorId },
   });
-  return { store, identity };
+  return { store, identity, transport };
+}
+
+const ProposalEnvelope = z.object({ proposal: CheckpointProposalWireSchema });
+
+export async function selectTrajectory(cwd: string): Promise<Trajectory> {
+  const discovered = await discoverTrajectories({ cwd, limit: 1 });
+  const usable = discovered.find((entry) => entry.unavailable === null);
+
+  if (usable === undefined) {
+    const blocked = discovered
+      .filter((entry) => entry.unavailable !== null)
+      .map((entry) => `${entry.source}: ${entry.unavailable}`);
+    throw new CliError(
+      'not_configured',
+      `mneia checkpoint found no agent session for ${cwd}${blocked.length === 0 ? '' : ` (${blocked.join('; ')})`}`,
+      'run this from the directory your agent session is working in, or pass a transcript with --from-file',
+    );
+  }
+
+  return readTrajectory(usable.source, usable.sessionRef);
 }
 
 async function requireProject(store: ScopedStore, config: ProjectConfig, command: string) {
@@ -134,15 +168,48 @@ const actionFor = (entry: CommitEntry) =>
 
 export const httpCheckpointApi: CheckpointApi = {
   async propose(request: ProposeRequest): Promise<CheckpointProposal> {
-    const { store, identity } = await connect(request.config);
-    const project = await requireProject(store, request.config, 'checkpoint');
+    const { transport } = await connect(request.config);
+
+    const trajectory =
+      request.fromFile === undefined
+        ? await selectTrajectory(request.cwd ?? process.cwd())
+        : await readTrajectoryFile(request.fromFile);
+
+    const reduced = reduceTrajectory(trajectory);
+
+    const { proposal } = await transport.request('/api/v1/checkpoints/propose', ProposalEnvelope, {
+      project: request.config.project,
+      source: reduced.trajectory.source,
+      sessionRef: reduced.trajectory.sessionRef,
+      trigger: request.trigger,
+      turns: reduced.trajectory.turns.map((turn) => ({
+        ref: turn.ref,
+        role: turn.role,
+        kind: turn.kind,
+        text: turn.text,
+        toolName: turn.toolName,
+        at: turn.at === null ? null : turn.at.toISOString(),
+      })),
+    });
 
     return {
-      workspaceId: identity.workspaceId,
-      projectId: project.id,
-      actorId: identity.actorId,
+      workspaceId: proposal.workspaceId,
+      projectId: proposal.projectId,
+      actorId: proposal.actorId,
       sessionId: null,
-      candidates: [],
+      source: reduced.trajectory.source,
+      sourceSessionRef: reduced.trajectory.sessionRef,
+      watermark: proposal.watermark,
+      candidates: proposal.candidates.map((candidate) => ({
+        index: candidate.index,
+        kind: candidate.kind,
+        title: candidate.title,
+        body: candidate.body,
+        confidence: candidate.confidence,
+        loadBearing: candidate.loadBearing,
+        accessScope: candidate.accessScope,
+        supersedes: null,
+      })),
     };
   },
 
@@ -171,6 +238,9 @@ export const httpCheckpointApi: CheckpointApi = {
         actorId: identity.actorId,
         trigger: request.trigger,
         summary: request.summary,
+        source: request.source ?? null,
+        sourceSessionRef: request.sourceSessionRef ?? null,
+        sourceWatermark: request.watermark ?? null,
       },
       items: entries.map((entry) => ({
         action: actionFor(entry),

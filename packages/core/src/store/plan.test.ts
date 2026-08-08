@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AppliedMigration, Migration } from './migrations/index.js';
-import { MigrationError, checksumOf, planMigrations } from './plan.js';
+import { checksumOf, MigrationError, planMigrations } from './plan.js';
 
 const migration = (version: number, sql = `SELECT ${version};`): Migration => ({
   version,

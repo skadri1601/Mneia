@@ -2,7 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TELEMETRY_ENV_VAR, createTelemetryEmitter } from './emitter.js';
+import { createTelemetryEmitter, TELEMETRY_ENV_VAR } from './emitter.js';
 import { isRedactedKey } from './redact.js';
 import { createJsonlSink } from './sinks/jsonl.js';
 import { createMemorySink } from './sinks/memory.js';

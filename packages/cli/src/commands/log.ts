@@ -1,8 +1,8 @@
 import type { Actor, ActorKind, ContextItem, ItemKind, ItemStatus, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
-import { httpLogApi } from '../http-api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
+import { httpLogApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
 
 export interface LogRequest {

@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 28
+-- schema version: 29
 
 -- extensions
 
@@ -131,7 +131,10 @@ CREATE TABLE checkpoint (
   input_tokens integer,
   output_tokens integer,
   cost_micros bigint,
-  extraction_duration_ms integer
+  extraction_duration_ms integer,
+  source text,
+  source_session_ref text,
+  source_watermark text
 );
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_actor_id_not_null NOT NULL actor_id;
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_created_at_not_null NOT NULL created_at;
@@ -141,6 +144,8 @@ ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_pkey PRIMARY KEY (id);
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_project_id_not_null NOT NULL project_id;
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_review_is_whole CHECK (((review_state = 'reviewed'::checkpoint_review_state) = ((reviewed_at IS NOT NULL) AND (reviewed_by IS NOT NULL))));
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_review_state_not_null NOT NULL review_state;
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_source_fields_are_not_blank CHECK ((((source IS NULL) OR (source <> ''::text)) AND ((source_session_ref IS NULL) OR (source_session_ref <> ''::text)) AND ((source_watermark IS NULL) OR (source_watermark <> ''::text))));
+ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_source_watermark_needs_a_session CHECK (((source_watermark IS NULL) OR ((source IS NOT NULL) AND (source_session_ref IS NOT NULL))));
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_token_counts_are_not_negative CHECK ((((input_tokens IS NULL) OR (input_tokens >= 0)) AND ((output_tokens IS NULL) OR (output_tokens >= 0)) AND ((cost_micros IS NULL) OR (cost_micros >= 0)) AND ((extraction_duration_ms IS NULL) OR (extraction_duration_ms >= 0))));
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_trigger_not_null NOT NULL trigger;
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_actor_id_fkey FOREIGN KEY (workspace_id, actor_id) REFERENCES actor(workspace_id, id);
@@ -151,6 +156,7 @@ ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_project_id_fkey FO
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_reviewed_by_fkey FOREIGN KEY (workspace_id, reviewed_by) REFERENCES actor(workspace_id, id);
 ALTER TABLE checkpoint ADD CONSTRAINT checkpoint_workspace_id_session_id_fkey FOREIGN KEY (workspace_id, session_id) REFERENCES session(workspace_id, id);
 CREATE INDEX checkpoint_pending_review_idx ON public.checkpoint USING btree (workspace_id, project_id, created_at DESC) WHERE (review_state = 'pending'::checkpoint_review_state);
+CREATE INDEX checkpoint_source_resume_idx ON public.checkpoint USING btree (workspace_id, source, source_session_ref, created_at DESC) WHERE (source_session_ref IS NOT NULL);
 CREATE INDEX checkpoint_workspace_id_project_id_created_at_idx ON public.checkpoint USING btree (workspace_id, project_id, created_at DESC);
 CREATE INDEX checkpoint_workspace_id_session_id_idx ON public.checkpoint USING btree (workspace_id, session_id);
 ALTER TABLE checkpoint ENABLE ROW LEVEL SECURITY;
@@ -175,6 +181,36 @@ CREATE INDEX checkpoint_item_item_id_idx ON public.checkpoint_item USING btree (
 ALTER TABLE checkpoint_item ENABLE ROW LEVEL SECURITY;
 ALTER TABLE checkpoint_item FORCE ROW LEVEL SECURITY;
 CREATE POLICY checkpoint_item_workspace_isolation ON checkpoint_item USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE checkpoint_usage (
+  id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  checkpoint_id uuid,
+  model text NOT NULL,
+  input_tokens integer NOT NULL,
+  output_tokens integer NOT NULL,
+  duration_ms integer NOT NULL,
+  outcome text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_created_at_not_null NOT NULL created_at;
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_duration_ms_not_null NOT NULL duration_ms;
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_id_not_null NOT NULL id;
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_input_tokens_not_null NOT NULL input_tokens;
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_measurements_are_not_negative CHECK (((input_tokens >= 0) AND (output_tokens >= 0) AND (duration_ms >= 0)));
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_model_is_not_blank CHECK ((model <> ''::text));
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_model_not_null NOT NULL model;
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_outcome_is_known CHECK ((outcome = ANY (ARRAY['succeeded'::text, 'failed'::text, 'fell_back'::text])));
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_outcome_not_null NOT NULL outcome;
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_output_tokens_not_null NOT NULL output_tokens;
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_pkey PRIMARY KEY (id);
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_workspace_id_checkpoint_id_fkey FOREIGN KEY (workspace_id, checkpoint_id) REFERENCES checkpoint(workspace_id, id);
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_workspace_id_not_null NOT NULL workspace_id;
+CREATE INDEX checkpoint_usage_metering_idx ON public.checkpoint_usage USING btree (workspace_id, created_at);
+ALTER TABLE checkpoint_usage ENABLE ROW LEVEL SECURITY;
+ALTER TABLE checkpoint_usage FORCE ROW LEVEL SECURITY;
+CREATE POLICY checkpoint_usage_workspace_isolation ON checkpoint_usage USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
 
 CREATE TABLE conflict (
   id uuid NOT NULL,

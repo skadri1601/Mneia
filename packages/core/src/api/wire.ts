@@ -18,6 +18,7 @@ import {
   ITEM_KINDS,
   ITEM_STATUSES,
 } from '../store/schema.js';
+import { TRAJECTORY_SOURCES, TURN_KINDS, TURN_ROLES } from '../trajectory/types.js';
 
 export const MAX_ITEM_LIMIT = 1000;
 export const MAX_TITLE_LENGTH = 300;
@@ -400,6 +401,9 @@ export const CheckpointWriteWireSchema = z.object({
       .refine(isStorableText, NO_NULL_BYTE)
       .nullable()
       .optional(),
+    source: z.enum(TRAJECTORY_SOURCES).nullable().optional(),
+    sourceSessionRef: z.string().max(300).nullable().optional(),
+    sourceWatermark: z.string().max(300).nullable().optional(),
   }),
   items: z
     .array(
@@ -421,3 +425,54 @@ export const RehydrateRequestWireSchema = z.object({
 });
 
 export type RehydrateRequestWire = z.infer<typeof RehydrateRequestWireSchema>;
+
+export const MAX_TRAJECTORY_TURNS = 5000;
+export const MAX_TURN_TEXT_LENGTH = 200_000;
+
+export const TrajectoryTurnWireSchema = z.object({
+  ref: z.string().min(1).max(300),
+  role: z.enum(TURN_ROLES),
+  kind: z.enum(TURN_KINDS),
+  text: z.string().max(MAX_TURN_TEXT_LENGTH).refine(isStorableText, NO_NULL_BYTE),
+  toolName: z.string().max(200).refine(isStorableText, NO_NULL_BYTE).nullable().optional(),
+  at: isoDate.nullable().optional(),
+});
+
+export type TrajectoryTurnWire = z.infer<typeof TrajectoryTurnWireSchema>;
+
+export const CheckpointProposeWireSchema = z.object({
+  project: z.string().min(1),
+  source: z.enum(TRAJECTORY_SOURCES),
+  sessionRef: z.string().min(1).max(300),
+  trigger: z.enum(CHECKPOINT_TRIGGERS),
+  turns: z.array(TrajectoryTurnWireSchema).min(1).max(MAX_TRAJECTORY_TURNS),
+});
+
+export type CheckpointProposeWire = z.infer<typeof CheckpointProposeWireSchema>;
+
+export const ProposedCandidateWireSchema = z.object({
+  index: z.number().int().min(0),
+  kind: z.enum(ITEM_KINDS),
+  title: z.string(),
+  body: z.string().nullable(),
+  rationale: z.string().nullable(),
+  confidence: z.number().min(0).max(1),
+  loadBearing: z.boolean(),
+  accessScope: z.enum(ACCESS_SCOPES),
+  sourceRef: z.string().nullable(),
+});
+
+export type ProposedCandidateWire = z.infer<typeof ProposedCandidateWireSchema>;
+
+export const CheckpointProposalWireSchema = z.object({
+  workspaceId: uuid,
+  projectId: uuid,
+  actorId: uuid,
+  candidates: z.array(ProposedCandidateWireSchema),
+  rejectedCount: z.number().int().min(0),
+  watermark: z.string().nullable(),
+  consumedTurns: z.number().int().min(0),
+  model: z.string(),
+});
+
+export type CheckpointProposalWire = z.infer<typeof CheckpointProposalWireSchema>;

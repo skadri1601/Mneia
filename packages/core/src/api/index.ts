@@ -1,7 +1,7 @@
-export type { HostedIdentity } from './identity.js';
-export { fetchIdentity } from './identity.js';
 export type { ApiErrorCode, FetchLike, HttpTransport, HttpTransportOptions } from './http.js';
 export { API_ERROR_CODES, ApiError, ApiErrorWireSchema, createHttpTransport } from './http.js';
+export type { HostedIdentity } from './identity.js';
+export { fetchIdentity } from './identity.js';
 export type {
   RemoteRehydrateRequest,
   RemoteStore,
@@ -11,6 +11,8 @@ export { createRemoteStore } from './remote-store.js';
 export type {
   ActorWire,
   CheckpointItemWire,
+  CheckpointProposalWire,
+  CheckpointProposeWire,
   CheckpointWire,
   CheckpointWriteResultWire,
   CheckpointWriteWire,
@@ -19,33 +21,24 @@ export type {
   ContextItemWire,
   NewContextItemWire,
   ProjectWire,
+  ProposedCandidateWire,
   RehydrateRequestWire,
   ScoredItemWire,
   SessionWire,
   SliceWire,
+  TrajectoryTurnWire,
 } from './wire.js';
 export {
   ActorWireSchema,
   CheckpointItemWireSchema,
+  CheckpointProposalWireSchema,
+  CheckpointProposeWireSchema,
   CheckpointWireSchema,
   CheckpointWriteResultWireSchema,
   CheckpointWriteWireSchema,
   ContextItemFilterWireSchema,
   ContextItemSearchWireSchema,
   ContextItemWireSchema,
-  MAX_BODY_LENGTH,
-  MAX_CHECKPOINT_ITEMS,
-  MAX_ITEM_LIMIT,
-  MAX_SOURCE_REF_LENGTH,
-  MAX_TITLE_LENGTH,
-  MAX_TOKEN_BUDGET,
-  MIN_TOKEN_BUDGET,
-  NewContextItemWireSchema,
-  ProjectWireSchema,
-  RehydrateRequestWireSchema,
-  ScoredItemWireSchema,
-  SessionWireSchema,
-  SliceWireSchema,
   decodeActor,
   decodeCheckpoint,
   decodeCheckpointItem,
@@ -64,4 +57,20 @@ export {
   encodeScoredItem,
   encodeSession,
   encodeSlice,
+  MAX_BODY_LENGTH,
+  MAX_CHECKPOINT_ITEMS,
+  MAX_ITEM_LIMIT,
+  MAX_SOURCE_REF_LENGTH,
+  MAX_TITLE_LENGTH,
+  MAX_TOKEN_BUDGET,
+  MAX_TRAJECTORY_TURNS,
+  MIN_TOKEN_BUDGET,
+  NewContextItemWireSchema,
+  ProjectWireSchema,
+  ProposedCandidateWireSchema,
+  RehydrateRequestWireSchema,
+  ScoredItemWireSchema,
+  SessionWireSchema,
+  SliceWireSchema,
+  TrajectoryTurnWireSchema,
 } from './wire.js';

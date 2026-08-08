@@ -3,7 +3,7 @@ import type { ContextItem, Uuid } from '../domain/types.js';
 import type { ItemKind, ItemStatus } from '../store/schema.js';
 import { ITEM_KINDS, ITEM_STATUSES } from '../store/schema.js';
 import { DEFAULT_KIND_QUOTAS, isMandatoryItem, packSlice, sliceOverflow } from './pack.js';
-import { type TokenCounter, countItemTokens } from './tokens.js';
+import { countItemTokens, type TokenCounter } from './tokens.js';
 import type { KindQuotas, ScoreComponents, ScoredItem } from './types.js';
 
 const counter: TokenCounter = { name: 'char-length', count: (text) => text.length };

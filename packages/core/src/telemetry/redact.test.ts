@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { REDACTED_KEYS, isRedactedKey, redactEvent } from './redact.js';
+import { isRedactedKey, REDACTED_KEYS, redactEvent } from './redact.js';
 import type { TelemetryEvent } from './types.js';
 
 const occurredAt = new Date('2026-08-01T09:00:00.000Z');
