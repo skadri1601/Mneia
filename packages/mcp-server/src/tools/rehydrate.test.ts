@@ -799,6 +799,37 @@ describe('mneia_rehydrate errors', () => {
     expect(telemetry.events).toHaveLength(0);
   });
 
+  it('reads the project this server is bound to when the call omits one', async () => {
+    const fake = createStore();
+    const telemetry = createTelemetry();
+    const result = await rehydrateTool.run(
+      rehydrateTool.parse({ task: ORDINARY_TASK }),
+      createToolContextFixture(fake.store, telemetry.emitter, {
+        now: NOW,
+        defaultProject: 'payments-migration',
+      }),
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result).length).toBeGreaterThan(0);
+  });
+
+  it('names the bound project, not undefined, when the bound project is missing', async () => {
+    const fake = createStore({ project: null });
+    const telemetry = createTelemetry();
+    const result = await rehydrateTool.run(
+      rehydrateTool.parse({ task: ORDINARY_TASK }),
+      createToolContextFixture(fake.store, telemetry.emitter, {
+        now: NOW,
+        defaultProject: 'bound-but-missing',
+      }),
+    );
+
+    expect(errorCodeOf(result)).toBe('project_not_found');
+    expect(textOf(result)).toContain('"bound-but-missing"');
+    expect(textOf(result)).not.toContain('undefined');
+  });
+
   it('distinguishes an unreachable store from a bad argument', async () => {
     const fake = createStore({ failOn: 'searchContextItems' });
     const telemetry = createTelemetry();

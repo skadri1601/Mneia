@@ -42,6 +42,17 @@ const readString = (source: Readonly<Record<string, unknown>>, key: string): str
   return typeof value === 'string' ? value : '';
 };
 
+const readErrorMessage = (source: Readonly<Record<string, unknown>>): string => {
+  const envelope = source.error;
+  if (typeof envelope === 'object' && envelope !== null) {
+    const message = Reflect.get(envelope, 'message');
+    if (typeof message === 'string' && message.length > 0) {
+      return message;
+    }
+  }
+  return readString(source, 'error_description');
+};
+
 const readNumber = (
   source: Readonly<Record<string, unknown>>,
   key: string,
@@ -212,7 +223,7 @@ export async function fetchIdentity(
   const body = await parseJson(response);
 
   if (response.status === 401) {
-    const description = readString(body, 'error_description');
+    const description = readErrorMessage(body);
     throw new CliError(
       'auth',
       description === '' ? 'that token is not valid' : description,

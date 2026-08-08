@@ -1,21 +1,12 @@
-import { bearerTokenFrom, hashSecret, headerSafe } from '../../../server/device-codes.js';
+import { bearerTokenFrom, hashSecret } from '../../../server/device-codes.js';
 import { deviceStore } from '../../../server/device-runtime.js';
 import { DeviceError } from '../../../server/store/device-store.js';
+import { apiError } from '../../../server/api-auth.js';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const unauthorized = (description: string): Response =>
-  Response.json(
-    { error: 'invalid_token', error_description: description },
-    {
-      status: 401,
-      headers: {
-        'cache-control': 'no-store',
-        'www-authenticate': `Bearer error="invalid_token", error_description="${headerSafe(description)}"`,
-      },
-    },
-  );
+const unauthorized = (description: string): Response => apiError('invalid_token', description);
 
 export async function GET(request: Request): Promise<Response> {
   const token = bearerTokenFrom(request.headers.get('authorization'));

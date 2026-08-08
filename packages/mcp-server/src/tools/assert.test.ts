@@ -454,6 +454,23 @@ describe('mneia_assert input validation', () => {
     );
   });
 
+  it('rejects a null byte as bad input rather than letting Postgres reject it as an outage', () => {
+    const nullByte = String.fromCharCode(0);
+
+    const inTitle = messageOf(() =>
+      assertTool.parse({ ...MINIMAL_RAW, title: `before${nullByte}after` }),
+    );
+    expect(inTitle).toContain('[invalid_input]');
+    expect(inTitle).toContain('title');
+    expect(inTitle).toContain('null byte');
+
+    const inBody = messageOf(() =>
+      assertTool.parse({ ...MINIMAL_RAW, body: `before${nullByte}after` }),
+    );
+    expect(inBody).toContain('[invalid_input]');
+    expect(inBody).toContain('body');
+  });
+
   it('rejects an unknown kind and lists the five it accepts', () => {
     const message = messageOf(() => assertTool.parse({ ...MINIMAL_RAW, kind: 'memory' }));
     expect(message).toContain('kind must be one of');

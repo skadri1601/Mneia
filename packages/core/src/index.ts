@@ -17,6 +17,7 @@ export type {
   Uuid,
   Workspace,
 } from './domain/types.js';
+export { isStorableText, NULL_BYTE_ERROR } from './domain/text.js';
 export type {
   SupersedeBlockedOutcome,
   SupersedeOutcome,
