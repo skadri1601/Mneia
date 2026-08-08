@@ -8,6 +8,7 @@ import type {
   ContextItemWire,
   Embedding,
   EmbeddingProvider,
+  NewProjectWire,
   ProjectWire,
   RehydrateRequestWire,
   ScopedStore,
@@ -61,6 +62,31 @@ export const handleGetProject = async (
 ): Promise<{ project: ProjectWire | null }> => {
   const project = await store.getProject(id);
   return { project: project === null ? null : encodeProject(project) };
+};
+
+export const handleCreateProject = async (
+  store: ScopedStore,
+  input: NewProjectWire,
+): Promise<{ project: ProjectWire; created: boolean }> => {
+  const existing = await store.getProjectBySlug(input.slug);
+  if (existing !== null) {
+    return { project: encodeProject(existing), created: false };
+  }
+
+  try {
+    const project = await store.createProject({
+      slug: input.slug,
+      displayName: input.displayName,
+      repoUrl: input.repoUrl ?? null,
+    });
+    return { project: encodeProject(project), created: true };
+  } catch (error) {
+    const raced = await store.getProjectBySlug(input.slug);
+    if (raced === null) {
+      throw error;
+    }
+    return { project: encodeProject(raced), created: false };
+  }
 };
 
 export const handleGetProjectBySlug = async (

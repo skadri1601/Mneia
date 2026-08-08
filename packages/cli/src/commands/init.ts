@@ -21,6 +21,7 @@ import {
   type WriteBackResult,
   writeGeneratedSection,
 } from '../interop.js';
+import { httpInitApi } from '../http-api.js';
 
 export interface AttachRequest {
   readonly workspace: string | null;
@@ -432,19 +433,8 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
   };
 }
 
-const unwiredApi: InitApi = {
-  attach: () =>
-    Promise.reject(
-      new CliError(
-        'failed',
-        'the hosted Mneia API client is not wired into this build yet',
-        'the hosted API lands with MNE-101; there is nothing to fix locally',
-      ),
-    ),
-};
-
 export const initCommand: CommandDefinition = createInitCommand({
-  api: unwiredApi,
+  api: httpInitApi,
   loadConfig: (cwd, env) => loadProjectConfig(cwd, env),
   resolveToken: (env) => resolveToken(env),
 });

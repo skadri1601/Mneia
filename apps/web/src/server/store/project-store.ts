@@ -5,6 +5,8 @@ import type { AccountContext } from './account-store.js';
 export type ProjectControlErrorCode =
   | 'invalid_project_id'
   | 'invalid_display_name'
+  | 'invalid_slug'
+  | 'slug_taken'
   | 'invalid_archive_confirmation'
   | 'project_not_found'
   | 'forbidden'
@@ -37,6 +39,11 @@ export interface ListProjectsInput {
   readonly includeArchived: boolean;
 }
 
+export interface CreateProjectInput {
+  readonly slug: string;
+  readonly displayName: string;
+}
+
 export interface RenameProjectInput {
   readonly projectId: string;
   readonly displayName: string;
@@ -53,6 +60,7 @@ export interface ProjectControlStore {
     input: ListProjectsInput,
   ): Promise<readonly ManagedProject[]>;
   getProject(account: AccountContext, projectId: string): Promise<ManagedProject>;
+  createProject(account: AccountContext, input: CreateProjectInput): Promise<ManagedProject>;
   renameProject(account: AccountContext, input: RenameProjectInput): Promise<ManagedProject>;
   archiveProject(account: AccountContext, input: ArchiveProjectInput): Promise<ManagedProject>;
 }

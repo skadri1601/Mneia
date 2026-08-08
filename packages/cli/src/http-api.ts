@@ -31,6 +31,7 @@ import type {
   ProposeRequest,
   ReviewedCandidate,
 } from './commands/checkpoint.js';
+import type { AttachRequest, AttachResult, InitApi } from './commands/init.js';
 import type { LogApi, LogPage, LogRequest } from './commands/log.js';
 import type { StatusApi, StatusReport, StatusRequest } from './commands/status.js';
 import { resolveToken } from './config.js';
@@ -98,6 +99,78 @@ async function actorsFor(store: ScopedStore, ids: readonly Uuid[]): Promise<read
   const resolved = await Promise.all(unique.map((id) => store.getActor(id)));
   return resolved.filter((actor): actor is Actor => actor !== null);
 }
+
+const displayNameFor = (slug: string): string =>
+  slug
+    .split('-')
+    .filter((part) => part.length > 0)
+    .map((part) => `${part.charAt(0).toUpperCase()}${part.slice(1)}`)
+    .join(' ');
+
+export const httpInitApi: InitApi = {
+  async attach(request: AttachRequest): Promise<AttachResult> {
+    const transport = createHttpTransport({ endpoint: request.endpoint, token: request.token });
+    const identity = await fetchIdentity(transport);
+
+    if (request.workspace !== null && request.workspace !== identity.workspaceSlug) {
+      throw new CliError(
+        'failed',
+        `this token belongs to workspace "${identity.workspaceSlug}", but the binding names "${request.workspace}"`,
+        'run mneia init without --workspace to attach to the workspace your token belongs to',
+      );
+    }
+
+    const store = createRemoteStore({
+      transport,
+      scope: { workspaceId: identity.workspaceId, actorId: identity.actorId },
+    });
+
+    const before = await store.getProjectBySlug(request.project);
+    const project =
+      before ??
+      (await store.createProject({
+        slug: request.project,
+        displayName: displayNameFor(request.project),
+        repoUrl: null,
+      }));
+
+    const constraintsImported =
+      request.constraints.length === 0
+        ? 0
+        : (
+            await store.writeCheckpoint({
+              checkpoint: {
+                projectId: project.id,
+                sessionId: null,
+                actorId: identity.actorId,
+                trigger: 'manual',
+                summary: `Imported ${request.constraints.length} constraints while attaching ${request.project}`,
+                source: null,
+                sourceSessionRef: null,
+                sourceWatermark: null,
+              },
+              items: request.constraints.map((constraint) => ({
+                action: 'created' as const,
+                item: {
+                  projectId: project.id,
+                  kind: 'constraint' as const,
+                  title: constraint.title,
+                  body: constraint.body,
+                  sourceRef: constraint.sourceRef,
+                  loadBearing: true,
+                },
+              })),
+            })
+          ).written.length;
+
+    return {
+      workspace: identity.workspaceSlug,
+      project: project.slug,
+      created: before === null,
+      constraintsImported,
+    };
+  },
+};
 
 export const httpBriefApi: BriefApi = {
   async rehydrate(request: BriefRequest) {

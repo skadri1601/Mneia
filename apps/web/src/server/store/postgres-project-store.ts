@@ -10,6 +10,7 @@ import {
 import type { AccountContext } from './account-store.js';
 import {
   type ArchiveProjectInput,
+  type CreateProjectInput,
   type ListProjectsInput,
   type ManagedProject,
   ProjectControlError,
@@ -94,6 +95,27 @@ export class PostgresProjectStore implements ProjectControlStore {
          WHERE workspace_id = $1 AND id = $2`,
         [account.workspace.id, projectId],
       );
+      return exactlyOneProject(result.rows);
+    });
+  }
+
+  async createProject(account: AccountContext, input: CreateProjectInput): Promise<ManagedProject> {
+    return this.inTransaction(account, async (session) => {
+      const result = await session.execute<SqlRow>(
+        `INSERT INTO project (workspace_id, slug, display_name)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (workspace_id, slug) DO NOTHING
+         RETURNING ${PROJECT_COLUMNS}`,
+        [account.workspace.id, input.slug, input.displayName],
+      );
+
+      if (result.rows.length === 0) {
+        throw new ProjectControlError(
+          'slug_taken',
+          `A project with the binding "${input.slug}" already exists in this workspace`,
+        );
+      }
+
       return exactlyOneProject(result.rows);
     });
   }

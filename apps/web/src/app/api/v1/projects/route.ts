@@ -1,4 +1,9 @@
-import { ApiRequestError, handleGetProjectBySlug } from '../../../../server/api/handlers.js';
+import { NewProjectWireSchema } from '@mneia/core';
+import {
+  ApiRequestError,
+  handleCreateProject,
+  handleGetProjectBySlug,
+} from '../../../../server/api/handlers.js';
 import { serve } from '../../../../server/api/serve.js';
 
 export const dynamic = 'force-dynamic';
@@ -20,3 +25,10 @@ export const GET = (request: Request): Promise<Response> => {
     },
   });
 };
+
+export const POST = (request: Request): Promise<Response> =>
+  serve({
+    request,
+    schema: NewProjectWireSchema,
+    run: (store, input) => handleCreateProject(store, input),
+  });

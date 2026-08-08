@@ -390,6 +390,28 @@ export const NewContextItemWireSchema = z.object({
 
 export type NewContextItemWire = z.infer<typeof NewContextItemWireSchema>;
 
+export const MAX_PROJECT_SLUG_LENGTH = 100;
+export const MAX_PROJECT_DISPLAY_NAME_LENGTH = 128;
+export const MAX_REPO_URL_LENGTH = 500;
+
+export const NewProjectWireSchema = z.object({
+  slug: z.string().trim().min(1).max(MAX_PROJECT_SLUG_LENGTH).refine(isStorableText, NO_NULL_BYTE),
+  displayName: z
+    .string()
+    .trim()
+    .min(1)
+    .max(MAX_PROJECT_DISPLAY_NAME_LENGTH)
+    .refine(isStorableText, NO_NULL_BYTE),
+  repoUrl: z
+    .string()
+    .max(MAX_REPO_URL_LENGTH)
+    .refine(isStorableText, NO_NULL_BYTE)
+    .nullable()
+    .optional(),
+});
+
+export type NewProjectWire = z.infer<typeof NewProjectWireSchema>;
+
 export const CheckpointWriteWireSchema = z.object({
   checkpoint: z.object({
     projectId: uuid,

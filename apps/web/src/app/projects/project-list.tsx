@@ -41,7 +41,8 @@ export function ProjectList({ projects }: ProjectListProps) {
         <section className={styles.emptyState} aria-labelledby="empty-projects-title">
           <h2 id="empty-projects-title">No projects attached yet</h2>
           <p>
-            Run <code>mneia init</code> in a repository to attach your first project.
+            Run <code>mneia init</code> in a repository to attach your first project, or create one
+            below.
           </p>
         </section>
       ) : (
