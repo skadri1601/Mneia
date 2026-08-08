@@ -73,6 +73,25 @@ rewriting a `notFound()` for signed-out visitors. Prefer deriving the value in c
 | `WAITLIST_FROM` | The `From` address on that email. **Use `Mneia <saad@mneia.dev>`, not `hello@`** — Cloudflare Email Routing forwards `saad@` and drops everything unrouted, so replies to `hello@` vanish. Same variable name `apps/site` and `waitlist:notify` already use. |
 | `MNEIA_APP_ORIGIN` | Origin used to build the invitation's `/welcome` redirect. Defaults to `https://app.mneia.dev`. Deliberately **not** `NEXT_PUBLIC_` — see the warning above; a public-prefixed name would be inlined at build time and ignored here. |
 | `MNEIA_SITE_ORIGIN` | Marketing origin used to build unsubscribe links in the access email. Defaults to `https://mneia.dev`. Same reasoning. |
+| `MNEIA_INVITE_FROM` | The `From` address on a **workspace invitation** (MNE-252). Separate from `WAITLIST_FROM` on purpose: an invitation is transactional mail to an address a customer supplied, and it must never be sent from the waitlist identity or recorded in `waitlist_broadcast_send`. Unset means the invitation is still created and the join link still shown, but no email goes out and the inviter is told the send failed. |
+
+## Signup email verification (MNE-250)
+
+**Clerk must require a verified email address before a signup completes.** In the Clerk dashboard:
+*User & Authentication → Email, Phone, Username → Email address → Verify at sign-up*, set to required.
+
+`MNE-173`'s daily inference ceiling is keyed on the **workspace**, so a fresh API token cannot reset
+it. A fresh *account* could: a new Clerk subject means a new `bootstrapSoloAccount`, a new workspace,
+and a clean ceiling. Email verification is the friction that makes cycling cost something.
+
+**The code does not trust that dashboard setting.** `resolveCurrentAccount`
+(`apps/web/src/server/current-account.ts`) refuses with `email_unverified` when the signed-in Clerk
+user has no verified primary address, before any workspace is provisioned. Because both `/welcome`
+and the device-approval page that mints a CLI token resolve the account through that one function,
+neither is reachable without a verified address — so the invariant holds even if the dashboard toggle
+is switched off later. `current-account.test.ts` covers it.
+
+Keep both: the dashboard setting stops the signup, and the guard stops the provisioning.
 
 GitHub Actions secrets, for `deploy-web.yml`:
 

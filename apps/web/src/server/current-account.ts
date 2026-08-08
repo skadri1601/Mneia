@@ -4,6 +4,7 @@ import { auth, currentUser } from '@clerk/nextjs/server';
 import { cache } from 'react';
 import { bootstrapSoloAccount, redeemInvitation } from './account.js';
 import { database } from './database.js';
+import { AccountError } from './store/account-store.js';
 import type { AccountContext, AccountStore } from './store/account-store.js';
 import { PostgresAccountStore } from './store/postgres-account-store.js';
 import { readSelectedWorkspace } from './workspace-selection.js';
@@ -63,6 +64,15 @@ export const resolveCurrentAccount = async (
   });
   if (joined !== null) {
     return joined;
+  }
+
+  if (verifiedEmail === null) {
+    throw new AccountError(
+      'email_unverified',
+      'expected the signed-in user to have a verified primary email address before a workspace is provisioned; found none — ' +
+        'the MNE-173 daily inference ceiling is keyed on the workspace, so provisioning one per unverified signup would let ' +
+        'account cycling reset it. Verify the address and reload.',
+    );
   }
 
   const preferredWorkspaceId = (await dependencies.readSelectedWorkspace?.()) ?? null;

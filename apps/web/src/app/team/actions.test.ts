@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   listPendingInvitations: vi.fn(),
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
+  deliverInvitationEmail: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -25,6 +26,10 @@ vi.mock('../../server/current-account.js', () => ({
 }));
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
+vi.mock('../../server/invitation-runtime.js', () => ({
+  deliverInvitationEmail: mocks.deliverInvitationEmail,
+  joinUrl: (token: string) => `https://app.mneia.dev/join/${token}`,
+}));
 
 import { AccountError } from '../../server/account.js';
 import { inviteTeammateAction, revokeInvitationAction } from './actions.js';
@@ -99,6 +104,40 @@ describe('inviteTeammateAction', () => {
       acceptedAt: null,
       revokedAt: null,
     });
+    mocks.deliverInvitationEmail.mockResolvedValue({
+      delivered: true,
+      providerId: 'resend-1',
+      detail: null,
+    });
+  });
+
+  it('emails the invited address the join link, and says so', async () => {
+    await inviteTeammateAction(form({ email: 'Grace@Example.com', role: 'member' }));
+
+    expect(mocks.deliverInvitationEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'grace@example.com',
+        invitationId: INVITATION_ID,
+        workspaceName: 'Ada Lovelace',
+        inviterName: 'Ada Lovelace',
+        role: 'member',
+      }),
+    );
+    const sent = mocks.deliverInvitationEmail.mock.calls[0]?.[0] as { joinUrl: string };
+    expect(sent.joinUrl).toMatch(/^https:\/\/app\.mneia\.dev\/join\//);
+    expect(destination()).toMatch(/^\/team\?notice=invited&token=/);
+  });
+
+  it('reports a failed send and keeps the link recoverable, rather than losing the invitation', async () => {
+    mocks.deliverInvitationEmail.mockResolvedValue({
+      delivered: false,
+      providerId: null,
+      detail: 'Resend returned 422 Unprocessable Entity',
+    });
+
+    await inviteTeammateAction(form({ email: 'grace@example.com', role: 'member' }));
+
+    expect(destination()).toMatch(/^\/team\?error=invite_email_failed&token=/);
   });
 
   it('scopes the invitation to the signed-in account rather than the form', async () => {
@@ -120,7 +159,7 @@ describe('inviteTeammateAction', () => {
         role: 'member',
       }),
     );
-    expect(destination()).toMatch(/^\/team\?token=/);
+    expect(destination()).toMatch(/^\/team\?notice=invited&token=/);
   });
 
   it.each([

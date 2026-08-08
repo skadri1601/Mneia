@@ -8,6 +8,7 @@ import {
   inviteTeammate,
 } from '../../server/account.js';
 import { accountStore, getCurrentAccount } from '../../server/current-account.js';
+import { deliverInvitationEmail, joinUrl } from '../../server/invitation-runtime.js';
 
 const textField = (formData: FormData, name: string): string => {
   const value = formData.get(name);
@@ -31,7 +32,7 @@ export async function inviteTeammateAction(formData: FormData): Promise<void> {
 
   try {
     const account = await getCurrentAccount();
-    const { token } = await inviteTeammate({
+    const { invitation, token } = await inviteTeammate({
       workspaceId: account.workspace.id,
       teamId: account.team.id,
       invitedByActorId: account.actor.id,
@@ -40,7 +41,19 @@ export async function inviteTeammateAction(formData: FormData): Promise<void> {
       role: textField(formData, 'role'),
       store: accountStore,
     });
-    destination = `/team?token=${encodeURIComponent(token)}`;
+
+    const delivery = await deliverInvitationEmail({
+      to: invitation.invitedEmail,
+      invitationId: invitation.id,
+      workspaceName: account.workspace.displayName,
+      inviterName: account.actor.displayName,
+      role: invitation.role,
+      joinUrl: joinUrl(token),
+    });
+
+    destination = delivery.delivered
+      ? `/team?notice=invited&token=${encodeURIComponent(token)}`
+      : `/team?error=invite_email_failed&token=${encodeURIComponent(token)}`;
   } catch (error) {
     if (error instanceof AccountError && INVITE_FAILURES.has(error.code)) {
       destination = `/team?error=${error.code}`;

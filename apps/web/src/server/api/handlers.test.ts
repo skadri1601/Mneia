@@ -81,6 +81,7 @@ const harness = (scopedActor: Actor | null, written: readonly ContextItem[]): Ha
         },
         items: [],
         written,
+        conflicts: [],
       };
     },
   } as unknown as ScopedStore;
