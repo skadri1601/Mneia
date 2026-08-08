@@ -697,9 +697,20 @@ Numbering is preserved after the ruling on purpose — other sections cite these
 | 1 | ~~Who pays for inference?~~ **RULED 2026-07-29: we do.** BYOK rejected on every tier — see §14.1. | MNE-174 ✅ | Settled the model, not the number. The allowance still has to be sized against measured cost (MNE-180). |
 | 2 | **Does the CLI need a read cache after all?** | MNE-175 | Decided by whether hosted rehydrate can meet §12.1's 300ms p95. Currently an assumption, not a measurement. **Measure before building the cache** — a cache reintroduces exactly the staleness §11.1 was worth having for removing. |
 | 3 | ~~Multi-tenancy model.~~ **RULED 2026-07-31: shared schema, `workspace_id` on every row, Postgres RLS mandatory.** See §11.3. | MNE-172 ✅ | Settled the model, not the enforcement. RLS and the cross-workspace invariant test are now hard gates on MNE-42 and MNE-44. |
-| 4 | **Where embeddings are computed**, and by whom. | MNE-176 | Settled on *where* — server-side, at write time. Open on *which vendor*: Anthropic has no embeddings endpoint, so this is a separate procurement decision. |
+| 4 | ~~Embedding vendor and dimensions.~~ **RULED 2026-08-08: `openai:text-embedding-3-small` at 1536 dimensions.** | MNE-176 ✅ | Settled. Chosen for latency inside the §12.1 budget and for matching the dimension the schema already carries, not for benchmark position — see below. |
 | 5 | **Rate limiting and abuse.** A CI loop can call checkpoint indefinitely. | MNE-173 | Directly protects the margin in §14, and it is a hard gate on MNE-105. An unmetered public endpoint that runs inference on request loses money non-linearly. |
 | 6 | **What "open source" now means** when the server is proprietary. | MNE-177 | §16's distribution depends on the answer being one the compaction-thread audience accepts. The risk is not being closed — it is being called out for describing closed as open. |
+
+**Why `text-embedding-3-small`, and what would change it.** The binding constraint is not cost or index
+size — at a corpus of hundreds to low thousands of items per project both are rounding errors. It is
+that **rehydrate must embed the incoming task inside the §12.1 300ms p95 budget**, which puts a vendor
+round trip on the hot path. 1536 is also the dimension `context_item_embedding`, `EMBEDDING_DIMENSIONS`
+and every fixture already assume, so the ruling costs no migration.
+
+This is the reversible half of the decision. `context_item_embedding` is keyed `(item_id, model)`
+precisely so a better model can be backfilled with both queryable at once. **Revisit when MNE-116's eval
+harness can measure retrieval quality on real items** — until then a benchmark-led choice would be a
+preference, not a measurement.
 
 **Question 1 gated the other five, and the ruling went the expensive way.** Because we pay for inference,
 none of the relief a BYOK answer would have provided arrives: **5 is the full margin guard rather than
@@ -1013,6 +1024,8 @@ Things not yet settled. Resolve deliberately, do not drift into them.
 9. **What a paying customer gets before Month 6.** Billing plumbing now exists in the first milestone, but most of §14's Team tier — roles, conflict resolution, team handoffs — does not. Thinner tier, early-access price, or dark plumbing? Tracked on MNE-26. **Do not ship a checkout page until this is answered.**
 10. ~~**Multi-tenancy model.**~~ **RESOLVED 2026-07-31: shared schema, `workspace_id` on every row, RLS mandatory.** See §11.3 and MNE-172. Schema-per-tenant was rejected because §5 Stage 4's cross-team read path is a product requirement it fights. The consequence is that RLS policies and MNE-169's cross-workspace invariant test are hard gates on MNE-42, MNE-43, and MNE-44 rather than follow-ups.
 11. ~~**Identity provider.**~~ **RESOLVED 2026-08-01: Clerk.** Clerk is the single identity provider for the web app, CLI, and MCP. Mneia's own Postgres model remains the authorization source of truth: Clerk user ids map to actors, and workspace, team, and scope enforcement stays behind RLS. The CLI and MCP receive Mneia device-flow tokens only after approval in a Clerk-authenticated web session. See MNE-166.
+12. ~~**Embedding vendor and dimensions.**~~ **RESOLVED 2026-08-08: `openai:text-embedding-3-small` at 1536.** See §11.2 item 4 and MNE-176. Chosen because rehydrate must embed the task inside §12.1's 300ms budget and because 1536 is the dimension the schema already carries. Deliberately reversible: `context_item_embedding` is keyed `(item_id, model)` so a better model can be backfilled with both queryable at once. Revisit when MNE-116 can measure retrieval quality.
+13. ~~**One person, many workspaces.**~~ **RESOLVED 2026-08-08: full multi-workspace membership.** See MNE-251. A person is an `identity`; an `actor` is that person inside one workspace; `workspace_member` carries the role. The web session selects which workspace is active. **The CLI and MCP server need no workspace flag** — an `api_token` already carries `workspace_id`, so the token *is* the binding, and a device approval claims the workspace that was active in the browser at approval time. Rejected: absorbing the invitee's empty solo workspace, which is destructive and only covers one case; and a support script, which does not survive self-serve.
 
 ---
 
