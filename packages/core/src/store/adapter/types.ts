@@ -13,6 +13,7 @@ import type {
 } from '../../domain/types.js';
 import type {
   AccessScope,
+  ActorKind,
   CheckpointAction,
   CheckpointTrigger,
   ConflictResolution,
@@ -74,6 +75,58 @@ export interface ConfirmContextItemInput {
   readonly accessScope?: AccessScope;
   readonly title?: string;
   readonly body?: string | null;
+}
+
+export interface PendingReviewFilter {
+  readonly projectId: Uuid;
+  readonly limit?: number;
+}
+
+export interface PendingReviewItem {
+  readonly id: Uuid;
+  readonly projectId: Uuid;
+  readonly kind: ItemKind;
+  readonly title: string;
+  readonly body: string | null;
+  readonly confidence: number;
+  readonly loadBearing: boolean;
+  readonly accessScope: AccessScope;
+  readonly assertedBy: Uuid;
+  readonly assertedByKind: ActorKind;
+  readonly assertedByName: string;
+  readonly assertedAt: Date;
+  readonly sourceRef: string | null;
+  readonly originCheckpointId: Uuid | null;
+}
+
+export type ContextItemReviewDecision = 'accept' | 'reject';
+
+export type ContextItemReviewOutcomeKind = 'confirmed' | 'edited' | 'rejected';
+
+export interface ContextItemReview {
+  readonly itemId: Uuid;
+  readonly decision: ContextItemReviewDecision;
+  readonly title?: string;
+  readonly body?: string | null;
+  readonly loadBearing?: boolean;
+  readonly accessScope?: AccessScope;
+}
+
+export interface ReviewPendingItemsInput {
+  readonly projectId: Uuid;
+  readonly reviews: readonly ContextItemReview[];
+  readonly summary?: string | null;
+}
+
+export interface ContextItemReviewOutcome {
+  readonly itemId: Uuid;
+  readonly outcome: ContextItemReviewOutcomeKind;
+  readonly fieldsChanged: readonly string[];
+}
+
+export interface ReviewPendingItemsResult {
+  readonly checkpoint: Checkpoint;
+  readonly outcomes: readonly ContextItemReviewOutcome[];
 }
 
 export interface NewCheckpoint {
@@ -155,6 +208,11 @@ export interface ScopedStore {
   recordConflict(conflict: NewConflict): Promise<Conflict>;
   listOpenConflicts(projectId: Uuid): Promise<readonly Conflict[]>;
   resolveConflict(input: ConflictResolutionInput): Promise<Conflict>;
+}
+
+export interface ReviewCapableStore extends ScopedStore {
+  listPendingReviewItems(filter: PendingReviewFilter): Promise<readonly PendingReviewItem[]>;
+  reviewPendingItems(input: ReviewPendingItemsInput): Promise<ReviewPendingItemsResult>;
 }
 
 export interface StoreAdapter {
