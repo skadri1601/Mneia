@@ -14,6 +14,7 @@ export const POST = (request: Request): Promise<Response> =>
     run: (store, input) =>
       handleRehydrate(store, input, {
         telemetry: telemetry(),
+        embeddings: embeddingProvider(),
         now: () => new Date(),
         monotonicMs: () => performance.now(),
       }),
