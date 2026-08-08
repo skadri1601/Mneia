@@ -234,7 +234,7 @@ export const HELP_ESCALATION: Block = {
   paragraphs: [
     [
       {
-        text: 'Mneia is pre-general-availability and there is no support desk yet. What exists instead is a small set of addresses that reach a person, and a documentation set we would rather fix than answer the same question twice from.',
+        text: 'There is no support desk. What exists instead is a small set of addresses that reach a person, and a documentation set we would rather fix than answer the same question twice from. Enterprise plans carry a support SLA as a contracted term.',
       },
     ],
     [
