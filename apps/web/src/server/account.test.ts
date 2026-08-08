@@ -4,10 +4,12 @@ vi.mock('server-only', () => ({}));
 
 import {
   AccountError,
+  assertMayAdministerInvitations,
   bootstrapSoloAccount,
   INVITATION_TTL_MS,
   inviteTeammate,
   normalizeEmail,
+  parseInvitableRole,
   parseWorkspaceRole,
   redeemInvitation,
 } from './account.js';
@@ -187,6 +189,7 @@ describe('inviteTeammate', () => {
       workspaceId: ACCOUNT_CONTEXT.workspace.id,
       teamId: ACCOUNT_CONTEXT.team.id,
       invitedByActorId: ACCOUNT_CONTEXT.actor.id,
+      invitedByMembership: ACCOUNT_CONTEXT.membership,
       email: '  Grace@Example.com ',
       role: 'member',
       store,
@@ -211,6 +214,7 @@ describe('inviteTeammate', () => {
   it.each([
     { email: 'not-an-address', role: 'member', code: 'invalid_email' },
     { email: 'grace@example.com', role: 'lead', code: 'invalid_role' },
+    { email: 'grace@example.com', role: 'owner', code: 'not_permitted' },
   ])('refuses $code before touching the store', async ({ email, role, code }) => {
     const { store, inviteToWorkspace } = accountStore();
 
@@ -219,12 +223,80 @@ describe('inviteTeammate', () => {
         workspaceId: ACCOUNT_CONTEXT.workspace.id,
         teamId: ACCOUNT_CONTEXT.team.id,
         invitedByActorId: ACCOUNT_CONTEXT.actor.id,
+        invitedByMembership: ACCOUNT_CONTEXT.membership,
         email,
         role,
         store,
       }),
     ).rejects.toMatchObject({ code });
     expect(inviteToWorkspace).not.toHaveBeenCalled();
+  });
+
+  it.each(['member', 'admin', 'owner'])(
+    'refuses a non-lead inviting %s, rather than letting a member grant any role',
+    async (role) => {
+      const { store, inviteToWorkspace } = accountStore();
+
+      await expect(
+        inviteTeammate({
+          workspaceId: ACCOUNT_CONTEXT.workspace.id,
+          teamId: ACCOUNT_CONTEXT.team.id,
+          invitedByActorId: ACCOUNT_CONTEXT.actor.id,
+          invitedByMembership: { ...ACCOUNT_CONTEXT.membership, role: 'member' },
+          email: 'grace@example.com',
+          role,
+          store,
+        }),
+      ).rejects.toMatchObject({ code: 'not_permitted' });
+      expect(inviteToWorkspace).not.toHaveBeenCalled();
+    },
+  );
+
+  it('lets a lead invite an admin, which is the role the form offers', async () => {
+    const { store, inviteToWorkspace } = accountStore();
+
+    await inviteTeammate({
+      workspaceId: ACCOUNT_CONTEXT.workspace.id,
+      teamId: ACCOUNT_CONTEXT.team.id,
+      invitedByActorId: ACCOUNT_CONTEXT.actor.id,
+      invitedByMembership: ACCOUNT_CONTEXT.membership,
+      email: 'grace@example.com',
+      role: 'admin',
+      store,
+      issueToken: () => 'join-token',
+    });
+
+    expect(inviteToWorkspace).toHaveBeenCalledWith(expect.objectContaining({ role: 'admin' }));
+  });
+});
+
+describe('assertMayAdministerInvitations', () => {
+  it('admits a lead', () => {
+    expect(() => assertMayAdministerInvitations(ACCOUNT_CONTEXT.membership)).not.toThrow();
+  });
+
+  it('refuses a member, naming the role it saw and who to ask', () => {
+    expect(() =>
+      assertMayAdministerInvitations({ ...ACCOUNT_CONTEXT.membership, role: 'member' }),
+    ).toThrowError(expect.objectContaining({ code: 'not_permitted' }));
+  });
+});
+
+describe('parseInvitableRole', () => {
+  it.each(['admin', 'member'] as const)('accepts %s', (role) => {
+    expect(parseInvitableRole(role)).toBe(role);
+  });
+
+  it('refuses owner, because the owner is whoever created the workspace', () => {
+    expect(() => parseInvitableRole('owner')).toThrowError(
+      expect.objectContaining({ code: 'not_permitted' }),
+    );
+  });
+
+  it('still refuses a role that does not exist at all', () => {
+    expect(() => parseInvitableRole('lead')).toThrowError(
+      expect.objectContaining({ code: 'invalid_role' }),
+    );
   });
 });
 

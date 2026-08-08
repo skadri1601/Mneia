@@ -16,13 +16,15 @@ const first = (value: string | readonly string[] | undefined): string | undefine
 
 const ERRORS: Readonly<Record<string, string>> = {
   invalid_email: 'Give a full email address, like name@company.com.',
-  invalid_role: 'Choose either lead or member.',
+  invalid_role: 'Choose either admin or member.',
+  not_permitted: 'Only a workspace lead can invite or revoke. Ask a lead to do it.',
   already_invited: 'That address already has an invitation waiting. Revoke it to issue a new link.',
   invitation_not_found: 'That invitation was already accepted or revoked.',
 };
 
 const ROLE_LABELS: Readonly<Record<string, string>> = {
-  lead: 'Lead',
+  owner: 'Owner',
+  admin: 'Admin',
   member: 'Member',
 };
 
@@ -74,20 +76,24 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
 
       <section className={styles.card}>
         <h2>Invite a colleague</h2>
-        <form className={styles.form} action={inviteTeammateAction}>
-          <div className={styles.field}>
-            <label htmlFor="email">Their work email</label>
-            <input id="email" name="email" type="email" maxLength={320} required />
-          </div>
-          <div className={styles.field}>
-            <label htmlFor="role">Role on {account.team.displayName}</label>
-            <select id="role" name="role" defaultValue="member">
-              <option value="member">Member</option>
-              <option value="lead">Lead</option>
-            </select>
-          </div>
-          <button type="submit">Create invitation</button>
-        </form>
+        {account.membership.role === 'lead' ? (
+          <form className={styles.form} action={inviteTeammateAction}>
+            <div className={styles.field}>
+              <label htmlFor="email">Their work email</label>
+              <input id="email" name="email" type="email" maxLength={320} required />
+            </div>
+            <div className={styles.field}>
+              <label htmlFor="role">Role in {account.workspace.displayName}</label>
+              <select id="role" name="role" defaultValue="member">
+                <option value="member">Member</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <button type="submit">Create invitation</button>
+          </form>
+        ) : (
+          <p>Only a workspace lead can invite people. Ask one of yours to send the invitation.</p>
+        )}
       </section>
 
       <section className={styles.card}>
