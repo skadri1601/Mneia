@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { WorkspaceRole } from '@mneia/core';
+import type { TeamMember, WorkspaceRole } from '@mneia/core';
 import { createJoinToken, hashJoinToken } from './invitations.js';
 import {
   type AccountContext,
@@ -66,10 +66,31 @@ export const parseWorkspaceRole = (value: string): WorkspaceRole => {
   );
 };
 
+export const parseInvitableRole = (value: string): WorkspaceRole => {
+  const role = parseWorkspaceRole(value);
+  if (role === 'owner') {
+    throw new AccountError(
+      'not_permitted',
+      'An invitation cannot grant the owner role; the owner is whoever created the workspace — invite an admin instead',
+    );
+  }
+  return role;
+};
+
+export const assertMayAdministerInvitations = (membership: TeamMember): void => {
+  if (membership.role !== 'lead') {
+    throw new AccountError(
+      'not_permitted',
+      `Only a workspace lead may create or revoke invitations; this account is a ${membership.role} — ask a lead to send it`,
+    );
+  }
+};
+
 export interface InviteTeammateRequest {
   readonly workspaceId: string;
   readonly teamId: string;
   readonly invitedByActorId: string;
+  readonly invitedByMembership: TeamMember;
   readonly email: string;
   readonly role: string;
   readonly store: AccountStore;
@@ -86,12 +107,15 @@ export const inviteTeammate = async ({
   workspaceId,
   teamId,
   invitedByActorId,
+  invitedByMembership,
   email,
   role,
   store,
   now = () => new Date(),
   issueToken = createJoinToken,
 }: InviteTeammateRequest): Promise<IssuedInvitation> => {
+  assertMayAdministerInvitations(invitedByMembership);
+  const grantedRole = parseInvitableRole(role);
   const invitedEmail = normalizeEmail(email);
   const token = issueToken();
 
@@ -100,7 +124,7 @@ export const inviteTeammate = async ({
     teamId,
     invitedByActorId,
     invitedEmail,
-    role: parseWorkspaceRole(role),
+    role: grantedRole,
     tokenHash: hashJoinToken(token),
     expiresAt: new Date(now().getTime() + INVITATION_TTL_MS),
   });

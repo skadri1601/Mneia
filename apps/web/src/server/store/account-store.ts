@@ -7,6 +7,7 @@ export type AccountErrorCode =
   | 'invalid_profile'
   | 'invalid_email'
   | 'invalid_role'
+  | 'not_permitted'
   | 'invitation_not_found'
   | 'already_in_a_workspace'
   | 'corrupt_account'

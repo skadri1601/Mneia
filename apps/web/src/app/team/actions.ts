@@ -2,7 +2,11 @@
 
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { AccountError, inviteTeammate } from '../../server/account.js';
+import {
+  AccountError,
+  assertMayAdministerInvitations,
+  inviteTeammate,
+} from '../../server/account.js';
 import { accountStore, getCurrentAccount } from '../../server/current-account.js';
 
 const textField = (formData: FormData, name: string): string => {
@@ -10,7 +14,11 @@ const textField = (formData: FormData, name: string): string => {
   return typeof value === 'string' ? value : '';
 };
 
-const INVITE_FAILURES: ReadonlySet<string> = new Set(['invalid_email', 'invalid_role']);
+const INVITE_FAILURES: ReadonlySet<string> = new Set([
+  'invalid_email',
+  'invalid_role',
+  'not_permitted',
+]);
 
 const isDuplicateInvitation = (error: unknown): boolean =>
   typeof error === 'object' &&
@@ -27,6 +35,7 @@ export async function inviteTeammateAction(formData: FormData): Promise<void> {
       workspaceId: account.workspace.id,
       teamId: account.team.id,
       invitedByActorId: account.actor.id,
+      invitedByMembership: account.membership,
       email: textField(formData, 'email'),
       role: textField(formData, 'role'),
       store: accountStore,
@@ -51,6 +60,7 @@ export async function revokeInvitationAction(formData: FormData): Promise<void> 
 
   try {
     const account = await getCurrentAccount();
+    assertMayAdministerInvitations(account.membership);
     await accountStore.revokeInvitation({
       workspaceId: account.workspace.id,
       invitationId: textField(formData, 'invitationId'),
@@ -58,6 +68,8 @@ export async function revokeInvitationAction(formData: FormData): Promise<void> 
   } catch (error) {
     if (error instanceof AccountError && error.code === 'invitation_not_found') {
       destination = '/team?error=invitation_not_found';
+    } else if (error instanceof AccountError && error.code === 'not_permitted') {
+      destination = '/team?error=not_permitted';
     } else {
       throw error;
     }
