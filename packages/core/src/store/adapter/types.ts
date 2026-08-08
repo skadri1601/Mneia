@@ -83,6 +83,9 @@ export interface NewCheckpoint {
   readonly actorId: Uuid;
   readonly trigger: CheckpointTrigger;
   readonly summary?: string | null;
+  readonly source?: string | null;
+  readonly sourceSessionRef?: string | null;
+  readonly sourceWatermark?: string | null;
 }
 
 export interface CheckpointWrite {

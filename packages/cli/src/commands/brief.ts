@@ -1,7 +1,7 @@
 import type { ItemKind, ItemStatus, ScoredItem, Slice } from '@mneia/core';
 import { callApi } from '../api.js';
-import { httpBriefApi } from '../http-api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
+import { httpBriefApi } from '../http-api.js';
 
 type ConfigModule = typeof import('../config.js');
 

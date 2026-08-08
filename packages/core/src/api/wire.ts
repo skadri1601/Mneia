@@ -401,6 +401,9 @@ export const CheckpointWriteWireSchema = z.object({
       .refine(isStorableText, NO_NULL_BYTE)
       .nullable()
       .optional(),
+    source: z.enum(TRAJECTORY_SOURCES).nullable().optional(),
+    sourceSessionRef: z.string().max(300).nullable().optional(),
+    sourceWatermark: z.string().max(300).nullable().optional(),
   }),
   items: z
     .array(

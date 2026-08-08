@@ -9,7 +9,6 @@ import type {
 } from '@mneia/core';
 import { CHECKPOINT_TRIGGERS, createNoopEmitter } from '@mneia/core';
 import { callApi } from '../api.js';
-import { httpCheckpointApi } from '../http-api.js';
 import {
   CliError,
   type CommandDefinition,
@@ -17,6 +16,7 @@ import {
   EXIT_FAILED,
   EXIT_OK,
 } from '../command.js';
+import { httpCheckpointApi } from '../http-api.js';
 import type { PromptChoice, Prompter } from '../prompt.js';
 import { PromptCancelled } from '../prompt.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
@@ -44,12 +44,17 @@ export interface CheckpointProposal {
   readonly projectId: Uuid;
   readonly actorId: Uuid;
   readonly sessionId: Uuid | null;
+  readonly source: string;
+  readonly sourceSessionRef: string;
+  readonly watermark: string | null;
   readonly candidates: readonly CheckpointCandidate[];
 }
 
 export interface ProposeRequest {
   readonly config: ProjectConfig;
   readonly trigger: CheckpointTrigger;
+  readonly cwd?: string | undefined;
+  readonly fromFile?: string | undefined;
 }
 
 export type ReviewDecision = 'confirmed' | 'edited' | 'rejected';
@@ -67,6 +72,9 @@ export interface CommitRequest {
   readonly config: ProjectConfig;
   readonly projectId: Uuid;
   readonly sessionId: Uuid | null;
+  readonly source?: string | undefined;
+  readonly sourceSessionRef?: string | undefined;
+  readonly watermark?: string | null | undefined;
   readonly trigger: CheckpointTrigger;
   readonly summary: string | null;
   readonly automatic: readonly CheckpointCandidate[];
@@ -535,6 +543,9 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
               config,
               projectId: proposal.projectId,
               sessionId: proposal.sessionId,
+              source: proposal.source,
+              sourceSessionRef: proposal.sourceSessionRef,
+              watermark: proposal.watermark,
               trigger,
               summary,
               automatic,
@@ -572,6 +583,9 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
           config,
           projectId: proposal.projectId,
           sessionId: proposal.sessionId,
+          source: proposal.source,
+          sourceSessionRef: proposal.sourceSessionRef,
+          watermark: proposal.watermark,
           trigger,
           summary,
           automatic,

@@ -754,8 +754,8 @@ class PostgresScopedStore implements ScopedStore {
     return this.atomic(`writing a checkpoint on project ${checkpoint.projectId}`, async () => {
       const checkpointRow = expectOne(
         await this.rows(
-          `INSERT INTO checkpoint (id, workspace_id, project_id, session_id, actor_id, "trigger", summary)
-           VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7)
+          `INSERT INTO checkpoint (id, workspace_id, project_id, session_id, actor_id, "trigger", summary, source, source_session_ref, source_watermark)
+           VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7, $8, $9, $10)
            RETURNING ${CHECKPOINT_COLUMNS}`,
           [
             id,
@@ -765,6 +765,9 @@ class PostgresScopedStore implements ScopedStore {
             checkpoint.actorId,
             checkpoint.trigger,
             checkpoint.summary ?? null,
+            checkpoint.source ?? null,
+            checkpoint.sourceSessionRef ?? null,
+            checkpoint.sourceWatermark ?? null,
           ],
         ),
         `inserting the checkpoint row for project ${checkpoint.projectId}`,

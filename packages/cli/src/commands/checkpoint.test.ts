@@ -14,9 +14,9 @@ import {
   emitReviewEvents,
   needsHuman,
   partitionCandidates,
+  type ReviewedCandidate,
   readTrigger,
   renderCandidate,
-  type ReviewedCandidate,
   reviewCandidates,
   whyAsked,
 } from './checkpoint.js';

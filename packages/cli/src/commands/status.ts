@@ -1,8 +1,8 @@
 import type { ContextItem, IntervalMs, ItemKind, ItemStatus, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
-import { httpStatusApi } from '../http-api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
+import { httpStatusApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
 
 export interface StatusRequest {

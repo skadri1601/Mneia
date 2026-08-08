@@ -1,6 +1,6 @@
 import type {
-  ApiErrorCode,
   ActorWire,
+  ApiErrorCode,
   CheckpointWriteResultWire,
   CheckpointWriteWire,
   ContextItemFilterWire,
@@ -186,6 +186,9 @@ export const handleWriteCheckpoint = async (
       actorId: actor.id,
       trigger: input.checkpoint.trigger,
       summary: input.checkpoint.summary ?? null,
+      source: input.checkpoint.source ?? null,
+      sourceSessionRef: input.checkpoint.sourceSessionRef ?? null,
+      sourceWatermark: input.checkpoint.sourceWatermark ?? null,
     },
     items: input.items.map((entry) => ({
       action: entry.action,
