@@ -61,6 +61,26 @@ curl -s https://app.mneia.dev/api/health
 is for one privileged migration command and never for the application — see `deploy/web.env.example`,
 which is the inventory of what the deployed app reads.
 
+**The same endpoint reports whether the models are reachable**, because the failure is otherwise
+invisible: `extraction`, `extractionFallback` and `embeddings` each read `configured` or `no_key`.
+
+> ⚠️ **As of 2026-08-08 there are no model API keys yet.** `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`
+> are unset in `/etc/mneia/web.env`, and the founder is provisioning them. Until they are set:
+>
+> - `mneia checkpoint` **cannot propose anything** — the extraction call has no key to use
+> - `mneia brief` still works, but ranks on recency alone: `semanticRelevance` carries the largest
+>   weight in the §10.2 formula at 0.30 and falls back to a neutral constant with no embeddings
+> - Checkpoints written through MCP still store items; they are written with a null vector and are
+>   backfillable (MNE-56)
+>
+> **This is by design, not a bug.** Every one of those paths degrades rather than failing, so a
+> missing key looks like a working product returning worse answers. Read `/api/health` before
+> concluding that ranking or extraction is broken. `status` deliberately stays `ok` — a 503 here
+> would take the app down for something that still serves.
+>
+> Tracked on MNE-265. Delete this block when both keys are set and `/api/health` reports
+> `configured` for all three.
+
 ## Repo map
 
 | Path | What it is |

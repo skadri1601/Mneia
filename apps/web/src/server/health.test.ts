@@ -3,7 +3,17 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
 import type { PostgresConnectionSource, PostgresSession, SqlResult, SqlValue } from '@mneia/core';
-import { checkHealth } from './health.js';
+import { checkHealth, describeModelPosture, inspectModelPosture } from './health.js';
+
+const NO_KEYS = {} as NodeJS.ProcessEnv;
+const BOTH_KEYS = { OPENAI_API_KEY: 'sk-x', ANTHROPIC_API_KEY: 'sk-ant-x' } as NodeJS.ProcessEnv;
+const NO_MODELS = {
+  extraction: 'no_key',
+  extractionFallback: 'no_key',
+  embeddings: 'no_key',
+} as const;
+const NO_MODEL_DETAIL =
+  'OPENAI_API_KEY is unset, so mneia checkpoint cannot propose anything and rehydrate ranks on recency alone; ANTHROPIC_API_KEY is unset, so an OpenAI outage takes checkpoint down with no fallback';
 
 const enforcingRole = {
   role_name: 'mneia_app',
@@ -57,9 +67,15 @@ describe('checkHealth', () => {
   it('reports ok only after a statement actually reached Postgres', async () => {
     const session = new RecordingSession();
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
 
-    expect(report).toEqual({ status: 'ok', database: 'ok', rls: 'enforced' });
+    expect(report).toEqual({
+      status: 'ok',
+      database: 'ok',
+      rls: 'enforced',
+      ...NO_MODELS,
+      detail: NO_MODEL_DETAIL,
+    });
     expect(session.statements.at(0)).toBe('SELECT 1');
   });
 
@@ -71,7 +87,7 @@ describe('checkHealth', () => {
       close: async () => {},
     };
 
-    const report = await checkHealth(source, noEscapeHatch);
+    const report = await checkHealth(source, noEscapeHatch, NO_KEYS);
 
     expect(report.status).toBe('degraded');
     expect(report.database).toBe('unreachable');
@@ -83,7 +99,7 @@ describe('checkHealth', () => {
       throw new Error('terminating connection due to administrator command');
     });
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
 
     expect(report.status).toBe('degraded');
     expect(report.detail).toContain('terminating connection');
@@ -91,13 +107,13 @@ describe('checkHealth', () => {
 
   it('releases the connection on both the healthy and the failing path', async () => {
     const healthy = new RecordingSession();
-    await checkHealth(sourceOf(healthy), noEscapeHatch);
+    await checkHealth(sourceOf(healthy), noEscapeHatch, NO_KEYS);
     expect(healthy.released).toBe(1);
 
     const failing = new RecordingSession(() => {
       throw new Error('boom');
     });
-    await checkHealth(sourceOf(failing), noEscapeHatch);
+    await checkHealth(sourceOf(failing), noEscapeHatch, NO_KEYS);
     expect(failing.released).toBe(1);
   });
 
@@ -109,7 +125,7 @@ describe('checkHealth', () => {
       close: async () => {},
     };
 
-    const report = await checkHealth(source, noEscapeHatch);
+    const report = await checkHealth(source, noEscapeHatch, NO_KEYS);
 
     expect(report.detail).toBe('non-Error thrown: connection refused');
   });
@@ -119,7 +135,7 @@ describe('checkHealth RLS posture', () => {
   it('refuses to call a connection that bypasses RLS healthy', async () => {
     const session = new RecordingSession(undefined, bypassingRole);
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
 
     expect(report.rls).toBe('bypassed');
     expect(report.status).toBe('degraded');
@@ -129,7 +145,7 @@ describe('checkHealth RLS posture', () => {
   it('names the escape hatch rather than hiding it, and does not fail the deploy gate', async () => {
     const session = new RecordingSession(undefined, bypassingRole);
 
-    const report = await checkHealth(sourceOf(session), () => '1');
+    const report = await checkHealth(sourceOf(session), () => '1', NO_KEYS);
 
     expect(report.rls).toBe('bypassed_by_escape_hatch');
     expect(report.detail).toContain('MNEIA_ALLOW_RLS_BYPASS');
@@ -139,7 +155,7 @@ describe('checkHealth RLS posture', () => {
   it('treats an unreadable posture as unknown rather than assuming it is fine', async () => {
     const session = new RecordingSession(undefined, {});
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
 
     expect(report.rls).toBe('unknown');
     expect(report.status).toBe('degraded');
@@ -152,8 +168,63 @@ describe('checkHealth RLS posture', () => {
       role_is_superuser: true,
     });
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
 
     expect(report.rls).toBe('bypassed');
+  });
+});
+
+describe('model posture', () => {
+  it('reports both providers configured when the keys are present', () => {
+    expect(inspectModelPosture(BOTH_KEYS)).toEqual({
+      extraction: 'configured',
+      extractionFallback: 'configured',
+      embeddings: 'configured',
+    });
+    expect(describeModelPosture(inspectModelPosture(BOTH_KEYS))).toBeNull();
+  });
+
+  it('treats a blank key as no key, because an empty value configures nothing', () => {
+    expect(inspectModelPosture({ OPENAI_API_KEY: '   ' } as NodeJS.ProcessEnv).extraction).toBe(
+      'no_key',
+    );
+  });
+
+  it('ties embeddings to the OpenAI key, since one key serves both calls', () => {
+    const posture = inspectModelPosture({ OPENAI_API_KEY: 'sk-x' } as NodeJS.ProcessEnv);
+    expect(posture.embeddings).toBe('configured');
+    expect(posture.extractionFallback).toBe('no_key');
+  });
+
+  it('says what breaks rather than only that a key is missing', () => {
+    const detail = describeModelPosture(inspectModelPosture(NO_KEYS)) ?? '';
+    expect(detail).toContain('cannot propose anything');
+    expect(detail).toContain('ranks on recency alone');
+    expect(detail).toContain('no fallback');
+  });
+
+  it('surfaces the posture on the health report without failing the deploy', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+
+    expect(report.status).toBe('ok');
+    expect(report.extraction).toBe('no_key');
+    expect(report.embeddings).toBe('no_key');
+  });
+
+  it('reports no model detail once both keys are set', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, BOTH_KEYS);
+
+    expect(report).toEqual({
+      status: 'ok',
+      database: 'ok',
+      rls: 'enforced',
+      extraction: 'configured',
+      extractionFallback: 'configured',
+      embeddings: 'configured',
+    });
   });
 });
