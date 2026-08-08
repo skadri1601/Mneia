@@ -570,6 +570,51 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
     });
   });
 
+  it('ranks by cosine distance without tripping over the workspace_id both tables carry', async () => {
+    await withAdapter(async (adapter, _source, setup) => {
+      const ids: string[] = [];
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        for (const title of ['prefers Postgres', 'prefers SQLite', 'prefers Dynamo']) {
+          const item = await store.insertContextItem(newItem(PROJECT_A, ACTOR_A, title));
+          ids.push(item.id);
+        }
+      });
+
+      await setup.query('SELECT set_config($1, $2, false)', [WORKSPACE_SETTING, WS_A]);
+      for (const [index, id] of ids.entries()) {
+        await setup.query(
+          `INSERT INTO context_item_embedding (workspace_id, item_id, model, dim, embedding)
+           VALUES ($1, $2, 'openai:text-embedding-3-small', $3, $4)`,
+          [
+            WS_A,
+            id,
+            EMBEDDING_DIMENSIONS,
+            `[${Array.from({ length: EMBEDDING_DIMENSIONS }, (_, position) =>
+              position === index ? 1 : 0,
+            ).join(',')}]`,
+          ],
+        );
+      }
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const found = await store.searchContextItems({
+          projectId: PROJECT_A,
+          statuses: ['active'],
+          embedding: Array.from({ length: EMBEDDING_DIMENSIONS }, (_, position) =>
+            position === 1 ? 1 : 0,
+          ),
+          embeddingModel: 'openai:text-embedding-3-small',
+          withEmbedding: true,
+          limit: 3,
+        });
+
+        expect(found).toHaveLength(3);
+        expect(found[0]?.id).toBe(ids[1]);
+      });
+    });
+  });
+
   it('records a conflict row for a detected contradiction in the same transaction as the item', async () => {
     await withAdapter(async (adapter) => {
       await adapter.withScope(SCOPE_A, async (store) => {

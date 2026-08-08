@@ -527,7 +527,7 @@ class PostgresScopedStore implements ReviewCapableStore {
 
     const params = new SqlParams();
     const conditions = [
-      `workspace_id = ${params.add(this.scope.workspaceId)}`,
+      `context_item.workspace_id = ${params.add(this.scope.workspaceId)}`,
       `project_id = ${params.add(search.projectId)}`,
     ];
 
