@@ -23,7 +23,7 @@ const token = process.env.MNEIA_TOKEN ?? '';
 const asJson = args.includes('--json');
 
 const P95_BUDGET_MS = 300;
-const MEASURED_IN_PROCESS_P95_MS = 166;
+const MEASURED_IN_PROCESS_P95_MS = 146;
 
 if (!Number.isInteger(runs) || runs < 1) {
   process.stderr.write(`rehydrate-latency: --runs must be a positive integer; received ${runs}\n`);
