@@ -31,7 +31,7 @@ export default function HelpPage() {
         <p className={prose.lead}>{HELP_INTRO.lead}</p>
       </Tile>
 
-      <Tile surface="parchment">
+      <Tile surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>Where to start</p>
           <h2 className={prose.displayLg}>Four ways in, depending on what you need.</h2>
@@ -50,7 +50,7 @@ export default function HelpPage() {
         </ul>
       </Tile>
 
-      <Tile surface="canvas">
+      <Tile surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>Common tasks</p>
           <h2 className={prose.displayLg}>How do I…</h2>
@@ -70,7 +70,7 @@ export default function HelpPage() {
         </dl>
       </Tile>
 
-      <Tile surface="dark1" wide>
+      <Tile surface="quiet" wide>
         <SlideOnScroll>
           <p className={prose.eyebrow}>Troubleshooting</p>
           <h2 className={prose.displayLg}>What the error means, and what fixes it.</h2>
@@ -99,7 +99,7 @@ export default function HelpPage() {
         </div>
       </Tile>
 
-      <Tile centered surface="canvas">
+      <Tile centered surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>{HELP_ESCALATION.eyebrow}</p>
           <h2 className={`${prose.displayLg} ${prose.centered}`}>{HELP_ESCALATION.heading}</h2>

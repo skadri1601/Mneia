@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import styles from './Tile.module.css';
 
-export type TileSurface = 'canvas' | 'parchment' | 'dark1' | 'dark2' | 'dark3';
+export type TileSurface = 'canvas' | 'quiet' | 'parchment' | 'dark1' | 'dark2' | 'dark3';
 
 type TileProps = {
   surface: TileSurface;

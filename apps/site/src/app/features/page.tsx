@@ -4,7 +4,7 @@ import { JsonLd } from '@/components/JsonLd';
 import prose from '@/components/Prose.module.css';
 import { SlideOnScroll } from '@/components/Reveal';
 import { Rich } from '@/components/RichText';
-import { Tile, type TileSurface } from '@/components/Tile';
+import { Tile } from '@/components/Tile';
 import {
   FEATURES,
   FEATURES_COMPOUND,
@@ -17,8 +17,6 @@ import { pageMetadata } from '@/lib/site';
 import styles from './page.module.css';
 
 export const metadata = pageMetadata('/features');
-
-const SURFACES: readonly TileSurface[] = ['dark1', 'canvas', 'parchment', 'canvas', 'dark1'];
 
 export default function FeaturesPage() {
   return (
@@ -34,7 +32,7 @@ export default function FeaturesPage() {
       </Tile>
 
       {FEATURES.map((feature, i) => (
-        <Tile key={feature.index} surface={SURFACES[i] ?? 'canvas'}>
+        <Tile key={feature.index} surface="quiet">
           <div className={styles.feature}>
             <SlideOnScroll from={i % 2 === 0 ? 'left' : 'right'}>
               <div className={styles.index}>{feature.index}</div>
@@ -52,7 +50,7 @@ export default function FeaturesPage() {
         </Tile>
       ))}
 
-      <Tile surface="parchment">
+      <Tile surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>{FEATURES_COMPOUND.eyebrow}</p>
         </SlideOnScroll>
@@ -71,7 +69,7 @@ export default function FeaturesPage() {
         </div>
       </Tile>
 
-      <Tile surface="canvas">
+      <Tile surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>Questions</p>
           <h2 className={prose.displayLg}>What people ask before they install it.</h2>
