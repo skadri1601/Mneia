@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-import { createRequire } from 'node:module';
-import { existsSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const envFile = new URL('../.env', import.meta.url);
 if (existsSync(envFile)) {

@@ -3,6 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
+import {
+  handleListItems,
+  handleRehydrate,
+  handleWriteCheckpoint,
+} from '../../apps/web/src/server/api/handlers.js';
 import type {
   PostgresConnectionSource,
   PostgresSession,
@@ -18,11 +23,6 @@ import {
   SupersedeNotAllowedError,
   WORKSPACE_SETTING,
 } from '../../packages/core/src/index.js';
-import {
-  handleListItems,
-  handleRehydrate,
-  handleWriteCheckpoint,
-} from '../../apps/web/src/server/api/handlers.js';
 import { APP_ROLE, ensureAppRole, grantSchemaToAppRole } from './app-role.js';
 import { PgDriver } from './pg-driver.js';
 

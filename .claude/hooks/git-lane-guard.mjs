@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { BRANCH_RE, TICKET_RE, classify } from '../../scripts/git-lanes.mjs';
+import { BRANCH_RE, classify, TICKET_RE } from '../../scripts/git-lanes.mjs';
 
 const OVERRIDE = process.env.MNEIA_GIT_GUARD === 'off';
 

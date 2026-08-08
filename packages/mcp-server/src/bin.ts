@@ -16,8 +16,8 @@ import {
   createRemoteStore,
   createTelemetryEmitter,
   fetchIdentity,
-  remoteSinkFromEnv,
   PostgresStoreAdapter,
+  remoteSinkFromEnv,
   resolveProject,
   VERSION,
 } from '@mneia/core';

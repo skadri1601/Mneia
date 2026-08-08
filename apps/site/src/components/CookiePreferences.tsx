@@ -1,8 +1,8 @@
 'use client';
 
 import { HAS_ANY_TAG } from '@/lib/tags';
-import styles from './CookiePreferences.module.css';
 import { useConsent } from './ConsentProvider';
+import styles from './CookiePreferences.module.css';
 
 export function CookiePreferencesPanel() {
   const { ready, categories, gated, globalPrivacyControl, decide } = useConsent();

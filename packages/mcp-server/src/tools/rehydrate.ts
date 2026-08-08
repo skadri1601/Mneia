@@ -1,4 +1,4 @@
-import { assembleSlice, candidateLimitFor as coreCandidateLimitFor } from '@mneia/core';
+import { randomUUID } from 'node:crypto';
 import type {
   ContextItem,
   ItemKind,
@@ -8,7 +8,7 @@ import type {
   TelemetryEvent,
   Uuid,
 } from '@mneia/core';
-import { randomUUID } from 'node:crypto';
+import { assembleSlice, candidateLimitFor as coreCandidateLimitFor } from '@mneia/core';
 import { z } from 'zod';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 

@@ -50,9 +50,7 @@ export class ApiAuthError extends Error {
   }
 }
 
-export interface IdentifyBearer {
-  (tokenHash: string): Promise<BearerIdentity>;
-}
+export type IdentifyBearer = (tokenHash: string) => Promise<BearerIdentity>;
 
 export const resolveBearerIdentity = async (
   authorization: string | null,

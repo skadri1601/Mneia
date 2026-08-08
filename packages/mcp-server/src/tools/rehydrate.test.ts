@@ -1,4 +1,3 @@
-import { createToolContextFixture } from './context-fixture.js';
 import type {
   ContextItem,
   ContextItemFilter,
@@ -12,6 +11,7 @@ import type {
   Uuid,
 } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
+import { createToolContextFixture } from './context-fixture.js';
 import {
   DEFAULT_TOKEN_BUDGET,
   MANDATORY_ITEM_LIMIT,

@@ -1,4 +1,3 @@
-import { createToolContextFixture } from './context-fixture.js';
 import type {
   Actor,
   ActorKind,
@@ -22,6 +21,7 @@ import { createNoopReviewQueue } from '../review-queue.js';
 import { createSliceLog } from '../slices.js';
 import type { AssertInput } from './assert.js';
 import { assertTool } from './assert.js';
+import { createToolContextFixture } from './context-fixture.js';
 import type { ToolContext, ToolResult } from './types.js';
 
 const WORKSPACE_ID: Uuid = '11111111-1111-4111-8111-111111111111';
