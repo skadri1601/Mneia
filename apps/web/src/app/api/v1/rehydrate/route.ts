@@ -1,6 +1,7 @@
 import { RehydrateRequestWireSchema } from '@mneia/core';
 import { handleRehydrate } from '../../../../server/api/handlers.js';
 import { serve } from '../../../../server/api/serve.js';
+import { embeddingProvider } from '../../../../server/embedding-runtime.js';
 import { telemetry } from '../../../../server/telemetry-runtime.js';
 
 export const dynamic = 'force-dynamic';

@@ -6,6 +6,8 @@ import type {
   ContextItemFilterWire,
   ContextItemSearchWire,
   ContextItemWire,
+  Embedding,
+  EmbeddingProvider,
   ProjectWire,
   RehydrateRequestWire,
   ScopedStore,
@@ -17,6 +19,7 @@ import type {
 } from '@mneia/core';
 import {
   assembleSlice,
+  embeddableText,
   encodeActor,
   encodeCheckpointWriteResult,
   encodeContextItem,
@@ -116,7 +119,25 @@ export interface RehydrateDependencies {
   readonly telemetry: TelemetryEmitter;
   readonly now: () => Date;
   readonly monotonicMs: () => number;
+  readonly embeddings?: EmbeddingProvider | null | undefined;
 }
+
+const embedOne = async (
+  provider: EmbeddingProvider | null | undefined,
+  text: string,
+): Promise<{ embedding: Embedding | null; model: string | null }> => {
+  if (provider === null || provider === undefined || text.trim().length === 0) {
+    return { embedding: null, model: null };
+  }
+  try {
+    const [embedding] = await provider.embed([text]);
+    return embedding === undefined
+      ? { embedding: null, model: null }
+      : { embedding, model: provider.model };
+  } catch {
+    return { embedding: null, model: null };
+  }
+};
 
 export const handleRehydrate = async (
   store: ScopedStore,
@@ -133,12 +154,15 @@ export const handleRehydrate = async (
 
   const now = deps.now();
   const startedAt = deps.monotonicMs();
+  const task = await embedOne(deps.embeddings, input.task);
   const { slice } = await assembleSlice({
     store,
     project,
     task: input.task,
     tokenBudget: input.tokenBudget,
     now,
+    taskEmbedding: task.embedding,
+    embeddingModel: task.model,
   });
   const durationMs = deps.monotonicMs() - startedAt;
 
@@ -162,7 +186,23 @@ export const handleRehydrate = async (
 export interface CheckpointDependencies {
   readonly telemetry: TelemetryEmitter;
   readonly now: () => Date;
+  readonly embeddings?: EmbeddingProvider | null | undefined;
 }
+
+const embedItems = async (
+  provider: EmbeddingProvider | null | undefined,
+  texts: readonly string[],
+): Promise<{ vectors: readonly (Embedding | null)[]; model: string | null }> => {
+  if (provider === null || provider === undefined || texts.length === 0) {
+    return { vectors: texts.map(() => null), model: null };
+  }
+  try {
+    const vectors = await provider.embed(texts);
+    return { vectors, model: provider.model };
+  } catch {
+    return { vectors: texts.map(() => null), model: null };
+  }
+};
 
 export const handleWriteCheckpoint = async (
   store: ScopedStore,
@@ -179,6 +219,11 @@ export const handleWriteCheckpoint = async (
 
   const now = deps.now();
 
+  const embedded = await embedItems(
+    deps.embeddings,
+    input.items.map((entry) => embeddableText(entry.item.title, entry.item.body ?? null)),
+  );
+
   const result = await store.writeCheckpoint({
     checkpoint: {
       projectId: input.checkpoint.projectId,
@@ -190,7 +235,7 @@ export const handleWriteCheckpoint = async (
       sourceSessionRef: input.checkpoint.sourceSessionRef ?? null,
       sourceWatermark: input.checkpoint.sourceWatermark ?? null,
     },
-    items: input.items.map((entry) => ({
+    items: input.items.map((entry, index) => ({
       action: entry.action,
       item: {
         projectId: entry.item.projectId,
@@ -204,6 +249,8 @@ export const handleWriteCheckpoint = async (
         accessScope: entry.item.accessScope ?? 'project',
         supersedesId: entry.item.supersedesId ?? null,
         decayAfter: entry.item.decayAfter ?? null,
+        embedding: embedded.vectors[index] ?? null,
+        embeddingModel: embedded.vectors[index] == null ? null : embedded.model,
       },
     })),
   });
