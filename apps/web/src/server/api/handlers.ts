@@ -315,6 +315,17 @@ export const handleWriteCheckpoint = async (
   const writtenById = new Map(result.written.map((item) => [item.id, item]));
 
   for (const conflict of result.conflicts) {
+    const sides = await Promise.all(
+      [conflict.itemA, conflict.itemB].map(async (itemId) => {
+        const written = writtenById.get(itemId);
+        if (written !== undefined) {
+          return written.loadBearing;
+        }
+        const stored = await store.getContextItem(itemId);
+        return stored?.loadBearing ?? false;
+      }),
+    );
+
     await emitQuietly(deps.telemetry, {
       name: 'conflict.detected',
       workspaceId: store.scope.workspaceId,
@@ -325,7 +336,7 @@ export const handleWriteCheckpoint = async (
       conflictId: conflict.id,
       itemA: conflict.itemA,
       itemB: conflict.itemB,
-      loadBearing: writtenById.get(conflict.itemB)?.loadBearing ?? false,
+      loadBearing: sides.some(Boolean),
     });
   }
 

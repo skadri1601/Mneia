@@ -162,10 +162,16 @@ try {
   const flags = rows.map(stagesFor);
   const total = rows.length;
 
-  const stages = STAGES.map(([name, predicate]) => ({
-    name,
-    count: flags.filter((entry) => predicate(entry)).length,
-  }));
+  // Cumulative cohorts, not independent predicates. A workspace can invite before it
+  // reaches three checkpoints, and counting each stage on its own would make a later
+  // stage larger than the one before it — which reads as over 100% conversion and makes
+  // the drop analysis meaningless. Each stage keeps only workspaces that cleared every
+  // prior stage.
+  let cohort = flags;
+  const stages = STAGES.map(([name, predicate]) => {
+    cohort = cohort.filter((entry) => predicate(entry));
+    return { name, count: cohort.length };
+  });
 
   let biggestDrop = null;
   for (let index = 1; index < stages.length; index += 1) {

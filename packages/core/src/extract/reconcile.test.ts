@@ -25,6 +25,7 @@ const existing = (
   overrides: Partial<ExistingItemSnapshot> & Pick<ExistingItemSnapshot, 'id' | 'title'>,
 ): ExistingItemSnapshot => ({
   kind: 'decision',
+  body: null,
   ...overrides,
 });
 
@@ -178,6 +179,83 @@ describe('reconcileCandidates', () => {
     const result = reconcileCandidates({
       candidates: [candidate({ title: 'Use Postgres for the store rather than adding Redis' })],
       existing: [],
+    });
+
+    expect(result.novel).toHaveLength(1);
+  });
+
+  it('carries a same-title candidate whose body materially changed, rather than dropping it', () => {
+    const result = reconcileCandidates({
+      candidates: [
+        candidate({
+          title: 'Use Postgres for the store rather than adding Redis',
+          body: 'Revised: pgvector covers the semantic search we thought needed a second engine.',
+        }),
+      ],
+      existing: [
+        existing({
+          id: 'item-1',
+          title: 'Use Postgres for the store rather than adding Redis',
+          body: 'One dependency keeps the operational surface small.',
+        }),
+      ],
+    });
+
+    expect(result.duplicates).toHaveLength(0);
+    expect(result.novel).toHaveLength(1);
+  });
+
+  it('still treats a same-title candidate with the same body as a duplicate', () => {
+    const body = 'One dependency keeps the operational surface small.';
+    const result = reconcileCandidates({
+      candidates: [
+        candidate({ title: 'Use Postgres for the store rather than adding Redis', body }),
+      ],
+      existing: [
+        existing({
+          id: 'item-1',
+          title: 'Use Postgres for the store rather than adding Redis',
+          body,
+        }),
+      ],
+    });
+
+    expect(result.duplicates).toHaveLength(1);
+  });
+
+  it('treats a candidate that merely omits the body as a duplicate, not an update', () => {
+    const result = reconcileCandidates({
+      candidates: [
+        candidate({ title: 'Use Postgres for the store rather than adding Redis', body: null }),
+      ],
+      existing: [
+        existing({
+          id: 'item-1',
+          title: 'Use Postgres for the store rather than adding Redis',
+          body: 'One dependency keeps the operational surface small.',
+        }),
+      ],
+    });
+
+    expect(result.duplicates).toHaveLength(1);
+    expect(result.novel).toHaveLength(0);
+  });
+
+  it('carries a candidate that adds a body where the recorded item had none', () => {
+    const result = reconcileCandidates({
+      candidates: [
+        candidate({
+          title: 'Use Postgres for the store rather than adding Redis',
+          body: 'The reason, recorded at last: pgvector removes the need for a second engine.',
+        }),
+      ],
+      existing: [
+        existing({
+          id: 'item-1',
+          title: 'Use Postgres for the store rather than adding Redis',
+          body: null,
+        }),
+      ],
     });
 
     expect(result.novel).toHaveLength(1);

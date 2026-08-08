@@ -105,6 +105,26 @@ export const handleStripeWebhook = async (input: HandleWebhookInput): Promise<We
 
   const status = eventType === 'customer.subscription.deleted' ? 'canceled' : subscription.status;
 
+  // Stripe does not guarantee delivery order, so a delayed `.updated` carrying `active`
+  // can arrive after the `.deleted` that cancelled the same subscription. Applying it
+  // would silently put a cancelled workspace back on the team plan. A cancellation is
+  // terminal for a given subscription: once recorded, only a newer subscription id may
+  // move the workspace off canceled.
+  if (
+    current.billingStatus === 'canceled' &&
+    status !== 'canceled' &&
+    current.billingCustomerRef !== null &&
+    subscription.customerId === current.billingCustomerRef
+  ) {
+    return {
+      eventId,
+      eventType,
+      applied: false,
+      reason: `workspace ${workspaceId} is already canceled for customer ${current.billingCustomerRef}, and ${eventType} carrying "${subscription.status}" would revive it. Stripe does not guarantee delivery order, so a later-arriving earlier event is ignored rather than applied. Read the subscription from Stripe if the real state is in doubt.`,
+      workspaceId,
+    };
+  }
+
   const next = stateAfterSubscription({
     current,
     subscriptionStatus: status,

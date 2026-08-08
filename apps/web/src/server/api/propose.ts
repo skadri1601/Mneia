@@ -194,7 +194,12 @@ export const handleProposeCheckpoint = async (
 
   const reconciled = reconcileCandidates({
     candidates: filtered.kept,
-    existing: existing.map((item) => ({ id: item.id, kind: item.kind, title: item.title })),
+    existing: existing.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      body: item.body,
+    })),
   });
 
   const carried = [...reconciled.novel, ...reconciled.contradictions].sort(

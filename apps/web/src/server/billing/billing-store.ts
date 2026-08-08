@@ -90,10 +90,18 @@ export class PostgresBillingStore implements BillingStore {
 
     try {
       await assertConnectionEnforcesRls(session);
-      await session.execute('SELECT set_config($1, $2, false)', [WORKSPACE_SETTING, workspaceId]);
-      const result = await run(session);
-      await session.release();
-      return result;
+      await session.execute('BEGIN');
+
+      try {
+        await session.execute('SELECT set_config($1, $2, true)', [WORKSPACE_SETTING, workspaceId]);
+        const result = await run(session);
+        await session.execute('COMMIT');
+        await session.release();
+        return result;
+      } catch (error) {
+        await session.execute('ROLLBACK');
+        throw error;
+      }
     } catch (error) {
       await session.discard().catch(() => undefined);
       throw error;

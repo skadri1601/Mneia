@@ -453,6 +453,63 @@ describe('handleStripeWebhook', () => {
     expect(applied[0]?.plan).toBe('solo');
   });
 
+  const cancelled = (customerRef: string) =>
+    storeStub({
+      snapshot: async () => ({
+        workspaceId: WORKSPACE,
+        plan: 'solo',
+        billingStatus: 'canceled',
+        seatsPurchased: null,
+        billingCustomerRef: customerRef,
+        memberCount: 3,
+      }),
+    });
+
+  it('ignores a late .updated that would revive a cancelled workspace', async () => {
+    const store = cancelled('cus_1');
+    const payload = subscriptionEvent({ status: 'active' });
+
+    const outcome = await handleStripeWebhook({
+      payload,
+      signatureHeader: signed(payload),
+      configuration: CONFIG,
+      store,
+      now: NOW,
+    });
+
+    expect(outcome.applied).toBe(false);
+    expect(outcome.reason).toContain('would revive it');
+    expect((store as unknown as { applied: unknown[] }).applied).toHaveLength(0);
+  });
+
+  it('still applies a cancellation to an already cancelled workspace, which is idempotent', async () => {
+    const payload = subscriptionEvent({}, 'customer.subscription.deleted');
+
+    const outcome = await handleStripeWebhook({
+      payload,
+      signatureHeader: signed(payload),
+      configuration: CONFIG,
+      store: cancelled('cus_1'),
+      now: NOW,
+    });
+
+    expect(outcome.applied).toBe(true);
+  });
+
+  it('lets a different customer move a cancelled workspace back onto a plan', async () => {
+    const payload = subscriptionEvent({ status: 'active', customer: 'cus_new' });
+
+    const outcome = await handleStripeWebhook({
+      payload,
+      signatureHeader: signed(payload),
+      configuration: CONFIG,
+      store: cancelled('cus_old'),
+      now: NOW,
+    });
+
+    expect(outcome.applied).toBe(true);
+  });
+
   it('declines when the workspace named does not exist here', async () => {
     const outcome = await handleStripeWebhook({
       payload: subscriptionEvent(),

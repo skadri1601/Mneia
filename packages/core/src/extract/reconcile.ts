@@ -22,6 +22,7 @@ export interface ExistingItemSnapshot {
   readonly id: string;
   readonly kind: ItemKind;
   readonly title: string;
+  readonly body?: string | null;
 }
 
 export interface ReconcileEvidence {
@@ -155,6 +156,30 @@ function contradictionReason(evidence: ReconcileEvidence): string {
   return `Contradicts context item ${evidence.matchedItemId} ("${evidence.matchedTitle}"): the same subject at ${evidence.subjectSimilarity} overlap, but this candidate ${evidence.candidateStance === 'negate' ? 'denies' : 'asserts'} what the recorded item ${evidence.existingStance === 'negate' ? 'denies' : 'asserts'}. A human decides which one holds.`;
 }
 
+export const BODY_SAME_SIMILARITY = 0.9;
+
+export function bodyMateriallyDiffers(
+  candidateBody: string | null,
+  existingBody: string | null | undefined,
+): boolean {
+  const candidateText = candidateBody ?? '';
+  const existingText = existingBody ?? '';
+
+  if (candidateText.trim() === existingText.trim()) {
+    return false;
+  }
+
+  if (candidateText.trim() === '') {
+    return false;
+  }
+
+  if (existingText.trim() === '') {
+    return true;
+  }
+
+  return jaccard(subjectTokens(candidateText), subjectTokens(existingText)) < BODY_SAME_SIMILARITY;
+}
+
 const asNovel = (index: number, candidate: ExtractionCandidate): ReconciledCandidate => ({
   index,
   candidate,
@@ -186,6 +211,11 @@ function judge(
   const stanceFlipped = stance !== nearest.indexed.stance;
   const valuesDiffer = !sameNumbers(numbers, nearest.indexed.numbers);
   const nearDuplicate = nearest.similarity >= thresholds.duplicateSimilarity;
+  const bodyChanged = bodyMateriallyDiffers(candidate.body, nearest.indexed.item.body);
+
+  if (bodyChanged) {
+    return asNovel(candidateIndex, candidate);
+  }
 
   if (nearDuplicate && !stanceFlipped && !valuesDiffer) {
     const evidence = evidenceFor(nearest, stance, numbers, tokens, null);
