@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ContextItem, Project, Uuid } from '../domain/types.js';
+import type { ContextItem, Embedding, Project, Uuid } from '../domain/types.js';
 import type { ScopedStore } from '../store/adapter/types.js';
 import type { ItemKind, ItemStatus } from '../store/schema.js';
 import { DEFAULT_KIND_QUOTAS, packSlice } from './pack.js';
@@ -25,6 +25,8 @@ export interface AssembleSliceRequest {
   readonly task: string;
   readonly tokenBudget: number;
   readonly now: Date;
+  readonly taskEmbedding?: Embedding | null | undefined;
+  readonly embeddingModel?: string | null | undefined;
   readonly onStoreCall?: (<T>(operation: string, call: () => Promise<T>) => Promise<T>) | undefined;
 }
 
@@ -61,6 +63,10 @@ export async function assembleSlice(request: AssembleSliceRequest): Promise<Asse
   const { store, project, task, tokenBudget, now } = request;
   const through = request.onStoreCall ?? ((_operation, call) => call());
 
+  const taskEmbedding = request.taskEmbedding ?? null;
+  const embeddingModel = request.embeddingModel ?? null;
+  const semantic = taskEmbedding !== null && embeddingModel !== null;
+
   const [candidates, mandatory, superseded] = await Promise.all([
     through('searchContextItems', () =>
       store.searchContextItems({
@@ -68,6 +74,9 @@ export async function assembleSlice(request: AssembleSliceRequest): Promise<Asse
         statuses: ACTIVE_STATUSES,
         asOf: now,
         limit: candidateLimitFor(tokenBudget),
+        ...(semantic && taskEmbedding !== null && embeddingModel !== null
+          ? { embedding: taskEmbedding, embeddingModel, withEmbedding: true }
+          : {}),
       }),
     ),
     through('listContextItems for load-bearing constraints', () =>
@@ -92,7 +101,7 @@ export async function assembleSlice(request: AssembleSliceRequest): Promise<Asse
 
   const scored = scoreItems({
     items: mergeCandidates(mandatory, superseded, candidates),
-    taskEmbedding: null,
+    taskEmbedding,
     now,
     weights: DEFAULT_SCORING_WEIGHTS,
   });
