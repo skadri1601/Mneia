@@ -8,6 +8,8 @@ export type HealthStatus = 'ok' | 'degraded';
 
 export type RlsHealth = 'enforced' | 'bypassed' | 'bypassed_by_escape_hatch' | 'unknown';
 
+export type EnvLike = Readonly<Record<string, string | undefined>>;
+
 export type ModelHealth = 'configured' | 'no_key';
 
 export interface HealthReport {
@@ -29,7 +31,7 @@ export interface ModelPosture {
   readonly embeddings: ModelHealth;
 }
 
-export const inspectModelPosture = (env: NodeJS.ProcessEnv = process.env): ModelPosture => ({
+export const inspectModelPosture = (env: EnvLike = process.env): ModelPosture => ({
   extraction: keyed(env.OPENAI_API_KEY),
   extractionFallback: keyed(env.ANTHROPIC_API_KEY),
   embeddings: keyed(env.OPENAI_API_KEY),
@@ -80,7 +82,7 @@ const readRls = async (
 export const checkHealth = async (
   source: PostgresConnectionSource = database,
   readEscapeHatch: () => string | undefined = () => process.env[RLS_BYPASS_ESCAPE_HATCH],
-  env: NodeJS.ProcessEnv = process.env,
+  env: EnvLike = process.env,
 ): Promise<HealthReport> => {
   const models = inspectModelPosture(env);
   const modelDetail = describeModelPosture(models);

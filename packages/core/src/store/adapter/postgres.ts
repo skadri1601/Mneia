@@ -14,20 +14,34 @@ import type {
 import { assertSupersedeAllowed } from '../../policy/index.js';
 import type { SqlExecutor, SqlValue } from '../driver.js';
 import { assertConnectionEnforcesRls } from '../rls-guard.js';
-import { EMBEDDING_DIMENSIONS, WORKSPACE_SETTING } from '../schema.js';
+import {
+  ACCESS_SCOPES,
+  ACTOR_KINDS,
+  EMBEDDING_DIMENSIONS,
+  ITEM_KINDS,
+  ITEM_STATUSES,
+  WORKSPACE_SETTING,
+} from '../schema.js';
 import { visibilityPredicate } from '../scope.js';
 import type { SqlRow } from './rows.js';
 import {
   embeddingLiteral,
   isUuid,
   toActor,
+  toBoolean,
   toCheckpoint,
   toCheckpointItem,
   toConflict,
   toContextItem,
+  toDate,
+  toEnum,
   toHandoff,
+  toNullableText,
+  toNullableUuid,
+  toNumber,
   toProject,
   toSession,
+  toText,
   toUuid,
 } from './rows.js';
 import type {
@@ -36,11 +50,19 @@ import type {
   ConfirmContextItemInput,
   ConflictResolutionInput,
   ContextItemFilter,
+  ContextItemReview,
+  ContextItemReviewOutcome,
+  ContextItemReviewOutcomeKind,
   ContextItemSearch,
   NewConflict,
   NewContextItem,
   NewHandoff,
   NewProject,
+  PendingReviewFilter,
+  PendingReviewItem,
+  ReviewCapableStore,
+  ReviewPendingItemsInput,
+  ReviewPendingItemsResult,
   ScopedStore,
   StoreAdapter,
   WorkspaceScope,
@@ -118,6 +140,34 @@ const contextItemColumns = (withEmbedding: boolean | undefined): string =>
 
 const contextItemFrom = (withEmbedding: boolean | undefined): string =>
   withEmbedding === true ? `context_item\n         ${EMBEDDING_JOIN}` : 'context_item';
+
+const PENDING_REVIEW_COLUMNS = `item.id, item.project_id, item.kind, item.title, item.body,
+       item.confidence, item.load_bearing, item.access_scope,
+       item.asserted_by, item.asserted_at, item.source_ref,
+       asserter.kind AS asserted_by_kind,
+       asserter.display_name AS asserted_by_name,
+       origin.checkpoint_id AS origin_checkpoint_id`;
+const REVIEWED_ITEM_COLUMNS =
+  'id, title, body, load_bearing, access_scope, status, human_confirmed';
+
+const REVIEW_TRIGGER = 'manual';
+
+const toPendingReviewItem = (row: SqlRow): PendingReviewItem => ({
+  id: toUuid(row, 'id'),
+  projectId: toUuid(row, 'project_id'),
+  kind: toEnum(row, 'kind', ITEM_KINDS),
+  title: toText(row, 'title'),
+  body: toNullableText(row, 'body'),
+  confidence: toNumber(row, 'confidence'),
+  loadBearing: toBoolean(row, 'load_bearing'),
+  accessScope: toEnum(row, 'access_scope', ACCESS_SCOPES),
+  assertedBy: toUuid(row, 'asserted_by'),
+  assertedByKind: toEnum(row, 'asserted_by_kind', ACTOR_KINDS),
+  assertedByName: toText(row, 'asserted_by_name'),
+  assertedAt: toDate(row, 'asserted_at'),
+  sourceRef: toNullableText(row, 'source_ref'),
+  originCheckpointId: toNullableUuid(row, 'origin_checkpoint_id'),
+});
 
 class SqlParams {
   private readonly values: SqlValue[] = [];
@@ -236,7 +286,7 @@ const expectOne = (rows: readonly SqlRow[], what: string): SqlRow => {
 const describeCause = (cause: unknown): string =>
   cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause);
 
-class PostgresScopedStore implements ScopedStore {
+class PostgresScopedStore implements ReviewCapableStore {
   private attached = true;
   private savepoints = 0;
   private teamIds: readonly Uuid[] | null = null;
@@ -714,6 +764,234 @@ class PostgresScopedStore implements ScopedStore {
     });
   }
 
+  async listPendingReviewItems(filter: PendingReviewFilter): Promise<readonly PendingReviewItem[]> {
+    assertUuid(filter.projectId, 'filter.projectId');
+
+    const params = new SqlParams();
+    const workspace = params.add(this.scope.workspaceId);
+    const project = params.add(filter.projectId);
+
+    const visibility = visibilityPredicate({
+      scope: this.scope,
+      actorTeamIds: await this.actorTeamIds(),
+      projectId: filter.projectId,
+      paramOffset: params.length,
+    });
+    params.addAll(visibility.params);
+
+    const limit = params.add(resolveLimit(filter.limit, 'filter.limit'));
+
+    const rows = await this.rows(
+      `SELECT ${PENDING_REVIEW_COLUMNS}
+         FROM context_item AS item
+         INNER JOIN actor AS asserter
+            ON asserter.workspace_id = item.workspace_id
+           AND asserter.id = item.asserted_by
+         LEFT JOIN LATERAL (
+           SELECT link.checkpoint_id
+             FROM checkpoint_item AS link
+             INNER JOIN checkpoint AS origin_checkpoint
+                ON origin_checkpoint.workspace_id = link.workspace_id
+               AND origin_checkpoint.id = link.checkpoint_id
+            WHERE link.workspace_id = item.workspace_id
+              AND link.item_id = item.id
+            ORDER BY origin_checkpoint.created_at ASC, link.checkpoint_id ASC
+            LIMIT 1
+         ) AS origin ON true
+        WHERE item.workspace_id = ${workspace}
+          AND item.project_id = ${project}
+          AND item.human_confirmed = false
+          AND item.status = 'active'
+          AND (${visibility.sql})
+        ORDER BY item.load_bearing DESC, item.asserted_at ASC, item.id ASC
+        LIMIT ${limit}`,
+      params.list(),
+    );
+
+    return rows.map(toPendingReviewItem);
+  }
+
+  async reviewPendingItems(input: ReviewPendingItemsInput): Promise<ReviewPendingItemsResult> {
+    assertUuid(input.projectId, 'input.projectId');
+    if (input.reviews.length === 0) {
+      throw new StoreError(
+        'invalid_argument',
+        'expected input.reviews to name at least one pending context item to review; received an empty array — submit the items the reviewer decided on',
+      );
+    }
+
+    const seen = new Set<Uuid>();
+    for (const review of input.reviews) {
+      assertUuid(review.itemId, 'review.itemId');
+      if (review.decision !== 'accept' && review.decision !== 'reject') {
+        throw new StoreError(
+          'invalid_argument',
+          `expected review.decision for item ${review.itemId} to be "accept" or "reject"; received ${JSON.stringify(review.decision)}`,
+        );
+      }
+      if (seen.has(review.itemId)) {
+        throw new StoreError(
+          'invalid_argument',
+          `expected every review to name a distinct context item; item ${review.itemId} appears twice — a single review carries one decision per item`,
+        );
+      }
+      seen.add(review.itemId);
+      if (review.title !== undefined) {
+        assertNonEmpty(review.title, 'review.title');
+      }
+    }
+
+    return this.atomic(
+      `reviewing ${input.reviews.length} pending context items on project ${input.projectId}`,
+      async () => {
+        const reviewer = await this.assertingActor();
+        if (reviewer.kind !== 'human') {
+          throw new StoreError(
+            'invalid_argument',
+            `expected the reviewing actor ${reviewer.id} to be of kind "human"; received "${reviewer.kind}". Only a human confirms, edits, or rejects an extraction — an agent doing so would let it overrule a human (vision.md §10.1). Open the scope with a human actor.`,
+          );
+        }
+
+        const checkpointRow = expectOne(
+          await this.rows(
+            `INSERT INTO checkpoint (id, workspace_id, project_id, session_id, actor_id, "trigger", summary)
+             VALUES (gen_random_uuid(), $1, $2, NULL, $3, $4, $5)
+             RETURNING ${CHECKPOINT_COLUMNS}`,
+            [
+              this.scope.workspaceId,
+              input.projectId,
+              this.scope.actorId,
+              REVIEW_TRIGGER,
+              input.summary ?? null,
+            ],
+          ),
+          `opening the review checkpoint for project ${input.projectId}`,
+        );
+        const checkpoint = toCheckpoint(checkpointRow);
+
+        const outcomes: ContextItemReviewOutcome[] = [];
+        for (const review of input.reviews) {
+          outcomes.push(await this.applyReview(checkpoint.id, input.projectId, review));
+        }
+
+        return { checkpoint, outcomes };
+      },
+    );
+  }
+
+  private async applyReview(
+    checkpointId: Uuid,
+    projectId: Uuid,
+    review: ContextItemReview,
+  ): Promise<ContextItemReviewOutcome> {
+    const existingRows = await this.rows(
+      `SELECT ${REVIEWED_ITEM_COLUMNS}
+         FROM context_item
+        WHERE workspace_id = $1 AND id = $2 AND project_id = $3
+        FOR UPDATE`,
+      [this.scope.workspaceId, review.itemId, projectId],
+    );
+    const existing = existingRows[0];
+    if (existing === undefined) {
+      throw new StoreError(
+        'not_found',
+        `expected context item ${review.itemId} on project ${projectId} in workspace ${this.scope.workspaceId} to review; found none — reload the review queue and submit only the items it lists`,
+      );
+    }
+
+    if (toBoolean(existing, 'human_confirmed')) {
+      throw new StoreError(
+        'invalid_argument',
+        `expected context item ${review.itemId} to be awaiting human confirmation; a human already confirmed it. A review never overwrites a human-confirmed item (vision.md §10.1) — reload the review queue.`,
+      );
+    }
+
+    const status = toEnum(existing, 'status', ITEM_STATUSES);
+    if (status !== 'active') {
+      throw new StoreError(
+        'invalid_argument',
+        `expected context item ${review.itemId} to be active to review; its status is "${status}" — only active items sit in the review queue, so reload it`,
+      );
+    }
+
+    const outcome =
+      review.decision === 'reject'
+        ? await this.rejectReviewedItem(review.itemId)
+        : await this.acceptReviewedItem(existing, review);
+
+    await this.rows(
+      `INSERT INTO checkpoint_item (workspace_id, checkpoint_id, item_id, action)
+       VALUES ($1, $2, $3, $4)`,
+      [
+        this.scope.workspaceId,
+        checkpointId,
+        review.itemId,
+        outcome.outcome === 'rejected' ? 'rejected' : 'updated',
+      ],
+    );
+
+    return outcome;
+  }
+
+  private async rejectReviewedItem(itemId: Uuid): Promise<ContextItemReviewOutcome> {
+    const rows = await this.rows(
+      `UPDATE context_item
+          SET status = 'retired',
+              valid_to = COALESCE(valid_to, now()),
+              last_verified_at = now()
+        WHERE workspace_id = $1 AND id = $2
+        RETURNING id`,
+      [this.scope.workspaceId, itemId],
+    );
+    expectOne(rows, `rejecting context item ${itemId}`);
+    return { itemId, outcome: 'rejected', fieldsChanged: [] };
+  }
+
+  private async acceptReviewedItem(
+    existing: SqlRow,
+    review: ContextItemReview,
+  ): Promise<ContextItemReviewOutcome> {
+    const params = new SqlParams();
+    const assignments = ['human_confirmed = true', 'last_verified_at = now()'];
+    const fieldsChanged: string[] = [];
+
+    if (review.title !== undefined && review.title !== toText(existing, 'title')) {
+      assignments.push(`title = ${params.add(review.title)}`);
+      fieldsChanged.push('title');
+    }
+    if (review.body !== undefined && (review.body ?? null) !== toNullableText(existing, 'body')) {
+      assignments.push(`body = ${params.add(review.body ?? null)}`);
+      fieldsChanged.push('body');
+    }
+    if (
+      review.loadBearing !== undefined &&
+      review.loadBearing !== toBoolean(existing, 'load_bearing')
+    ) {
+      assignments.push(`load_bearing = ${params.add(review.loadBearing)}`);
+      fieldsChanged.push('load_bearing');
+    }
+    if (
+      review.accessScope !== undefined &&
+      review.accessScope !== toEnum(existing, 'access_scope', ACCESS_SCOPES)
+    ) {
+      assignments.push(`access_scope = ${params.add(review.accessScope)}`);
+      fieldsChanged.push('access_scope');
+    }
+
+    const rows = await this.rows(
+      `UPDATE context_item
+          SET ${assignments.join(', ')}
+        WHERE workspace_id = ${params.add(this.scope.workspaceId)}
+          AND id = ${params.add(review.itemId)}
+        RETURNING id`,
+      params.list(),
+    );
+    expectOne(rows, `confirming context item ${review.itemId}`);
+
+    const outcome: ContextItemReviewOutcomeKind = fieldsChanged.length > 0 ? 'edited' : 'confirmed';
+    return { itemId: review.itemId, outcome, fieldsChanged };
+  }
+
   private async linkSupersession(previousId: Uuid, replacementId: Uuid): Promise<void> {
     const rows = await this.rows(
       `UPDATE context_item
@@ -992,7 +1270,10 @@ class PostgresScopedStore implements ScopedStore {
 export class PostgresStoreAdapter implements StoreAdapter {
   constructor(private readonly source: PostgresConnectionSource) {}
 
-  async withScope<T>(scope: WorkspaceScope, run: (store: ScopedStore) => Promise<T>): Promise<T> {
+  async withScope<T>(
+    scope: WorkspaceScope,
+    run: (store: ReviewCapableStore) => Promise<T>,
+  ): Promise<T> {
     assertUuid(scope.workspaceId, 'scope.workspaceId');
     assertUuid(scope.actorId, 'scope.actorId');
 
