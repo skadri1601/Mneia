@@ -260,6 +260,14 @@ export type {
   TelemetrySink,
 } from './telemetry/types.js';
 export { TELEMETRY_EVENT_NAMES } from './telemetry/types.js';
+export type {
+  CheckpointQuality,
+  ExtractorQualitySummary,
+  QualityCounts,
+  QualityTrendPoint,
+  ReviewOutcome,
+} from './telemetry/quality.js';
+export { summarizeExtractorQuality } from './telemetry/quality.js';
 export {
   createClaudeCodeReader,
   parseClaudeCodeJsonl,
