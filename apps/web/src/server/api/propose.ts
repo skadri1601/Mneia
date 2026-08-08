@@ -168,7 +168,7 @@ export const handleProposeCheckpoint = async (
                   byId.get(entry.evidence.matchedItemId)?.humanConfirmed ?? false,
                 matchedLoadBearing: byId.get(entry.evidence.matchedItemId)?.loadBearing ?? false,
                 subjectSimilarity: entry.evidence.subjectSimilarity,
-                sharedSubjectTokens: entry.evidence.sharedSubjectTokens,
+                sharedSubjectTokens: [...entry.evidence.sharedSubjectTokens],
                 signal: entry.evidence.signal,
                 reason: entry.reason ?? '',
               },

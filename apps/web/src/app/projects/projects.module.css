@@ -190,3 +190,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.projectNav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-md);
+  margin-block-start: var(--space-sm);
+}
