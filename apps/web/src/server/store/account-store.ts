@@ -23,11 +23,18 @@ export class AccountError extends Error {
   }
 }
 
+export interface WorkspaceChoice {
+  readonly id: string;
+  readonly slug: string;
+  readonly displayName: string;
+}
+
 export interface AccountContext {
   readonly workspace: Workspace;
   readonly actor: Actor;
   readonly team: Team;
   readonly membership: TeamMember;
+  readonly workspaces: readonly WorkspaceChoice[];
 }
 
 export interface WorkspaceInvitation {
@@ -46,6 +53,7 @@ export interface WorkspaceInvitation {
 export interface BootstrapSoloAccountInput {
   readonly subject: string;
   readonly displayName: string;
+  readonly preferredWorkspaceId?: string | null;
 }
 
 export interface InviteToWorkspaceInput {

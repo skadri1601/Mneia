@@ -50,6 +50,7 @@ const ACCOUNT: AccountContext = {
     role: 'lead',
     addedAt: new Date('2026-08-01T00:00:00.000Z'),
   },
+  workspaces: [{ id: '11111111-1111-4111-8111-111111111111', slug: 'acme', displayName: 'Acme' }],
 };
 
 const PROJECT: ManagedProject = {

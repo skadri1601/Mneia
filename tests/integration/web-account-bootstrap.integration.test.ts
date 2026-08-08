@@ -451,6 +451,9 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
           role: 'lead',
           addedAt: expect.any(Date),
         },
+        workspaces: [
+          { id: WORKSPACE_A, slug: `workspace-${WORKSPACE_A}`, displayName: 'Ada Lovelace' },
+        ],
       });
       expect(reused).toEqual(created);
       expect(await accountCounts(admin)).toEqual({
