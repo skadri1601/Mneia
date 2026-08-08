@@ -25,6 +25,22 @@
   --tile-card: var(--canvas);
 }
 
+.quiet {
+  background-color: var(--canvas);
+  padding-block-start: 0;
+  --tile-ink: var(--ink);
+  --tile-muted: var(--ink-muted-80);
+  --tile-faint: var(--ink-muted-48);
+  --tile-link: var(--primary);
+  --tile-hairline: var(--hairline);
+  --tile-card: var(--canvas);
+}
+
+.quiet > .inner {
+  border-block-start: 1px solid var(--hairline);
+  padding-block-start: var(--space-section);
+}
+
 .dark1 {
   background-color: var(--surface-tile-1);
   --tile-ink: var(--body-on-dark);

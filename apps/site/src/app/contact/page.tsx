@@ -27,7 +27,7 @@ export default function ContactPage() {
         <p className={prose.lead}>{CONTACT_INTRO.lead}</p>
       </Tile>
 
-      <Tile surface="parchment">
+      <Tile surface="quiet">
         <ul className={styles.channels}>
           {CONTACT_CHANNELS.map((channel) => (
             <li className={styles.channel} id={channel.id} key={channel.id}>
@@ -42,7 +42,7 @@ export default function ContactPage() {
         </ul>
       </Tile>
 
-      <Tile surface="dark1">
+      <Tile surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>{CONTACT_ACCESS.eyebrow}</p>
           <h2 className={prose.displayLg}>{CONTACT_ACCESS.heading}</h2>
@@ -59,7 +59,7 @@ export default function ContactPage() {
         </div>
       </Tile>
 
-      <Tile surface="canvas">
+      <Tile surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>{CONTACT_NOT_YET.eyebrow}</p>
         </SlideOnScroll>

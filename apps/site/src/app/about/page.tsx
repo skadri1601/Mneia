@@ -37,7 +37,7 @@ export default function AboutPage() {
         </Rise>
       </Tile>
 
-      <Tile surface="dark1">
+      <Tile surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>{ABOUT_BET.eyebrow}</p>
           <h2 className={prose.displayLg}>{ABOUT_BET.heading}</h2>
@@ -53,7 +53,7 @@ export default function AboutPage() {
         </ol>
       </Tile>
 
-      <Tile surface="canvas">
+      <Tile surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>{ABOUT_THESIS.eyebrow}</p>
         </SlideOnScroll>
@@ -67,7 +67,7 @@ export default function AboutPage() {
         </div>
       </Tile>
 
-      <Tile surface="parchment">
+      <Tile surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>{ABOUT_AUDIENCE.eyebrow}</p>
           <h2 className={prose.displayLg}>{ABOUT_AUDIENCE.heading}</h2>
@@ -89,7 +89,7 @@ export default function AboutPage() {
         </div>
       </Tile>
 
-      <Tile surface="canvas" id="licensing">
+      <Tile surface="quiet" id="licensing">
         <RiseOnScroll>
           <p className={prose.eyebrow}>{ABOUT_LICENSING.eyebrow}</p>
           <h2 className={prose.displayLg}>{ABOUT_LICENSING.heading}</h2>
@@ -103,7 +103,7 @@ export default function AboutPage() {
         </div>
       </Tile>
 
-      <Tile surface="dark1">
+      <Tile surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>{ABOUT_SCOPE.eyebrow}</p>
           <h2 className={prose.displayLg}>{ABOUT_SCOPE.heading}</h2>

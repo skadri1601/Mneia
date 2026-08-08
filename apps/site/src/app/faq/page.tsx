@@ -3,15 +3,13 @@ import { FaqList } from '@/components/Faq';
 import { JsonLd } from '@/components/JsonLd';
 import prose from '@/components/Prose.module.css';
 import { SlideOnScroll } from '@/components/Reveal';
-import { Tile, type TileSurface } from '@/components/Tile';
+import { Tile } from '@/components/Tile';
 import { ALL_FAQS, FAQ_GROUPS, FAQ_INTRO } from '@/content/faq';
 import { breadcrumbSchema, faqSchema, webPageSchema } from '@/lib/schema';
 import { pageMetadata } from '@/lib/site';
 import styles from './page.module.css';
 
 export const metadata = pageMetadata('/faq');
-
-const SURFACES: readonly TileSurface[] = ['canvas', 'parchment', 'canvas', 'dark1', 'canvas'];
 
 export default function FaqPage() {
   return (
@@ -32,7 +30,7 @@ export default function FaqPage() {
       </Tile>
 
       {FAQ_GROUPS.map((group, index) => (
-        <Tile id={group.id} key={group.id} surface={SURFACES[index] ?? 'canvas'}>
+        <Tile id={group.id} key={group.id} surface="quiet">
           <SlideOnScroll from={index % 2 === 0 ? 'left' : 'right'}>
             <h2 className={prose.displayLg}>{group.heading}</h2>
             <p className={prose.lead}>{group.blurb}</p>
@@ -41,7 +39,7 @@ export default function FaqPage() {
         </Tile>
       ))}
 
-      <Tile centered surface="parchment">
+      <Tile centered surface="quiet">
         <SlideOnScroll>
           <p className={prose.eyebrow}>Not answered here</p>
           <h2 className={`${prose.displayLg} ${prose.centered}`}>
