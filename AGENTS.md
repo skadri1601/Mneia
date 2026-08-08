@@ -124,12 +124,26 @@ pnpm db:snapshot      # regenerate db/structure.sql from DATABASE_URL — run it
 pnpm db:snapshot --check  # fail if db/structure.sql and the migrations disagree — CI runs this
 pnpm waitlist:notify  # preview or send a waitlist campaign — local only, see below
 pnpm check:publish    # refuse an npm publish that would fail or ship a broken manifest
+pnpm changeset        # record a user-visible change against the client packages
+pnpm version:packages # apply pending changesets: bump versions and write CHANGELOGs
+pnpm release:dry      # changeset publish --dry-run
 ```
 
 **Publishing to npm is manual, on purpose.** `.github/workflows/release.yml` is `workflow_dispatch`
 only and defaults to a dry run — nothing publishes on a merge or a tag, the same shape as
-`db:migrate`. It needs an `NPM_TOKEN` secret on the `npm` environment, and the `@mneia` scope has to
-exist on npm before the first publish; as of 2026-08-07 it does not.
+`db:migrate`. It needs an `NPM_TOKEN` secret on the `npm` environment. The `@mneia` scope **does**
+now exist: `0.1.0` of all three client packages is live, published some time after 2026-08-07.
+
+**The registry is behind the repo.** `0.1.1` was bumped by MNE-261 to carry the MNE-257 client fixes
+and `release.yml` was never run, so nothing a customer installs contains them. Check with
+`npm view @mneia/cli version` rather than reading a package.json.
+
+**Versioning goes through changesets** (MNE-38). A PR that changes the client packages adds one with
+`pnpm changeset`; at release time `pnpm version:packages` applies every pending changeset, bumps, and
+writes the `CHANGELOG.md` files. The three client packages are `fixed` in `.changeset/config.json`,
+so they always move together — which is what MNE-261 did by hand. `release.yml` refuses a real
+publish while any changeset is still unconsumed, because that would ship a version whose changelog
+omits the change.
 
 **`ci.yml` does not run tests or typecheck.** Ruled by the founder 2026-07-30: both were judged
 noise. That job is format, lint errors, build, and git policy. It builds with `pnpm -r --if-present
