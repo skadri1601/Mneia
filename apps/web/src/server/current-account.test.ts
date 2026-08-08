@@ -9,6 +9,7 @@ import {
   resolveCurrentAccount,
   verifiedEmailOf,
 } from './current-account.js';
+import { AccountError } from './store/account-store.js';
 import type { AccountContext, AccountStore } from './store/account-store.js';
 
 const ACCOUNT_CONTEXT = {
@@ -172,11 +173,6 @@ describe('resolveCurrentAccount', () => {
       profile: { fullName: null, primaryEmailAddress: verifiedEmail('ada@example.com') },
       expected: 'ada@example.com',
     },
-    {
-      profile: { fullName: '   ', primaryEmailAddress: verifiedEmail('   ') },
-      expected: 'user_123',
-    },
-    { profile: null, expected: 'user_123' },
   ])(
     'uses the deterministic Clerk display-name fallback to $expected',
     async ({ profile, expected }) => {
@@ -214,21 +210,54 @@ describe('resolveCurrentAccount', () => {
   });
 
   it('never looks for an invitation when the email address is unverified', async () => {
-    const { dependencies, authenticate, loadCurrentUser, bootstrapSoloAccount, redeemInvitation } =
-      harness();
+    const { dependencies, authenticate, loadCurrentUser, redeemInvitation } = harness();
     authenticate.mockResolvedValue({ userId: 'user_123' });
     loadCurrentUser.mockResolvedValue({
       fullName: 'Grace Hopper',
       primaryEmailAddress: { emailAddress: 'grace@example.com', verified: false },
     });
 
-    await expect(resolveCurrentAccount(dependencies)).resolves.toBe(ACCOUNT_CONTEXT);
+    await expect(resolveCurrentAccount(dependencies)).rejects.toThrow(AccountError);
     expect(redeemInvitation).not.toHaveBeenCalled();
-    expect(bootstrapSoloAccount).toHaveBeenCalledWith({
-      subject: 'user_123',
-      displayName: 'Grace Hopper',
-      preferredWorkspaceId: null,
+  });
+
+  it('refuses to provision a workspace for an unverified email, so cycling cannot reset the ceiling', async () => {
+    const { dependencies, authenticate, loadCurrentUser, bootstrapSoloAccount } = harness();
+    authenticate.mockResolvedValue({ userId: 'user_123' });
+    loadCurrentUser.mockResolvedValue({
+      fullName: 'Grace Hopper',
+      primaryEmailAddress: { emailAddress: 'grace@example.com', verified: false },
     });
+
+    await expect(resolveCurrentAccount(dependencies)).rejects.toMatchObject({
+      code: 'email_unverified',
+    });
+    expect(bootstrapSoloAccount).not.toHaveBeenCalled();
+  });
+
+  it('refuses when Clerk reports no email address at all', async () => {
+    const { dependencies, authenticate, loadCurrentUser, bootstrapSoloAccount } = harness();
+    authenticate.mockResolvedValue({ userId: 'user_123' });
+    loadCurrentUser.mockResolvedValue({ fullName: 'Grace Hopper', primaryEmailAddress: null });
+
+    await expect(resolveCurrentAccount(dependencies)).rejects.toMatchObject({
+      code: 'email_unverified',
+    });
+    expect(bootstrapSoloAccount).not.toHaveBeenCalled();
+  });
+
+  it('still joins an inviting workspace on a verified email, which is the path that must not break', async () => {
+    const { dependencies, authenticate, loadCurrentUser, redeemInvitation, bootstrapSoloAccount } =
+      harness();
+    authenticate.mockResolvedValue({ userId: 'user_123' });
+    loadCurrentUser.mockResolvedValue({
+      fullName: 'Grace Hopper',
+      primaryEmailAddress: verifiedEmail('grace@example.com'),
+    });
+    redeemInvitation.mockResolvedValue(JOINED_CONTEXT);
+
+    await expect(resolveCurrentAccount(dependencies)).resolves.toBe(JOINED_CONTEXT);
+    expect(bootstrapSoloAccount).not.toHaveBeenCalled();
   });
 });
 
@@ -236,7 +265,10 @@ describe('createCurrentAccountResolver', () => {
   it('deduplicates account bootstrap through the supplied request cache', async () => {
     const { dependencies, authenticate, loadCurrentUser, bootstrapSoloAccount } = harness();
     authenticate.mockResolvedValue({ userId: 'user_123' });
-    loadCurrentUser.mockResolvedValue({ fullName: 'Ada Lovelace', primaryEmailAddress: null });
+    loadCurrentUser.mockResolvedValue({
+      fullName: 'Ada Lovelace',
+      primaryEmailAddress: verifiedEmail('ada@example.com'),
+    });
     const requestCache = <T>(resolve: () => Promise<T>): (() => Promise<T>) => {
       let result: Promise<T> | undefined;
       return () => {

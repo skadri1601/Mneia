@@ -20,6 +20,8 @@ const ERRORS: Readonly<Record<string, string>> = {
   not_permitted: 'Only a workspace lead can invite or revoke. Ask a lead to do it.',
   already_invited: 'That address already has an invitation waiting. Revoke it to issue a new link.',
   invitation_not_found: 'That invitation was already accepted or revoked.',
+  invite_email_failed:
+    'The invitation was created but the email did not send. Copy the link below and send it yourself; it is the same link and it still works.',
 };
 
 const ROLE_LABELS: Readonly<Record<string, string>> = {
@@ -62,13 +64,19 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
           Invitation revoked.
         </p>
       ) : null}
+      {notice === 'invited' ? (
+        <p className={styles.notice} role="status">
+          Invitation emailed. The link below is the same one it carries.
+        </p>
+      ) : null}
 
       {token === undefined ? null : (
         <section className={styles.card}>
-          <h2>Send this link</h2>
+          <h2>The join link</h2>
           <p>
-            It is shown once and never stored, so copy it now. Only the person whose verified email
-            address you invited can use it.
+            It is shown once and never stored. The invited address has been emailed this link; copy
+            it if you would rather send it yourself. Only the person whose verified email address
+            you invited can use it.
           </p>
           <p className={styles.token}>{`/join/${token}`}</p>
         </section>

@@ -38,6 +38,21 @@ export {
   renderTurn,
 } from './extract/prompt.js';
 export type {
+  ContradictionSignal,
+  ExistingItemSnapshot,
+  ReconciledCandidate,
+  ReconcileEvidence,
+  ReconcileOptions,
+  ReconcileRequest,
+  ReconcileResult,
+  ReconcileVerdict,
+} from './extract/reconcile.js';
+export {
+  DEFAULT_CONTRADICTION_SIMILARITY,
+  DEFAULT_DUPLICATE_SIMILARITY,
+  reconcileCandidates,
+} from './extract/reconcile.js';
+export type {
   ExtractionCandidate,
   ExtractionErrorCode,
   ExtractionOutput,
@@ -48,6 +63,14 @@ export {
   ExtractionOutputSchema,
   parseExtractionOutput,
 } from './extract/schema.js';
+export type { Stance } from './extract/similarity.js';
+export {
+  jaccard,
+  normalizeText,
+  numericLiterals,
+  stanceOf,
+  subjectTokens,
+} from './extract/similarity.js';
 export type {
   ExtractionProvider,
   ExtractionProviderRequest,
@@ -243,6 +266,14 @@ export type {
   TelemetrySink,
 } from './telemetry/types.js';
 export { TELEMETRY_EVENT_NAMES } from './telemetry/types.js';
+export type {
+  CheckpointQuality,
+  ExtractorQualitySummary,
+  QualityCounts,
+  QualityTrendPoint,
+  ReviewOutcome,
+} from './telemetry/quality.js';
+export { summarizeExtractorQuality } from './telemetry/quality.js';
 export {
   createClaudeCodeReader,
   parseClaudeCodeJsonl,

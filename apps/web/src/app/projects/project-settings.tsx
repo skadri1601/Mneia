@@ -48,6 +48,11 @@ export function ProjectSettings({
         <p>
           Repository binding: <code>{project.slug}</code>
         </p>
+        <nav className={styles.projectNav} aria-label="Project memory">
+          <Link href={`/projects/${project.id}/decisions`}>Decisions</Link>
+          <Link href={`/projects/${project.id}/timeline`}>Timeline</Link>
+          <Link href={`/projects/${project.id}/review`}>Review queue</Link>
+        </nav>
       </div>
 
       {noticeMessage === undefined ? null : (

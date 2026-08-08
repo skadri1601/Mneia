@@ -4,6 +4,7 @@ import type { Actor, Team, TeamMember, Workspace, WorkspaceRole } from '@mneia/c
 
 export type AccountErrorCode =
   | 'unauthenticated'
+  | 'email_unverified'
   | 'invalid_profile'
   | 'invalid_email'
   | 'invalid_role'

@@ -47,7 +47,7 @@ const SUBPROCESSORS: LegalBlock = {
     ['Functional Software, Inc. (Sentry)', 'Error reporting for this website', 'United States'],
     [
       'Resend (Plus Five Five, Inc.)',
-      'Sends the waitlist confirmation email and the one telling you access has opened',
+      'Sends the waitlist confirmation email, the one telling you access has opened, and workspace invitations to colleagues an account holder invites',
       'United States',
     ],
     ['Stripe, Inc.', 'Payment processing and subscription billing', 'United States'],

@@ -73,6 +73,55 @@ rewriting a `notFound()` for signed-out visitors. Prefer deriving the value in c
 | `WAITLIST_FROM` | The `From` address on that email. **Use `Mneia <saad@mneia.dev>`, not `hello@`** — Cloudflare Email Routing forwards `saad@` and drops everything unrouted, so replies to `hello@` vanish. Same variable name `apps/site` and `waitlist:notify` already use. |
 | `MNEIA_APP_ORIGIN` | Origin used to build the invitation's `/welcome` redirect. Defaults to `https://app.mneia.dev`. Deliberately **not** `NEXT_PUBLIC_` — see the warning above; a public-prefixed name would be inlined at build time and ignored here. |
 | `MNEIA_SITE_ORIGIN` | Marketing origin used to build unsubscribe links in the access email. Defaults to `https://mneia.dev`. Same reasoning. |
+| `MNEIA_INVITE_FROM` | The `From` address on a **workspace invitation** (MNE-252). Separate from `WAITLIST_FROM` on purpose: an invitation is transactional mail to an address a customer supplied, and it must never be sent from the waitlist identity or recorded in `waitlist_broadcast_send`. Unset means the invitation is still created and the join link still shown, but no email goes out and the inviter is told the send failed. |
+
+## Billing (MNE-141/142/143) — wired, deliberately not live
+
+The Stripe backend exists and is **switched off**, which is a state, not an omission.
+
+| Variable | Purpose |
+|---|---|
+| `STRIPE_SECRET_KEY` | Stripe secret key. Runtime only, never a build arg. |
+| `STRIPE_PRICE_ID` | The recurring price the subscription is built from. §14 sets it at **$24 per user per month**. |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for `/api/stripe/webhook`. Events failing verification are refused, not applied. |
+
+**All three must be set or none of it runs.** `readStripeConfiguration` returns null unless all three
+are present, `/api/stripe/webhook` answers `503 not_configured`, and no workspace changes plan. A
+half-configured billing path is worse than none — it charges people or grants capacity on partial
+information.
+
+There is **no checkout page**. Nothing in `apps/web` lets a user start a subscription; billing state
+changes only in response to a verified Stripe webhook. That is deliberate: `ROADMAP.md` §M1 says not
+to ship a checkout page against §14's feature table until the open question of what a paying customer
+gets before M4 is answered, and standing rule 7 keeps the individual tier free.
+
+The webhook acts on `customer.subscription.created`, `.updated`, and `.deleted`. It finds the
+workspace from `metadata.workspace_id`, falling back to `billing_customer_ref`, and declines rather
+than guessing when neither identifies one. An unrecognised Stripe status is refused rather than mapped
+by assumption, because guessing wrong either bills a cancelled workspace or gives a lapsed one free
+capacity.
+
+`pnpm funnel:report` reads the §18 kill criterion — individual-to-team conversion — from existing rows
+and §17 events. It needs no new event names and works before billing is live; it simply reports that
+nothing pays yet.
+
+## Signup email verification (MNE-250)
+
+**Clerk must require a verified email address before a signup completes.** In the Clerk dashboard:
+*User & Authentication → Email, Phone, Username → Email address → Verify at sign-up*, set to required.
+
+`MNE-173`'s daily inference ceiling is keyed on the **workspace**, so a fresh API token cannot reset
+it. A fresh *account* could: a new Clerk subject means a new `bootstrapSoloAccount`, a new workspace,
+and a clean ceiling. Email verification is the friction that makes cycling cost something.
+
+**The code does not trust that dashboard setting.** `resolveCurrentAccount`
+(`apps/web/src/server/current-account.ts`) refuses with `email_unverified` when the signed-in Clerk
+user has no verified primary address, before any workspace is provisioned. Because both `/welcome`
+and the device-approval page that mints a CLI token resolve the account through that one function,
+neither is reachable without a verified address — so the invariant holds even if the dashboard toggle
+is switched off later. `current-account.test.ts` covers it.
+
+Keep both: the dashboard setting stops the signup, and the guard stops the provisioning.
 
 GitHub Actions secrets, for `deploy-web.yml`:
 

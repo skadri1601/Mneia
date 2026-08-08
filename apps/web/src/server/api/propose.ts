@@ -14,6 +14,7 @@ import {
   defaultTokenCounter,
   ExtractionError,
   parseExtractionOutput,
+  reconcileCandidates,
   reduceTrajectory,
   resolveProject,
   turnsSince,
@@ -191,23 +192,54 @@ export const handleProposeCheckpoint = async (
 
   const filtered = applyPrecisionFilter(candidates);
 
+  const reconciled = reconcileCandidates({
+    candidates: filtered.kept,
+    existing: existing.map((item) => ({
+      id: item.id,
+      kind: item.kind,
+      title: item.title,
+      body: item.body,
+    })),
+  });
+
+  const carried = [...reconciled.novel, ...reconciled.contradictions].sort(
+    (left, right) => left.index - right.index,
+  );
+  const byId = new Map(existing.map((item) => [item.id, item]));
+
   return {
     proposal: {
       workspaceId: store.scope.workspaceId,
       projectId: project.id,
       actorId: store.scope.actorId,
-      candidates: filtered.kept.map((candidate, index) => ({
+      candidates: carried.map((entry, index) => ({
         index,
-        kind: candidate.kind,
-        title: candidate.title,
-        body: candidate.body,
-        rationale: candidate.rationale,
-        confidence: candidate.confidence,
-        loadBearing: candidate.loadBearing,
-        accessScope: candidate.accessScope,
-        sourceRef: candidate.sourceRef,
+        kind: entry.candidate.kind,
+        title: entry.candidate.title,
+        body: entry.candidate.body,
+        rationale: entry.candidate.rationale,
+        confidence: entry.candidate.confidence,
+        loadBearing: entry.candidate.loadBearing,
+        accessScope: entry.candidate.accessScope,
+        sourceRef: entry.candidate.sourceRef,
+        supersedesId: entry.evidence === null ? null : entry.evidence.matchedItemId,
+        contradiction:
+          entry.evidence === null || entry.evidence.signal === null
+            ? null
+            : {
+                matchedItemId: entry.evidence.matchedItemId,
+                matchedTitle: entry.evidence.matchedTitle,
+                matchedHumanConfirmed:
+                  byId.get(entry.evidence.matchedItemId)?.humanConfirmed ?? false,
+                matchedLoadBearing: byId.get(entry.evidence.matchedItemId)?.loadBearing ?? false,
+                subjectSimilarity: entry.evidence.subjectSimilarity,
+                sharedSubjectTokens: [...entry.evidence.sharedSubjectTokens],
+                signal: entry.evidence.signal,
+                reason: entry.reason ?? '',
+              },
       })),
       rejectedCount: filtered.rejected.length,
+      duplicateCount: reconciled.duplicates.length,
       watermark: lastCommitted.ref,
       consumedTurns,
       model,

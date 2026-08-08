@@ -284,7 +284,15 @@ export const httpCheckpointApi: CheckpointApi = {
         confidence: candidate.confidence,
         loadBearing: candidate.loadBearing,
         accessScope: candidate.accessScope,
-        supersedes: null,
+        supersedes:
+          candidate.contradiction === null || candidate.contradiction === undefined
+            ? null
+            : {
+                id: candidate.contradiction.matchedItemId,
+                title: candidate.contradiction.matchedTitle,
+                humanConfirmed: candidate.contradiction.matchedHumanConfirmed,
+                loadBearing: candidate.contradiction.matchedLoadBearing,
+              },
       })),
     };
   },
@@ -321,6 +329,7 @@ export const httpCheckpointApi: CheckpointApi = {
       items: entries.map((entry) => ({
         action: actionFor(entry),
         item: newItemFrom(entry, request.projectId),
+        conflictsWith: entry.candidate.supersedes?.id ?? null,
       })),
     });
 
