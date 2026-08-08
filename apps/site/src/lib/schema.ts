@@ -1,13 +1,13 @@
-import type { Faq } from '@/content/pages';
-import { TIERS } from '@/content/pages';
 import type { DocPage } from '@/content/docs';
 import { CONTACT } from '@/content/legal';
+import type { Faq } from '@/content/pages';
+import { TIERS } from '@/content/pages';
 import {
   absoluteUrl,
   REPO_URL,
+  ROUTES,
   type RoutePath,
   routeFor,
-  ROUTES,
   SITE_DESCRIPTION,
   SITE_NAME,
   SITE_TAGLINE,

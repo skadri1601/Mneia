@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import type { CommandIo } from '../packages/cli/src/command.js';
+import type { ProjectConfig } from '../packages/cli/src/commands/brief.js';
+import { createBriefCommand } from '../packages/cli/src/commands/brief.js';
 import type {
   Actor,
   ContextItem,
@@ -8,9 +11,6 @@ import type {
   Uuid,
 } from '../packages/core/src/index.js';
 import { assembleSlice } from '../packages/core/src/index.js';
-import type { ProjectConfig } from '../packages/cli/src/commands/brief.js';
-import { createBriefCommand } from '../packages/cli/src/commands/brief.js';
-import type { CommandIo } from '../packages/cli/src/command.js';
 import { createToolContextFixture } from '../packages/mcp-server/src/tools/context-fixture.js';
 import { rehydrateTool } from '../packages/mcp-server/src/tools/rehydrate.js';
 

@@ -1,10 +1,10 @@
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { WORKSPACE_SETTING, migrate } from '../../packages/core/src/index.js';
+import { migrate, WORKSPACE_SETTING } from '../../packages/core/src/index.js';
 import {
-  RlsGuardError,
   assertConnectionEnforcesRls,
   inspectRlsPosture,
+  RlsGuardError,
 } from '../../packages/core/src/store/rls-guard.js';
 import { PgDriver } from './pg-driver.js';
 

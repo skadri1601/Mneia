@@ -1,7 +1,7 @@
+import { apiError } from '../../../server/api-auth.js';
 import { bearerTokenFrom, hashSecret } from '../../../server/device-codes.js';
 import { deviceStore } from '../../../server/device-runtime.js';
 import { DeviceError } from '../../../server/store/device-store.js';
-import { apiError } from '../../../server/api-auth.js';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';

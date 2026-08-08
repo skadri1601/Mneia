@@ -1,4 +1,3 @@
-import { createToolContextFixture } from './context-fixture.js';
 import type {
   Actor,
   Checkpoint,
@@ -15,6 +14,7 @@ import type {
 import { createMemorySink, createTelemetryEmitter } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
 import { checkpointTool, MAX_CANDIDATES } from './checkpoint.js';
+import { createToolContextFixture } from './context-fixture.js';
 import type { ToolContext, ToolResult } from './types.js';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
