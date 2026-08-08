@@ -33,6 +33,19 @@ check the workspace named on that page is the one you expect — and the token i
 `~/.mneia/credentials` with `0600` permissions. `init` writes `.mneia/config.json` in the repo,
 naming the workspace and project this directory is bound to. Commit that file; it holds no secret.
 
+Confirm it worked:
+
+```
+$ mneia whoami
+actor      Ada Lovelace <ada@example.com>
+workspace  example-co
+team       platform
+endpoint   https://app.mneia.dev
+```
+
+If that prints instead of an error, the machine is signed in and everything else is an authenticated
+call.
+
 `init` also reads the constraints already written in your `AGENTS.md` and imports them, so the first
 rehydration is not empty.
 
@@ -92,6 +105,11 @@ workspace scope on every row, Postgres row-level security, retention, and reside
 the bytes happen to sit. Usage events carry ids and timings, never your content.
 
 Read the [privacy policy](https://mneia.dev/privacy) for what is kept and for how long.
+
+## Stability
+
+`0.1.x`. The command surface will move before `1.0` — pin an exact version in CI if a change to the
+output shape would break you.
 
 ## See also
 

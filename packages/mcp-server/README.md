@@ -34,6 +34,10 @@ claude mcp add mneia --env MNEIA_TOKEN=<your token> -- npx -y @mneia/mcp-server
 Get the token by installing [`@mneia/cli`](https://www.npmjs.com/package/@mneia/cli) and running
 `mneia login`; it is written to `~/.mneia/credentials`.
 
+Confirm the client picked it up — in Claude Code, `/mcp` should list `mneia` as connected with four
+tools. Then ask the agent to rehydrate; on a fresh project it will say there is nothing stored yet
+rather than erroring, which is how you tell "connected and empty" from "not connected".
+
 The server speaks MCP over stdio. Run it from a client, not by hand — `mneia-mcp --help` and
 `mneia-mcp --version` are the only things it does interactively.
 
@@ -71,6 +75,10 @@ the bytes happen to sit. Usage events carry ids and timings, never your content,
 `MNEIA_TELEMETRY=off` turns them off entirely.
 
 Read the [privacy policy](https://mneia.dev/privacy) for what is kept and for how long.
+
+## Stability
+
+`0.1.x`. Tool names are stable; their argument and return shapes will move before `1.0`.
 
 ## See also
 
