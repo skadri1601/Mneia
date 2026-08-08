@@ -4,6 +4,7 @@ vi.mock('server-only', () => ({}));
 
 import {
   archiveProject,
+  createProject,
   getProject,
   listProjects,
   ProjectControlError,
@@ -67,6 +68,7 @@ const PROJECT: ManagedProject = {
 const projectStore = () => {
   const listProjects = vi.fn<ProjectControlStore['listProjects']>();
   const getProject = vi.fn<ProjectControlStore['getProject']>();
+  const createProject = vi.fn<ProjectControlStore['createProject']>();
   const renameProject = vi.fn<ProjectControlStore['renameProject']>();
   const archiveProject = vi.fn<ProjectControlStore['archiveProject']>();
 
@@ -74,11 +76,13 @@ const projectStore = () => {
     store: {
       listProjects,
       getProject,
+      createProject,
       renameProject,
       archiveProject,
     } satisfies ProjectControlStore,
     listProjects,
     getProject,
+    createProject,
     renameProject,
     archiveProject,
   };
@@ -129,6 +133,68 @@ describe('getProject', () => {
     );
     expect(persist).toHaveBeenCalledOnce();
     expect(persist).toHaveBeenCalledWith(ACCOUNT, PROJECT_ID);
+  });
+});
+
+describe('createProject', () => {
+  it('normalizes the slug and trims the name before delegating the trusted account', async () => {
+    const { store, createProject: persist } = projectStore();
+    persist.mockResolvedValue(PROJECT);
+
+    await createProject({
+      account: ACCOUNT,
+      slug: '  Analytical-Engine  ',
+      displayName: '  Analytical Engine  ',
+      store,
+    });
+
+    expect(persist).toHaveBeenCalledWith(ACCOUNT, {
+      slug: 'analytical-engine',
+      displayName: 'Analytical Engine',
+    });
+  });
+
+  it.each([
+    ['an empty slug', ''],
+    ['a leading hyphen', '-engine'],
+    ['a trailing hyphen', 'engine-'],
+    ['consecutive hyphens', 'analytical--engine'],
+    ['a path separator', 'analytical/engine'],
+    ['an underscore', 'analytical_engine'],
+    ['a space', 'analytical engine'],
+  ])(
+    'refuses %s rather than storing a binding mneia init can never match',
+    async (_label, slug) => {
+      const { store, createProject: persist } = projectStore();
+
+      await expect(
+        createProject({ account: ACCOUNT, slug, displayName: 'Analytical Engine', store }),
+      ).rejects.toMatchObject({ code: 'invalid_slug' });
+      expect(persist).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a slug longer than 100 characters', async () => {
+    const { store, createProject: persist } = projectStore();
+
+    await expect(
+      createProject({
+        account: ACCOUNT,
+        slug: 'a'.repeat(101),
+        displayName: 'Analytical Engine',
+        store,
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_slug' });
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('refuses a blank display name', async () => {
+    const { store, createProject: persist } = projectStore();
+
+    await expect(
+      createProject({ account: ACCOUNT, slug: 'analytical-engine', displayName: '   ', store }),
+    ).rejects.toMatchObject({ code: 'invalid_display_name' });
+    expect(persist).not.toHaveBeenCalled();
   });
 });
 

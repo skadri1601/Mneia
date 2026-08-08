@@ -42,6 +42,7 @@ const nullable = <T>(schema: z.ZodType<T>): z.ZodType<T | null> => schema.nullab
 
 const ActorEnvelope = z.object({ actor: nullable(ActorWireSchema) });
 const ProjectEnvelope = z.object({ project: nullable(ProjectWireSchema) });
+const CreatedProjectEnvelope = z.object({ project: ProjectWireSchema });
 const SessionEnvelope = z.object({ session: SessionWireSchema });
 const ContextItemEnvelope = z.object({ item: nullable(ContextItemWireSchema) });
 const ContextItemsEnvelope = z.object({ items: z.array(ContextItemWireSchema) });
@@ -183,8 +184,13 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
     endSession(): Promise<Session> {
       return unsupported('endSession', 'M2');
     },
-    createProject(_input: NewProject): Promise<Project> {
-      return unsupported('createProject', 'M2');
+    async createProject(input: NewProject): Promise<Project> {
+      const { project } = await transport.request('/api/v1/projects', CreatedProjectEnvelope, {
+        slug: input.slug,
+        displayName: input.displayName,
+        repoUrl: input.repoUrl ?? null,
+      });
+      return decodeProject(project);
     },
     insertContextItem(_item: NewContextItem): Promise<ContextItem> {
       return unsupported('insertContextItem', 'M2');

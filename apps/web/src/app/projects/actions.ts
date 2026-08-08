@@ -4,7 +4,12 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { getCurrentAccount } from '../../server/current-account.js';
 import { projectStore } from '../../server/project-runtime.js';
-import { archiveProject, ProjectControlError, renameProject } from '../../server/projects.js';
+import {
+  archiveProject,
+  createProject,
+  ProjectControlError,
+  renameProject,
+} from '../../server/projects.js';
 
 const textField = (formData: FormData, name: string): string => {
   const value = formData.get(name);
@@ -32,6 +37,35 @@ const mutationErrorDestination = (
   }
   return null;
 };
+
+export async function createProjectAction(formData: FormData): Promise<void> {
+  let destination: string;
+
+  try {
+    const account = await getCurrentAccount();
+    const project = await createProject({
+      account,
+      slug: textField(formData, 'slug'),
+      displayName: textField(formData, 'displayName'),
+      store: projectStore,
+    });
+    revalidatePath('/projects');
+    destination = `${projectPath(project.id)}?notice=created`;
+  } catch (error) {
+    if (!(error instanceof ProjectControlError)) throw error;
+    if (error.code === 'invalid_slug') {
+      destination = '/projects?error=invalid_slug';
+    } else if (error.code === 'slug_taken') {
+      destination = '/projects?error=slug_taken';
+    } else if (error.code === 'invalid_display_name') {
+      destination = '/projects?error=invalid_name';
+    } else {
+      throw error;
+    }
+  }
+
+  redirect(destination);
+}
 
 export async function renameProjectAction(formData: FormData): Promise<void> {
   const projectId = textField(formData, 'projectId');

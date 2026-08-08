@@ -2,6 +2,8 @@ import { WorkspaceSwitcher } from '../../components/WorkspaceSwitcher.js';
 import { getCurrentAccount } from '../../server/current-account.js';
 import { projectStore } from '../../server/project-runtime.js';
 import { listProjects } from '../../server/projects.js';
+import { createProjectAction } from './actions.js';
+import { NewProject } from './new-project.js';
 import { ProjectList } from './project-list.js';
 import styles from './projects.module.css';
 
@@ -27,7 +29,10 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         <p>{account.workspace.displayName}</p>
         <WorkspaceSwitcher current={account.workspace.id} workspaces={account.workspaces} />
         <h1>Projects</h1>
-        <p>Projects are attached from the CLI. Their repository bindings remain stable.</p>
+        <p>
+          Attach a project with <code>mneia init</code>, or create one here and bind it from the CLI
+          afterwards. Repository bindings remain stable.
+        </p>
       </header>
       {notice === 'archived' ? (
         <p className={styles.notice} role="status">
@@ -40,6 +45,7 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
         </p>
       ) : null}
       <ProjectList projects={projects} />
+      <NewProject createAction={createProjectAction} error={error} />
     </main>
   );
 }
