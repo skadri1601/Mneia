@@ -19,7 +19,7 @@ const candidate = (
 ): ExtractionCandidate => ({
   kind: 'decision',
   body: null,
-  rationale: null,
+  rationale: 'Recorded so the rejected option is not re-proposed.',
   confidence: 0.8,
   loadBearing: false,
   accessScope: 'project',
@@ -257,6 +257,37 @@ describe('applyPrecisionFilter', () => {
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0]?.candidate).toBe(second);
     expect(result.rejected[0]?.reason).toContain('duplicates');
+  });
+
+  it('drops a decision that arrives without its rationale', () => {
+    const result = applyPrecisionFilter([
+      candidate({ title: 'Reject Redis and keep Postgres as the only store', rationale: null }),
+      candidate({ title: 'Reject Redis and keep Postgres as the only store', rationale: '   ' }),
+    ]);
+
+    expect(result.kept).toHaveLength(0);
+    expect(result.rejected).toHaveLength(2);
+    expect(result.rejected[0]?.reason).toMatch(/rationale/);
+  });
+
+  it('requires a rationale only of decisions, not of the other four kinds', () => {
+    const result = applyPrecisionFilter([
+      candidate({ kind: 'constraint', title: 'Rehydrate p95 stays under 300ms', rationale: null }),
+      candidate({ kind: 'fact', title: 'The store is Neon Postgres 18', rationale: null }),
+      candidate({ kind: 'open_question', title: 'Who owns the Warp reader?', rationale: null }),
+    ]);
+
+    expect(result.kept).toHaveLength(3);
+    expect(result.rejected).toHaveLength(0);
+  });
+
+  it('can be told not to require a rationale, for a caller that wants recall', () => {
+    const result = applyPrecisionFilter(
+      [candidate({ title: 'Reject Redis and keep Postgres as the only store', rationale: null })],
+      { requireDecisionRationale: false },
+    );
+
+    expect(result.kept).toHaveLength(1);
   });
 
   it('does not treat two different decisions as duplicates', () => {

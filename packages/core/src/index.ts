@@ -1,8 +1,5 @@
 export const VERSION = '0.1.0';
 
-export type { EmbeddingErrorCode, EmbeddingProvider } from './embed/types.js';
-export { assertEmbeddingDimensions, embeddableText, EmbeddingError } from './embed/types.js';
-
 export * from './api/index.js';
 export { isStorableText, NULL_BYTE_ERROR } from './domain/text.js';
 export type {
@@ -21,6 +18,35 @@ export type {
   Uuid,
   Workspace,
 } from './domain/types.js';
+export type { EmbeddingErrorCode, EmbeddingProvider } from './embed/types.js';
+export { assertEmbeddingDimensions, EmbeddingError, embeddableText } from './embed/types.js';
+export type {
+  PrecisionFilterOptions,
+  PrecisionFilterResult,
+  RejectedCandidate,
+} from './extract/filter.js';
+export {
+  applyPrecisionFilter,
+  DEFAULT_CONFIDENCE_FLOOR,
+  DEFAULT_MAX_CANDIDATES,
+} from './extract/filter.js';
+export { buildExtractionPrompt, EXTRACTION_SYSTEM_PROMPT } from './extract/prompt.js';
+export type {
+  ExtractionCandidate,
+  ExtractionErrorCode,
+  ExtractionOutput,
+} from './extract/schema.js';
+export {
+  ExtractionCandidateSchema,
+  ExtractionError,
+  ExtractionOutputSchema,
+  parseExtractionOutput,
+} from './extract/schema.js';
+export type {
+  ExtractionProvider,
+  ExtractionProviderRequest,
+  ExtractionProviderResponse,
+} from './extract/types.js';
 export type {
   SupersedeBlockedOutcome,
   SupersedeOutcome,

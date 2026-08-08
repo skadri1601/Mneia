@@ -9,6 +9,7 @@ export const NEAR_DUPLICATE_SIMILARITY = 0.85;
 export interface PrecisionFilterOptions {
   readonly confidenceFloor?: number | undefined;
   readonly maxCandidates?: number | undefined;
+  readonly requireDecisionRationale?: boolean | undefined;
 }
 
 export interface RejectedCandidate {
@@ -100,6 +101,16 @@ function confidenceReason(confidence: number, confidenceFloor: number): string |
   return `Confidence ${confidence} is below the ${confidenceFloor} floor, so the extraction is not sure enough that this was settled or is worth a human's attention.`;
 }
 
+function missingRationaleReason(candidate: ExtractionCandidate, required: boolean): string | null {
+  if (!required || candidate.kind !== 'decision') {
+    return null;
+  }
+  if ((candidate.rationale ?? '').trim().length > 0) {
+    return null;
+  }
+  return 'A decision without its rationale does not stop anyone re-proposing the option that was rejected, so it is dropped rather than written.';
+}
+
 function assertOptions(confidenceFloor: number, maxCandidates: number): void {
   if (!Number.isFinite(confidenceFloor) || confidenceFloor < 0 || confidenceFloor > 1) {
     throw new ExtractionError(
@@ -137,6 +148,7 @@ export function applyPrecisionFilter(
 ): PrecisionFilterResult {
   const confidenceFloor = options.confidenceFloor ?? DEFAULT_CONFIDENCE_FLOOR;
   const maxCandidates = options.maxCandidates ?? DEFAULT_MAX_CANDIDATES;
+  const requireDecisionRationale = options.requireDecisionRationale ?? true;
   assertOptions(confidenceFloor, maxCandidates);
 
   const rejected: RejectedCandidate[] = [];
@@ -148,6 +160,7 @@ export function applyPrecisionFilter(
 
     const reason =
       fillerReason(candidate.title, normalized) ??
+      missingRationaleReason(candidate, requireDecisionRationale) ??
       confidenceReason(candidate.confidence, confidenceFloor) ??
       duplicateReason(tokens, survivors);
 
