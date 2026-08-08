@@ -12,7 +12,7 @@ export type ContactChannel = {
 export const CONTACT_INTRO: Intro = {
   eyebrow: 'Contact',
   heading: 'Four addresses, and a person behind each one.',
-  lead: 'Mneia is small and not yet generally available. Nothing below routes into a ticket queue — pick the address that matches what you need and it reaches someone who can act on it.',
+  lead: 'Mneia is a small team. Nothing below routes into a ticket queue — pick the address that matches what you need and it reaches someone who can act on it.',
 };
 
 export const CONTACT_CHANNELS: readonly ContactChannel[] = [
@@ -47,18 +47,18 @@ export const CONTACT_CHANNELS: readonly ContactChannel[] = [
 ];
 
 export const CONTACT_ACCESS: Block = {
-  eyebrow: 'Early access',
-  heading: 'For access, use the form rather than an inbox.',
+  eyebrow: 'Getting started',
+  heading: 'You do not need to ask us for access.',
   paragraphs: [
     [
       {
-        text: 'Access is granted in stages, and the waitlist is the queue. Emailing about it does not move you up it, and the address you leave on the form is the one we mail when your account is enabled.',
+        text: 'Sign up at app.mneia.dev and install the clients from npm — there is no queue and nothing to request. If a colleague has already started, ask them to invite you instead, because accepting an invitation puts you in their workspace rather than a new one of your own.',
       },
     ],
     [
-      { text: 'That is the only email the waitlist sends.', strong: true },
+      { text: 'If you are still on the waitlist,', strong: true },
       {
-        text: ' It is not a newsletter, and the unsubscribe link hard-deletes your address rather than flagging it.',
+        text: ' you no longer need to wait for us, and the unsubscribe link hard-deletes your address rather than flagging it.',
       },
     ],
   ],
@@ -69,7 +69,7 @@ export const CONTACT_NOT_YET: Block = {
   paragraphs: [
     [
       {
-        text: 'There is no support desk, no phone number, and no chat widget, because there is no team behind them yet and a channel nobody answers is worse than one that does not exist. A general support address opens with general availability.',
+        text: 'There is no phone number and no chat widget, because there is no team behind them and a channel nobody answers is worse than one that does not exist. Enterprise plans carry a support SLA as a contracted term; everything else reaches a person at the addresses above.',
       },
     ],
   ],

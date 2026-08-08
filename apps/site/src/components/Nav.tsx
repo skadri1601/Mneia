@@ -67,7 +67,7 @@ export function Nav() {
             <a className={styles.signIn} href={SIGN_IN_URL}>
               Sign in
             </a>
-            <ButtonPrimary href="/#waitlist">Request access</ButtonPrimary>
+            <ButtonPrimary href="https://app.mneia.dev">Start free</ButtonPrimary>
           </span>
         </div>
       </div>

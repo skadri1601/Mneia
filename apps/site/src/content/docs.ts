@@ -108,11 +108,11 @@ export const DOCS_CARDS = [
 export const DOCS_INTRO: Intro = {
   eyebrow: 'Documentation',
   heading: 'How Mneia works, and how to run it.',
-  lead: 'Four pages. Start with the quickstart if you have access, with concepts if you are still deciding, and use the two reference pages when you need the exact flag.',
+  lead: 'Four pages. Start with the quickstart to get running, with concepts if you are still deciding, and use the two reference pages when you need the exact flag.',
 };
 
 export const DOCS_STATUS =
-  'Mneia is in staged early access. Everything documented about the command surface and the tool surface is built and behaves as described. The client packages are not on npm yet, so the install steps describe what happens when your account is enabled rather than something you can run today.';
+  'Checkpoint, rehydrate, search, and assert are live in both the CLI and the MCP server, and everything documented on those behaves as described. Handoff and conflict resolution are named but not shipped — running one names the release it lands in rather than failing as an unknown command, so a page describing them is marked rather than silently aspirational.';
 
 const QUICKSTART: DocPage = {
   slug: 'quickstart',
@@ -132,7 +132,7 @@ const QUICKSTART: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'You need an enabled Mneia account and Node.js 20 or newer. Access is granted in stages from the waitlist, and the packages install once your account is enabled.',
+            'You need a Mneia account and Node.js 20.11 or newer. Sign up at app.mneia.dev, or accept an invitation from a colleague — accepting one puts you in their workspace rather than a new one of your own.',
             'You do not need a model provider key. Mneia pays for the inference a checkpoint runs, so there is nothing to configure and nothing of ours on your provider bill.',
           ],
         },

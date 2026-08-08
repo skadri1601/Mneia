@@ -98,10 +98,10 @@ export const HOME_SURFACES: Block = {
   ],
 };
 
-export const HOME_WAITLIST: Intro = {
-  eyebrow: 'Access',
-  heading: 'Request early access.',
-  lead: 'We are onboarding teams in stages. Tell us where to reach you and we will get you set up.',
+export const HOME_START: Intro = {
+  eyebrow: 'Get started',
+  heading: 'Free for one. The point is the second person.',
+  lead: 'Create a workspace, install the CLI and the MCP server from npm, and checkpoint your first session. Then invite the teammate who will pick the work up — that is the half nobody else builds.',
 };
 
 export const OPERATIONS = [
@@ -302,11 +302,10 @@ export const TIERS = [
     unit: '',
     note: 'Free, and not a trial. Individual use is how the product spreads, so charging for it would be charging for our own distribution.',
     contents: [
-      'One project',
-      '30-day history',
-      'Capped checkpoints',
+      'Your own workspace',
+      'Checkpoint and rehydrate',
       'MCP server and CLI',
-      'Handoffs to yourself',
+      'Capped checkpoints per day',
     ],
     featured: false,
   },
@@ -315,14 +314,13 @@ export const TIERS = [
     price: '$24',
     amount: 24,
     unit: ' / user / month',
-    note: 'Plus an included checkpoint allowance sized well above ordinary use.',
+    note: 'The difference that matters: more than one person writing to the same project memory.',
     contents: [
-      'Shared projects and roles',
-      'Cross-team scope',
-      'Conflict resolution',
-      'Unlimited history',
-      'Team handoffs',
-      'Web review app',
+      'Everything in Solo',
+      'Invite colleagues into one workspace',
+      'Owner, admin, and member roles',
+      'Shared projects across the team',
+      'Higher checkpoint allowance',
     ],
     featured: true,
   },
@@ -331,23 +329,21 @@ export const TIERS = [
     price: 'Custom',
     amount: null,
     unit: '',
-    note: 'For organisations that need governance over what context agents can see.',
+    note: 'For organisations that need a contract, not a card.',
     contents: [
-      'SSO and SAML',
-      'Audit export',
-      'Permission scopes',
-      'Data residency',
-      'Bring your own cloud',
+      'Everything in Team',
+      'SSO through your identity provider',
       'Support SLA',
+      'Invoicing and a signed DPA',
     ],
     featured: false,
   },
 ] as const;
 
 export const PRICING_PREVIEW: Paragraph = [
-  { text: 'Pricing is in preview.', strong: true },
+  { text: 'Pricing is in preview, and self-serve billing is not live yet.', strong: true },
   {
-    text: ' The seat price is set against what comparable tools charge, but the number is not final until we have measured what a real checkpoint costs us to run. If it moves before general availability, it moves before anyone is billed, not after.',
+    text: ' Nothing is charged today — write to us and we will set your team up directly. Two things are still moving: the seat price is not final until we have measured what a real checkpoint costs us to run, and the tiers above list only what ships today. Conflict resolution, handoffs, permission scopes, audit export, data residency, and bring-your-own-cloud are on the roadmap and are deliberately not sold as though they were here.',
   },
 ];
 
@@ -413,12 +409,12 @@ export const PRICING_FAQ: readonly Faq[] = [
   {
     question: 'How much does Mneia cost?',
     answer:
-      'Solo is free. Team is $24 per user per month and includes a checkpoint allowance sized well above ordinary use. Enterprise is custom priced, for organisations that need governance over what context agents can see. Pricing is in preview: the seat price is not final until we have measured what a real checkpoint costs to run, and if it moves it moves before anyone is billed.',
+      'Solo is free. Team is $24 per user per month and includes a checkpoint allowance sized well above ordinary use. Enterprise is custom priced, for organisations that need a contract rather than a card. Two caveats worth stating plainly: self-serve billing is not live yet, so nothing is charged today and we set teams up directly; and the seat price is not final until we have measured what a real checkpoint costs to run. If it moves, it moves before anyone is billed.',
   },
   {
     question: 'Is the free tier a trial?',
     answer:
-      'No. Solo is free and stays free. Individual use is how the product spreads, so charging for it would be charging for our own distribution. It covers one project, 30-day history, capped checkpoints, the MCP server and CLI, and handoffs to yourself.',
+      'No. Solo is free and stays free. Individual use is how the product spreads, so charging for it would be charging for our own distribution. It covers your own workspace, checkpoint and rehydrate, the MCP server and the CLI, with a daily checkpoint cap.',
   },
   {
     question: 'What exactly is metered?',
@@ -433,7 +429,7 @@ export const PRICING_FAQ: readonly Faq[] = [
   {
     question: 'What does the Team plan add over Solo?',
     answer:
-      'Shared projects and roles, cross-team scope, conflict resolution between humans and agents, unlimited history, team handoffs, and the web review app.',
+      'The thing the product is actually for: more than one person writing to the same project memory. You invite colleagues into one workspace, they land in yours rather than a new one of their own, projects are shared across the team, and roles are owner, admin, and member. Conflict resolution, team handoffs, and the review app are on the roadmap and are not in the plan yet.',
   },
 ];
 

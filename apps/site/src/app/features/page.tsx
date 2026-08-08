@@ -67,7 +67,7 @@ export default function FeaturesPage() {
           </div>
         </div>
         <div className={prose.actions}>
-          <ButtonPrimary href="/#waitlist">Request access</ButtonPrimary>
+          <ButtonPrimary href="https://app.mneia.dev">Start free</ButtonPrimary>
         </div>
       </Tile>
 

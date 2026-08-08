@@ -6,14 +6,13 @@ import prose from '@/components/Prose.module.css';
 import { Rise, RiseOnScroll } from '@/components/Reveal';
 import { Rich } from '@/components/RichText';
 import { Tile } from '@/components/Tile';
-import { WaitlistForm } from '@/components/WaitlistForm';
 import {
   HOME_ARTIFACT,
   HOME_INTRO,
   HOME_OPERATIONS_INTRO,
   HOME_PROBLEM,
   HOME_SURFACES,
-  HOME_WAITLIST,
+  HOME_START,
   OPERATIONS,
 } from '@/content/pages';
 import { breadcrumbSchema, webPageSchema } from '@/lib/schema';
@@ -40,7 +39,7 @@ export default function HomePage() {
           </Rise>
           <Rise step={3}>
             <div className={`${prose.actions} ${prose.actionsCentered}`}>
-              <ButtonPrimary href="#waitlist">Request access</ButtonPrimary>
+              <ButtonPrimary href="https://app.mneia.dev">Start free</ButtonPrimary>
               <ButtonSecondaryPill href="/handoff">See a real handoff</ButtonSecondaryPill>
             </div>
           </Rise>
@@ -108,14 +107,17 @@ export default function HomePage() {
         </div>
       </Tile>
 
-      <Tile surface="canvas" centered id="waitlist">
+      <Tile surface="canvas" centered id="start">
         <div className={styles.waitlist}>
           <RiseOnScroll>
-            <p className={prose.eyebrow}>{HOME_WAITLIST.eyebrow}</p>
-            <h2 className={prose.displayLg}>{HOME_WAITLIST.heading}</h2>
+            <p className={prose.eyebrow}>{HOME_START.eyebrow}</p>
+            <h2 className={prose.displayLg}>{HOME_START.heading}</h2>
           </RiseOnScroll>
-          <p className={`${prose.lead} ${prose.centered}`}>{HOME_WAITLIST.lead}</p>
-          <WaitlistForm />
+          <p className={`${prose.lead} ${prose.centered}`}>{HOME_START.lead}</p>
+          <div className={`${prose.actions} ${prose.actionsCentered}`}>
+            <ButtonPrimary href="https://app.mneia.dev">Start free</ButtonPrimary>
+            <ButtonSecondaryPill href="/docs/quickstart">Read the quickstart</ButtonSecondaryPill>
+          </div>
         </div>
       </Tile>
     </>

@@ -18,17 +18,22 @@ export const FAQ_GETTING_STARTED: readonly Faq[] = [
   {
     question: 'Is Mneia available yet?',
     answer:
-      'Not generally. Mneia is in staged early access and the waitlist is the way in. The client packages are not published to npm yet, so the install steps in the documentation describe what happens once your account is enabled rather than something you can run today. Everything the documentation describes about the command surface and the tool surface is real and built.',
+      'Yes. Sign up at app.mneia.dev and install the clients from npm. Checkpoint, rehydrate, search, and assert are live in both the CLI and the MCP server. Handoff and conflict resolution are named but not shipped yet — running one tells you which release it lands in rather than failing as an unknown command, so you can always tell "not yet" from "you typed it wrong".',
   },
   {
     question: 'How do I get access?',
     answer:
-      'Request it from the form on the home page. We are onboarding teams in stages and will email you when your account is enabled. That email is the only one the waitlist sends you.',
+      'Sign up at app.mneia.dev with a work email, or accept an invitation from a colleague. Accepting an invitation puts you in their workspace rather than a new one of your own, which matters — two people at the same company who each sign up cold land in separate workspaces and cannot see each other’s work.',
   },
   {
     question: 'What do I install?',
     answer:
-      'Two packages, and most people want both. The CLI, @mneia/cli, gives you mneia init, brief, checkpoint, log, and status in the terminal. The MCP server, @mneia/mcp-server, exposes mneia_rehydrate, mneia_assert, mneia_checkpoint, and mneia_search to Claude Code, Cursor, Codex, or any other MCP client, so the agent can read and write project memory without you relaying it.',
+      'Two packages, and most people want both. The CLI — npm install -g @mneia/cli — gives you mneia init, brief, checkpoint, log, and status in the terminal. The MCP server exposes mneia_rehydrate, mneia_assert, mneia_checkpoint, and mneia_search to Claude Code, Cursor, Codex, or any other MCP client, so the agent reads and writes project memory without you relaying it; add it with claude mcp add mneia -- npx -y @mneia/mcp-server. Node 20.11 or newer for both.',
+  },
+  {
+    question: 'How do I get my team into the same workspace?',
+    answer:
+      'Invite them by email from the team page, and they land in your workspace when they accept. This is worth doing early rather than at the end. Mneia only does its actual job — carrying what one person decided to the next person who picks the work up — once there is more than one writer in a project. A workspace of one is a memory tool; a workspace of several is the product.',
   },
   {
     question: 'What does mneia init actually do to my repository?',
@@ -84,7 +89,7 @@ export const FAQ_SUPPORT: readonly Faq[] = [
   {
     question: 'How do I report a security problem?',
     answer:
-      'Email security@mneia.dev with enough detail to reproduce it. Please do not include anyone else’s data in the report. Mneia is small and pre-general-availability, so that address reaches a person directly rather than a queue.',
+      'Email security@mneia.dev with enough detail to reproduce it. Please do not include anyone else’s data in the report. Mneia is a small team, so that address reaches a person directly rather than a queue.',
   },
   {
     question: 'How do I exercise a privacy right — access, correction, or deletion?',
@@ -94,7 +99,7 @@ export const FAQ_SUPPORT: readonly Faq[] = [
   {
     question: 'Is there a support SLA?',
     answer:
-      'Not before general availability, and we would rather say so than publish a number we cannot hold. Enterprise plans carry a support SLA as a contracted term. Everything else gets a reply from a person as soon as we can manage it.',
+      'Only on Enterprise, where it is a contracted term. We would rather say that than publish a number we cannot hold across every plan. Everything else gets a reply from a person as soon as we can manage it, which today is genuinely fast because the team is small.',
   },
 ];
 
