@@ -310,16 +310,22 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
     });
   });
 
-  it('rejects a duplicate human external reference across workspaces', async () => {
+  it('lets one person hold an actor in a second workspace, but only one per workspace', async () => {
     await withAccountSchema(async ({ admin }) => {
       await seedIdentityRows(admin);
       await admin.query('SELECT set_config($1, $2, false)', [WORKSPACE_SETTING, WORKSPACE_B]);
 
+      await admin.query(
+        `INSERT INTO actor (id, workspace_id, kind, display_name, external_ref)
+         VALUES ($1, $2, 'human', 'The Same Human, Elsewhere', $3)`,
+        [DENIED_ACTOR, WORKSPACE_B, SUBJECT_A],
+      );
+
       await expect(
         admin.query(
           `INSERT INTO actor (id, workspace_id, kind, display_name, external_ref)
-           VALUES ($1, $2, 'human', 'Duplicate Human', $3)`,
-          [DENIED_ACTOR, WORKSPACE_B, SUBJECT_A],
+           VALUES (gen_random_uuid(), $1, 'human', 'Duplicate Within One Workspace', $2)`,
+          [WORKSPACE_B, SUBJECT_A],
         ),
       ).rejects.toMatchObject({ code: '23505' });
     });

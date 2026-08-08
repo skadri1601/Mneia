@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { Actor, Team, TeamMember, TeamRole, Workspace } from '@mneia/core';
+import type { Actor, Team, TeamMember, Workspace, WorkspaceRole } from '@mneia/core';
 
 export type AccountErrorCode =
   | 'unauthenticated'
@@ -35,7 +35,7 @@ export interface WorkspaceInvitation {
   readonly workspaceId: string;
   readonly teamId: string;
   readonly invitedEmail: string;
-  readonly role: TeamRole;
+  readonly role: WorkspaceRole;
   readonly invitedBy: string;
   readonly createdAt: Date;
   readonly expiresAt: Date;
@@ -53,7 +53,7 @@ export interface InviteToWorkspaceInput {
   readonly teamId: string;
   readonly invitedByActorId: string;
   readonly invitedEmail: string;
-  readonly role: TeamRole;
+  readonly role: WorkspaceRole;
   readonly tokenHash: string;
   readonly expiresAt: Date;
 }

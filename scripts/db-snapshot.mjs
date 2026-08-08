@@ -77,11 +77,25 @@ async function tableNames(client) {
     `SELECT c.relname
        FROM pg_class c
        JOIN pg_namespace n ON n.oid = c.relnamespace
-      WHERE n.nspname = $1 AND c.relkind = 'r'
+      WHERE n.nspname = $1
+        AND c.relkind IN ('r', 'p')
+        AND NOT c.relispartition
       ORDER BY c.relname`,
     [SCHEMA],
   );
   return rows.map((row) => row.relname);
+}
+
+async function partitionStrategyOf(client, table) {
+  const rows = await rowsOf(
+    client,
+    `SELECT pg_get_partkeydef(c.oid) AS partition_by
+       FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = $1 AND c.relname = $2 AND c.relkind = 'p'`,
+    [SCHEMA, table],
+  );
+  return rows.length > 0 ? rows[0].partition_by : null;
 }
 
 async function columnsOf(client, table) {
@@ -169,7 +183,8 @@ async function renderTable(client, table) {
   const lines = [`CREATE TABLE ${table} (`];
   const columns = await columnsOf(client, table);
   lines.push(columns.map(renderColumn).join(',\n'));
-  lines.push(');');
+  const partitionBy = await partitionStrategyOf(client, table);
+  lines.push(partitionBy === null ? ');' : `) PARTITION BY ${partitionBy};`);
 
   const constraints = await constraintsOf(client, table);
   for (const constraint of constraints) {

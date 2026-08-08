@@ -54,6 +54,7 @@ export const ContextItemWireSchema = z.object({
   validTo: isoDate.nullable(),
   supersedesId: uuid.nullable(),
   supersededById: uuid.nullable(),
+  supersedeReason: z.string().nullable().optional(),
   accessScope: z.enum(ACCESS_SCOPES),
 });
 
@@ -80,6 +81,7 @@ export const encodeContextItem = (item: ContextItem): ContextItemWire => ({
   validTo: item.validTo?.toISOString() ?? null,
   supersedesId: item.supersedesId,
   supersededById: item.supersededById,
+  supersedeReason: item.supersedeReason,
   accessScope: item.accessScope,
 });
 
@@ -104,6 +106,7 @@ export const decodeContextItem = (wire: ContextItemWire): ContextItem => ({
   validTo: toNullableDate(wire.validTo),
   supersedesId: wire.supersedesId,
   supersededById: wire.supersededById,
+  supersedeReason: wire.supersedeReason ?? null,
   accessScope: wire.accessScope,
   embedding: null,
   embeddingModel: null,

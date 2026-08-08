@@ -128,8 +128,17 @@ const detectFailure = (
 ): Promise<unknown> => detect(client, projectId, itemA, itemB).catch((e: unknown) => e);
 
 const resolveConflict = async (client: Client, id: string, actorId: string): Promise<void> => {
+  const rationale = await client.query(
+    `SELECT 1 FROM information_schema.columns
+      WHERE table_schema = current_schema() AND table_name = 'conflict' AND column_name = 'rationale'`,
+  );
+  const setsRationale = rationale.rows.length > 0;
+
   await client.query(
-    "UPDATE conflict SET resolved_at = now(), resolved_by = $1, resolution = 'a_wins' WHERE id = $2",
+    `UPDATE conflict
+        SET resolved_at = now(), resolved_by = $1, resolution = 'a_wins'
+            ${setsRationale ? ", rationale = 'a was confirmed by a human'" : ''}
+      WHERE id = $2`,
     [actorId, id],
   );
 };

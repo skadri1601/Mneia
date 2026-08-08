@@ -137,6 +137,7 @@ export type {
   DeviceAuthorizationStatus,
   TeamFunction,
   TeamRole,
+  WorkspaceRole,
   WorkspacePlan,
 } from './store/schema.js';
 export {
@@ -160,6 +161,8 @@ export {
   ITEM_STATUSES,
   TEAM_FUNCTIONS,
   TEAM_ROLES,
+  WORKSPACE_ROLES,
+  teamRoleForWorkspaceRole,
   WORKSPACE_PLANS,
   WORKSPACE_SETTING,
 } from './store/schema.js';

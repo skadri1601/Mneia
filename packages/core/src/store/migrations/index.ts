@@ -14,6 +14,18 @@ import { migration as dropNeonDemoTable } from './0013-drop-neon-demo-table.js';
 import { migration as embeddingModelProvenance } from './0014-embedding-model-provenance.js';
 import { migration as rateLimitCounter } from './0015-rate-limit-counter.js';
 import { migration as workspaceInvitation } from './0016-workspace-invitation.js';
+import { migration as identityAndWorkspaceMembership } from './0017-identity-and-workspace-membership.js';
+import { migration as contextItemEmbedding } from './0018-context-item-embedding.js';
+import { migration as telemetryEvent } from './0019-telemetry-event.js';
+import { migration as checkpointCostAndReview } from './0020-checkpoint-cost-and-review.js';
+import { migration as decisionRationale } from './0021-decision-rationale.js';
+import { migration as contextItemGrant } from './0022-context-item-grant.js';
+import { migration as retentionAndResidency } from './0023-retention-and-residency.js';
+import { migration as handoffItem } from './0024-handoff-item.js';
+import { migration as projectFileBinding } from './0025-project-file-binding.js';
+import { migration as workspaceUsagePeriod } from './0026-workspace-usage-period.js';
+import { migration as apiTokenScopes } from './0027-api-token-scopes.js';
+import { migration as auditEvent } from './0028-audit-event.js';
 import type { Migration } from './migration.js';
 
 export type { AppliedMigration, Migration } from './migration.js';
@@ -35,4 +47,16 @@ export const MIGRATIONS: readonly Migration[] = [
   embeddingModelProvenance,
   rateLimitCounter,
   workspaceInvitation,
+  identityAndWorkspaceMembership,
+  contextItemEmbedding,
+  telemetryEvent,
+  checkpointCostAndReview,
+  decisionRationale,
+  contextItemGrant,
+  retentionAndResidency,
+  handoffItem,
+  projectFileBinding,
+  workspaceUsagePeriod,
+  apiTokenScopes,
+  auditEvent,
 ];

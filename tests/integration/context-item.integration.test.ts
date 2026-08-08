@@ -123,7 +123,17 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
       const defs = result.rows.map((row) => row.indexdef as string).join('\n');
 
       expect(defs).toContain('(project_id, status, kind)');
-      expect(defs).toMatch(/USING ivfflat \(embedding vector_cosine_ops\)/);
+      expect(defs).toMatch(/load_bearing/);
+
+      const vectorIndexes = await client.query(
+        "SELECT indexdef FROM pg_indexes WHERE tablename = 'context_item_embedding'",
+      );
+      const vectorDefs = vectorIndexes.rows
+        .map((row) => row.indexdef as string)
+        .join(String.fromCharCode(10));
+
+      expect(vectorDefs).toMatch(/USING hnsw \(embedding vector_cosine_ops\)/);
+      expect(defs).not.toMatch(/ivfflat/);
     });
   });
 
@@ -137,13 +147,12 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
            id, workspace_id, project_id, kind, title, body, status,
            asserted_by, asserted_at, source_session_id, source_ref,
            confidence, human_confirmed, load_bearing, last_verified_at, decay_after,
-           valid_from, valid_to, access_scope, embedding, embedding_model
+           valid_from, valid_to, access_scope
          ) VALUES (
            $1, $2, $3, 'constraint', $4, $5, 'active',
            $6, '2026-03-03T10:00:00Z', $7, $8,
            0.9, true, true, '2026-03-04T11:00:00Z', '30 days',
-           '2026-03-03T10:00:00Z', '2026-04-03T10:00:00Z', 'team', $9,
-           'openai:text-embedding-3-small'
+           '2026-03-03T10:00:00Z', '2026-04-03T10:00:00Z', 'team'
          )`,
         [
           id,
@@ -154,8 +163,13 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
           seed.actorId,
           seed.sessionId,
           'https://github.com/skadri1601/Mneia/pull/18',
-          embedding,
         ],
+      );
+
+      await client.query(
+        `INSERT INTO context_item_embedding (workspace_id, item_id, model, dim, embedding)
+         VALUES ($1, $2, 'openai:text-embedding-3-small', $3, $4)`,
+        [WS_A, id, EMBEDDING_DIMENSIONS, embedding],
       );
 
       const row = (await client.query('SELECT * FROM context_item WHERE id = $1', [id])).rows[0];
@@ -178,9 +192,18 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
       expect((row.valid_from as Date).toISOString()).toBe('2026-03-03T10:00:00.000Z');
       expect((row.valid_to as Date).toISOString()).toBe('2026-04-03T10:00:00.000Z');
       expect(row.access_scope).toBe('team');
-      expect(row.embedding_model).toBe('openai:text-embedding-3-small');
+      expect(row).not.toHaveProperty('embedding');
 
-      const storedVector = JSON.parse(row.embedding as string) as number[];
+      const vector = (
+        await client.query(
+          'SELECT model, dim, embedding FROM context_item_embedding WHERE item_id = $1',
+          [id],
+        )
+      ).rows[0];
+      expect(vector.model).toBe('openai:text-embedding-3-small');
+      expect(vector.dim).toBe(EMBEDDING_DIMENSIONS);
+
+      const storedVector = JSON.parse(vector.embedding as string) as number[];
       const sentVector = JSON.parse(embedding) as number[];
       expect(storedVector).toHaveLength(EMBEDDING_DIMENSIONS);
       expect(storedVector.every((v, i) => Math.abs(v - (sentVector[i] as number)) < 1e-6)).toBe(
@@ -189,36 +212,64 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
     });
   });
 
-  it('refuses a vector whose model is unknown, and a model with no vector', async () => {
+  it('refuses a vector with no model, a blank model, and a wrong dimension', async () => {
     await withSchema(async (client, seed) => {
-      const insert = async (
-        id: string,
-        embedding: string | null,
-        embeddingModel: string | null,
-      ): Promise<void> => {
+      const itemId = '66666666-6666-4666-8666-666666666666';
+      await client.query(
+        `INSERT INTO context_item (id, workspace_id, project_id, kind, title, asserted_by)
+         VALUES ($1, $2, $3, 'constraint', 'a ruling', $4)`,
+        [itemId, WS_A, seed.projectId, seed.actorId],
+      );
+
+      const store = async (model: string | null, dim: number, embedding: string): Promise<void> => {
         await client.query(
-          `INSERT INTO context_item (
-             id, workspace_id, project_id, kind, title, asserted_by, embedding, embedding_model
-           ) VALUES ($1, $2, $3, 'constraint', $4, $5, $6, $7)`,
-          [id, WS_A, seed.projectId, 'a ruling', seed.actorId, embedding, embeddingModel],
+          `INSERT INTO context_item_embedding (workspace_id, item_id, model, dim, embedding)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [WS_A, itemId, model, dim, embedding],
         );
       };
 
-      await expect(
-        insert('66666666-6666-4666-8666-666666666666', vectorLiteral(1), null),
-      ).rejects.toThrow(/context_item_embedding_model_present/);
+      await expect(store(null, EMBEDDING_DIMENSIONS, vectorLiteral(1))).rejects.toThrow(/model/);
+
+      await expect(store('', EMBEDDING_DIMENSIONS, vectorLiteral(2))).rejects.toThrow(
+        /context_item_embedding_model_is_not_blank/,
+      );
+
+      await expect(store('openai:text-embedding-3-small', 512, vectorLiteral(3))).rejects.toThrow(
+        /context_item_embedding_dim_matches/,
+      );
 
       await expect(
-        insert('77777777-7777-4777-8777-777777777777', null, 'openai:text-embedding-3-small'),
-      ).rejects.toThrow(/context_item_embedding_model_present/);
-
-      await expect(
-        insert('88888888-8888-4888-8888-888888888888', vectorLiteral(2), ''),
-      ).rejects.toThrow(/context_item_embedding_model_not_blank/);
-
-      await expect(
-        insert('99999999-9999-4999-8999-999999999999', null, null),
+        store('openai:text-embedding-3-small', EMBEDDING_DIMENSIONS, vectorLiteral(4)),
       ).resolves.toBeUndefined();
+    });
+  });
+
+  it('lets two models hold a vector for one item, which is what a backfill needs', async () => {
+    await withSchema(async (client, seed) => {
+      const itemId = '55555555-5555-4555-8555-555555555555';
+      await client.query(
+        `INSERT INTO context_item (id, workspace_id, project_id, kind, title, asserted_by)
+         VALUES ($1, $2, $3, 'decision', 'mid-backfill', $4)`,
+        [itemId, WS_A, seed.projectId, seed.actorId],
+      );
+
+      for (const model of ['openai:text-embedding-3-small', 'voyage:voyage-3']) {
+        await client.query(
+          `INSERT INTO context_item_embedding (workspace_id, item_id, model, dim, embedding)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [WS_A, itemId, model, EMBEDDING_DIMENSIONS, vectorLiteral(1)],
+        );
+      }
+
+      const stored = await client.query(
+        'SELECT model FROM context_item_embedding WHERE item_id = $1 ORDER BY model',
+        [itemId],
+      );
+      expect(stored.rows.map((row) => row.model)).toEqual([
+        'openai:text-embedding-3-small',
+        'voyage:voyage-3',
+      ]);
     });
   });
 

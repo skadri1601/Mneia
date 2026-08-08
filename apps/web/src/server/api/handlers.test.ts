@@ -45,6 +45,7 @@ const writtenItem = (overrides: Partial<ContextItem> = {}): ContextItem => ({
   validTo: null,
   supersedesId: null,
   supersededById: null,
+  supersedeReason: null,
   accessScope: 'project',
   embedding: null,
   embeddingModel: null,

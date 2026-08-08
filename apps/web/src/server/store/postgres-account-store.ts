@@ -10,13 +10,14 @@ import {
   type PostgresConnectionSource,
   type PostgresSession,
   type SqlRow,
-  type TeamRole,
+  type WorkspaceRole,
   toActor,
   toTeam,
   toTeamMember,
   toWorkspace,
   type Uuid,
   WORKSPACE_SETTING,
+  teamRoleForWorkspaceRole,
 } from '@mneia/core';
 import {
   type AccountContext,
@@ -92,10 +93,10 @@ const readDate = (row: SqlRow, column: string): Date => {
 const readOptionalDate = (row: SqlRow, column: string): Date | null =>
   row[column] === null || row[column] === undefined ? null : readDate(row, column);
 
-const readRole = (row: SqlRow): TeamRole => {
+const readRole = (row: SqlRow): WorkspaceRole => {
   const value = readString(row, 'role');
-  if (value === 'lead' || value === 'member') return value;
-  throw corrupt(`Expected a known team role; received "${value}"`);
+  if (value === 'owner' || value === 'admin' || value === 'member') return value;
+  throw corrupt(`Expected a known workspace role; received "${value}"`);
 };
 
 const toInvitation = (row: SqlRow): WorkspaceInvitation => ({
@@ -137,7 +138,7 @@ export class PostgresAccountStore implements AccountStore {
       const rows = await session.execute<SqlRow>(
         `INSERT INTO workspace_invitation
            (id, workspace_id, team_id, invited_email, token_hash, role, invited_by, expires_at)
-         VALUES ($1, $2, $3, $4, $5, $6::team_role, $7, $8)
+         VALUES ($1, $2, $3, $4, $5, $6::workspace_role, $7, $8)
          RETURNING ${INVITATION_COLUMNS}`,
         [
           this.idFactory(),
@@ -242,19 +243,49 @@ export class PostgresAccountStore implements AccountStore {
     input: RedeemInvitationInput,
   ): Promise<AccountContext> {
     const actorId = this.idFactory();
-    await setScope(session, { [WORKSPACE_SETTING]: invitation.workspaceId });
+    await setScope(session, {
+      [WORKSPACE_SETTING]: invitation.workspaceId,
+      [IDENTITY_SUBJECT_SETTING]: input.subject,
+    });
+
+    const existingIdentity = await session.execute<SqlRow>(
+      'SELECT id FROM identity WHERE subject = $1',
+      [input.subject],
+    );
+    const identityRows =
+      existingIdentity.rows.length > 0
+        ? existingIdentity
+        : await session.execute<SqlRow>(
+            `INSERT INTO identity (id, subject)
+             VALUES (gen_random_uuid(), $1)
+             RETURNING id`,
+            [input.subject],
+          );
+    const identityId = mapExactlyOne(identityRows.rows, 'identity', (row) => String(row.id));
+
+    await session.execute(
+      `INSERT INTO workspace_member (workspace_id, identity_id, role)
+       VALUES ($1, $2, $3::workspace_role)
+       ON CONFLICT (workspace_id, identity_id) DO NOTHING`,
+      [invitation.workspaceId, identityId, invitation.role],
+    );
 
     const actorRows = await session.execute<SqlRow>(
-      `INSERT INTO actor (id, workspace_id, kind, display_name, external_ref)
-       VALUES ($1, $2, 'human', $3, $4)
+      `INSERT INTO actor (id, workspace_id, identity_id, kind, display_name, external_ref)
+       VALUES ($1, $2, $3, 'human', $4, $5)
        RETURNING ${ACTOR_COLUMNS}`,
-      [actorId, invitation.workspaceId, input.displayName, input.subject],
+      [actorId, invitation.workspaceId, identityId, input.displayName, input.subject],
     );
     const membershipRows = await session.execute<SqlRow>(
       `INSERT INTO team_member (workspace_id, team_id, actor_id, role)
        VALUES ($1, $2, $3, $4::team_role)
        RETURNING ${MEMBERSHIP_COLUMNS}`,
-      [invitation.workspaceId, invitation.teamId, actorId, invitation.role],
+      [
+        invitation.workspaceId,
+        invitation.teamId,
+        actorId,
+        teamRoleForWorkspaceRole(invitation.role),
+      ],
     );
     const acceptedRows = await session.execute<SqlRow>(
       `UPDATE workspace_invitation SET accepted_at = now(), accepted_actor_id = $3
