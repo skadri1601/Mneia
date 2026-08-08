@@ -30,7 +30,7 @@ export const CONTACT = {
 } as const;
 
 export const REVIEW_NOTICE =
-  'These documents are published in draft ahead of the Service becoming generally available. They describe what Mneia does today and what it will do when the hosted Service launches, and they are kept current as that changes.';
+  'These documents are in force and describe what Mneia does today, not what it plans to do. They are kept current as the product changes, and the date at the top of each one tells you when it last did.';
 
 const SUBPROCESSORS: LegalBlock = {
   kind: 'table',
@@ -47,7 +47,7 @@ const SUBPROCESSORS: LegalBlock = {
     ['Functional Software, Inc. (Sentry)', 'Error reporting for this website', 'United States'],
     [
       'Resend (Plus Five Five, Inc.)',
-      'Sends the waitlist confirmation email and the invitation when your access opens',
+      'Sends the waitlist confirmation email and the one telling you access has opened',
       'United States',
     ],
     ['Stripe, Inc.', 'Payment processing and subscription billing', 'United States'],
@@ -114,7 +114,7 @@ export const PRIVACY: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            'This policy covers three different things, and it is worth separating them, because right now they are not all live.',
+            'This policy covers three different things. All three are live, and it is worth separating them, because what we hold differs sharply between them.',
           ],
         },
         {
@@ -125,11 +125,11 @@ export const PRIVACY: LegalDoc = {
             [
               'The waitlist',
               'Live',
-              'You give us a work email so we can tell you when access opens',
+              'You give us a work email so we can tell you that access has opened',
             ],
             [
               'The hosted Service',
-              'Open by invitation',
+              'Live',
               'Checkpoint, rehydrate, and handoff, through the CLI, the MCP server, and the web app',
             ],
           ],
@@ -137,7 +137,7 @@ export const PRIVACY: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            '**Access to the Service is opening in stages, by invitation from the waitlist.** If you have not been invited yet, the only personal data we hold about you is the work email address you gave the waitlist, plus the technical diagnostics described in section 4. If you have accepted an invitation, you have an account, and sections 5 onward describe what we hold in the present tense: your identity, the details you gave us about yourself and your company, and whatever you put into your workspace.',
+            '**The Service is open, and you can create an account without an invitation.** If you are on the waitlist and have not signed up, the only personal data we hold about you is the work email address you gave it, plus the technical diagnostics described in section 4. Once you have an account, sections 5 onward describe what we hold in the present tense: your identity, the details you gave us about yourself and your company, and whatever you put into your workspace.',
             'This policy does not cover third-party websites we link to, or the AI coding tools you use Mneia alongside. Claude Code, Cursor, Codex, and the rest each have their own policies and their own relationship with you.',
           ],
         },
@@ -193,7 +193,7 @@ export const PRIVACY: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            '**The waitlist.** If you submit the form, we receive the work email address you typed. We use it for one thing: telling you when access opens. We do not sell it, rent it, share it for anyone else’s marketing, or add you to a newsletter you did not ask for. Every message we send will let you unsubscribe in one click, as the CAN-SPAM Act requires, and unsubscribing removes the address rather than merely suppressing it.',
+            '**The waitlist.** If you submit the form, we receive the work email address you typed. We use it for one thing: telling you that access has opened. We do not sell it, rent it, share it for anyone else’s marketing, or add you to a newsletter you did not ask for. Every message we send will let you unsubscribe in one click, as the CAN-SPAM Act requires, and unsubscribing removes the address rather than merely suppressing it.',
             '**Error reporting.** When something breaks on this site, our error reporting sends us a diagnostic report. That report includes your **IP address**, operating system name and version, browser name and version, device characteristics, the page you were on, and a technical stack trace. It is processed by Sentry on our behalf and used only to find and fix the fault.',
           ],
         },
@@ -486,7 +486,7 @@ export const PRIVACY: LegalDoc = {
           kind: 'text',
           paragraphs: [
             'Comprehensive privacy statutes are in force in Virginia, Colorado, Connecticut, Utah, Texas, Oregon, Montana, Iowa, Delaware, Nebraska, New Hampshire, New Jersey, Tennessee, Minnesota, Maryland, Indiana, Kentucky, and Rhode Island. They differ in detail; we apply the most protective standard to everyone rather than sorting people by postcode.',
-            'Wherever you live in the United States, you may **confirm** whether we process your data, **access** it, **correct** it, **delete** it, obtain a **portable copy**, and **opt out** of targeted advertising, sale, and profiling with legal or similarly significant effects. **We conduct targeted advertising on this website**; we do not sell personal information and we do not profile in any way that produces legal or similarly significant effects.',
+            'Wherever you live in the United States, you may **confirm** whether we process your data, **access** it, **correct** it, **delete** it, obtain a **portable copy**, and **opt out** of targeted advertising, sale, and profiling with legal or similarly significant effects. **We do not conduct targeted advertising on this website**, we do not sell personal information, and we do not profile in any way that produces legal or similarly significant effects.',
             '**If we refuse a request, you may appeal.** Colorado, Connecticut, Virginia, Texas, Montana, Oregon, Delaware, New Jersey, Minnesota, Maryland, and others require an appeal route, and we offer it to everyone. Reply to our refusal and a person will reconsider it within 45 days. If we still refuse, we will tell you how to contact your state Attorney General.',
             '**Washington My Health My Data Act.** We do not collect consumer health data as that statute defines it, and we do not sell it. Its definition is broad, so we monitor this rather than assuming.',
           ],
@@ -544,7 +544,7 @@ export const PRIVACY: LegalDoc = {
           paragraphs: [
             '**This website sets no cookies today.** The **Cookie Policy** lists what would be set if we ever enable analytics or advertising, by name, purpose, and lifetime — and states plainly that none of it is set now. That policy is part of this one, and is where you change your choices.',
             '**Consent, if it ever becomes relevant.** In the EEA, the UK, and Switzerland, the ePrivacy Directive and the UK PECR require your consent before a non-essential cookie is set. Our banner is built and defaults to refusing, so nothing would load until you answered, and rejecting would be one click in the same place and of the same prominence as accepting. Elsewhere such cookies would be on by default and you could withdraw at any time. **None of this is running today, so you will not see a banner** — asking permission for something we do not do would tell you something untrue.',
-            'When the Service launches, it will also set **strictly necessary** cookies for authentication and security. Those are exempt from consent requirements because without them you cannot stay logged in, and they cannot be switched off while you are using an account.',
+            'Signing in to the Service, at app.mneia.dev, sets **strictly necessary** cookies for authentication and security. Those are exempt from consent requirements because without them you cannot stay logged in, and they cannot be switched off while you are using an account. They are set when you sign in, not when you read this website.',
             '**Sharing for advertising.** There is none. No Meta Pixel and no Google Ads remarketing runs on this website, so no personal information is disclosed to either company, and there is nothing that the CCPA as amended by the CPRA would count as “sharing”. We do not sell personal information for money, we do not share the waitlist with anyone, and we do not upload waitlist addresses to any advertising platform. **If that ever changes we will say so here first.** The **Do Not Sell or Share My Personal Information** link in the footer works today, requires no account and no verification, and records your objection in advance.',
             '**Global Privacy Control.** We honour the GPC browser signal as a valid opt-out of sale and sharing, as California and Colorado require. Today there is nothing for it to stop, because no tag loads for anyone. The handling is live rather than promised: when your browser sends GPC, advertising and analytics are treated as refused in every region, whether or not you have ever seen a banner — so it will already be in force if we ever do enable a tag.',
             '**Do Not Track.** There is still no common standard for how sites should respond to DNT, so like most sites we do not respond to it differently. California law requires us to tell you that plainly, so we have.',
@@ -571,7 +571,7 @@ export const PRIVACY: LegalDoc = {
         {
           kind: 'text',
           paragraphs: [
-            'We will update this policy as the product changes; the Service launching will require it. The date at the top always reflects the current version.',
+            'We will update this policy as the product changes. The date at the top always reflects the current version.',
             '**For material changes that reduce your protections or widen what we do with your data, we will give at least 30 days’ notice** by email to account holders before they take effect, and where consent is the lawful basis we will ask again rather than assume. Continuing to use the Service after a change takes effect means you accept it; if you do not, you can close your account and export your data first.',
           ],
         },
@@ -612,7 +612,7 @@ export const TERMS: LegalDoc = {
           paragraphs: [
             'Mneia captures the decisions, constraints, and open questions produced in an AI agent session, and hands them to whoever picks the work up next. It does three things: **checkpoint**, **rehydrate**, and **handoff**.',
             '**It is a hosted service.** There is no local database, no offline mode, and no self-hosted deployment. The CLI, the MCP server, and the web app are all authenticated clients against one hosted API. An account is required and the clients do not function without one.',
-            '**The Service is not yet generally available.** Access is opening in stages from the waitlist. Until we tell you your access is live, nothing here obliges us to provide the Service to you.',
+            '**The Service is available today.** You can create an account without an invitation, and the client packages are published on npm. The waitlist is now a notification list for people who asked to be told when access opened, not a queue you have to join first. What we do and do not warrant about availability is in section 12.',
           ],
         },
       ],
