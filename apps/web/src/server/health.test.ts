@@ -5,8 +5,8 @@ vi.mock('server-only', () => ({}));
 import type { PostgresConnectionSource, PostgresSession, SqlResult, SqlValue } from '@mneia/core';
 import { checkHealth, describeModelPosture, inspectModelPosture } from './health.js';
 
-const NO_KEYS = {} as NodeJS.ProcessEnv;
-const BOTH_KEYS = { OPENAI_API_KEY: 'sk-x', ANTHROPIC_API_KEY: 'sk-ant-x' } as NodeJS.ProcessEnv;
+const NO_KEYS = {};
+const BOTH_KEYS = { OPENAI_API_KEY: 'sk-x', ANTHROPIC_API_KEY: 'sk-ant-x' };
 const NO_MODELS = {
   extraction: 'no_key',
   extractionFallback: 'no_key',
@@ -185,13 +185,11 @@ describe('model posture', () => {
   });
 
   it('treats a blank key as no key, because an empty value configures nothing', () => {
-    expect(inspectModelPosture({ OPENAI_API_KEY: '   ' } as NodeJS.ProcessEnv).extraction).toBe(
-      'no_key',
-    );
+    expect(inspectModelPosture({ OPENAI_API_KEY: '   ' }).extraction).toBe('no_key');
   });
 
   it('ties embeddings to the OpenAI key, since one key serves both calls', () => {
-    const posture = inspectModelPosture({ OPENAI_API_KEY: 'sk-x' } as NodeJS.ProcessEnv);
+    const posture = inspectModelPosture({ OPENAI_API_KEY: 'sk-x' });
     expect(posture.embeddings).toBe('configured');
     expect(posture.extractionFallback).toBe('no_key');
   });

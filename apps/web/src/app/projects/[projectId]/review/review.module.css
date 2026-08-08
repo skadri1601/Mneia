@@ -1,0 +1,132 @@
+.page {
+  width: min(100% - (2 * var(--space-lg)), var(--width-text));
+  margin-inline: auto;
+  padding-block: var(--space-section);
+}
+
+.pageHeader {
+  display: grid;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-xxl);
+}
+
+.pageHeader h1 {
+  font-family: var(--font-display);
+  font-size: var(--size-display-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-display-lg);
+  letter-spacing: var(--tracking-display-lg);
+}
+
+.pageHeader p,
+.why,
+.empty {
+  color: var(--tile-muted);
+}
+
+.notice,
+.error {
+  margin-block-end: var(--space-lg);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-sm);
+}
+
+.notice {
+  border: 1px solid var(--tile-rule);
+}
+
+.error {
+  border: 1px solid var(--tile-link);
+}
+
+.queue {
+  display: grid;
+  gap: var(--space-xl);
+}
+
+.item {
+  display: grid;
+  gap: var(--space-sm);
+  padding: var(--space-lg);
+  border: 1px solid var(--tile-rule);
+  border-radius: var(--radius-md);
+}
+
+.itemHeader {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-sm);
+}
+
+.kind,
+.flag,
+.actor,
+.confidence {
+  font-size: var(--size-body-sm);
+}
+
+.kind {
+  font-weight: var(--weight-semibold);
+}
+
+.flag {
+  padding-inline: var(--space-xs);
+  border: 1px solid var(--tile-rule);
+  border-radius: var(--radius-sm);
+}
+
+.actor,
+.confidence {
+  color: var(--tile-muted);
+}
+
+.field {
+  display: grid;
+  gap: var(--space-xxs);
+}
+
+.field span {
+  font-size: var(--size-body-sm);
+  color: var(--tile-muted);
+}
+
+.field input,
+.field textarea {
+  min-height: var(--target-min);
+  padding: var(--space-xs) var(--space-sm);
+  border: 1px solid var(--tile-rule);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: inherit;
+  background: transparent;
+}
+
+.field textarea {
+  resize: vertical;
+}
+
+.checkbox,
+.decision label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: var(--target-min);
+}
+
+.decision {
+  display: flex;
+  gap: var(--space-lg);
+}
+
+.submit {
+  min-height: var(--target-min);
+  padding-inline: var(--space-lg);
+  border: 1px solid var(--tile-rule);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  justify-self: start;
+}

@@ -216,6 +216,6 @@ export interface ReviewCapableStore extends ScopedStore {
 }
 
 export interface StoreAdapter {
-  withScope<T>(scope: WorkspaceScope, run: (store: ScopedStore) => Promise<T>): Promise<T>;
+  withScope<T>(scope: WorkspaceScope, run: (store: ReviewCapableStore) => Promise<T>): Promise<T>;
   close(): Promise<void>;
 }

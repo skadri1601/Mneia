@@ -1270,7 +1270,10 @@ class PostgresScopedStore implements ReviewCapableStore {
 export class PostgresStoreAdapter implements StoreAdapter {
   constructor(private readonly source: PostgresConnectionSource) {}
 
-  async withScope<T>(scope: WorkspaceScope, run: (store: ScopedStore) => Promise<T>): Promise<T> {
+  async withScope<T>(
+    scope: WorkspaceScope,
+    run: (store: ReviewCapableStore) => Promise<T>,
+  ): Promise<T> {
     assertUuid(scope.workspaceId, 'scope.workspaceId');
     assertUuid(scope.actorId, 'scope.actorId');
 
