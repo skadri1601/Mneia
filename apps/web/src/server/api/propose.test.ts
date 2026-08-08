@@ -266,6 +266,35 @@ describe('handleProposeCheckpoint', () => {
       );
     });
 
+    it('does not move the watermark onto a turn whose later parts were never sent', async () => {
+      const giant = Array.from({ length: 60_000 }, () => 'settled').join(' ');
+      let call = 0;
+      const { deps } = depsWith({
+        servableContextTokens: 20_000,
+        run: vi.fn(async () => {
+          call += 1;
+          if (call === 2) {
+            throw new Error('the provider reset the connection');
+          }
+          return {
+            text: CANDIDATES,
+            model: 'gpt-5.6-luna',
+            attempts: [],
+          };
+        }),
+      });
+
+      const { proposal } = await handleProposeCheckpoint(
+        storeStub(),
+        input(['first', 'giant', 'last'], (ref) => (ref === 'giant' ? giant : `Turn ${ref}`)),
+        deps,
+      );
+
+      expect(proposal.watermark).toBe('first');
+      expect(proposal.watermark).not.toBe('giant');
+      expect(proposal.pendingTurns).toBeGreaterThan(0);
+    });
+
     it('refuses when existing item titles leave no room for the transcript', async () => {
       const { deps } = depsWith({ servableContextTokens: 2_000 });
 

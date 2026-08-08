@@ -57,18 +57,53 @@ describe('chunkTurns', () => {
     }
   });
 
-  it('truncates a single turn too large for the budget rather than dropping it', () => {
-    const turns = [turn('small', words(5)), turn('huge', words(5000)), turn('after', words(5))];
-    const { chunks, truncatedTurns } = chunkTurns(turns, { budgetTokens: 400 });
+  it('splits a single turn too large for the budget instead of truncating it away', () => {
+    const body = words(5000);
+    const turns = [turn('small', words(5)), turn('huge', body), turn('after', words(5))];
+    const { chunks, splitTurns } = chunkTurns(turns, { budgetTokens: 400 });
 
-    expect(truncatedTurns).toBe(1);
+    expect(splitTurns).toBe(1);
 
-    const seen = chunks.flatMap((chunk) => chunk.turns.map((t) => t.ref));
-    expect(seen).toEqual(['small', 'huge', 'after']);
+    const parts = chunks
+      .flatMap((chunk) => chunk.turns)
+      .filter((t) => t.ref === 'huge')
+      .map((t) => t.text);
+    expect(parts.length).toBeGreaterThan(1);
 
-    const huge = chunks.flatMap((chunk) => chunk.turns).find((t) => t.ref === 'huge');
-    expect(huge?.text).toContain('truncated by mneia');
-    expect(defaultTokenCounter.count(huge?.text ?? '')).toBeLessThanOrEqual(400);
+    const rejoined = parts.map((text) => text.replace(/\n… this turn continues.*$/, '')).join('');
+    expect(rejoined).toBe(body);
+  });
+
+  it('never lets a chunk that ends mid-turn carry that turn as complete', () => {
+    const turns = [turn('a', words(5)), turn('huge', words(5000)), turn('b', words(5))];
+    const { chunks } = chunkTurns(turns, { budgetTokens: 400 });
+
+    const midTurn = chunks.filter((chunk) => chunk.endsMidTurn);
+    expect(midTurn.length).toBeGreaterThan(0);
+
+    const hugeIndex = 1;
+    for (const chunk of midTurn) {
+      expect(chunk.completedThrough).toBeLessThan(hugeIndex);
+    }
+
+    const final = chunks[chunks.length - 1];
+    expect(final?.endsMidTurn).toBe(false);
+    expect(final?.completedThrough).toBe(2);
+  });
+
+  it('reports completedThrough as the last whole turn in every chunk', () => {
+    const turns = Array.from({ length: 20 }, (_, index) => turn(`t${index}`, words(40)));
+    const { chunks } = chunkTurns(turns, { budgetTokens: 400 });
+
+    let previous = -1;
+    for (const chunk of chunks) {
+      expect(chunk.completedThrough).toBeGreaterThanOrEqual(previous);
+      const last = chunk.turns[chunk.turns.length - 1];
+      expect(turns[chunk.completedThrough]?.ref).toBe(last?.ref);
+      previous = chunk.completedThrough;
+    }
+
+    expect(chunks[chunks.length - 1]?.completedThrough).toBe(turns.length - 1);
   });
 
   it('returns no chunks for no turns', () => {

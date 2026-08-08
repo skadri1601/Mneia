@@ -136,8 +136,8 @@ export const handleProposeCheckpoint = async (
 
   const candidates: ExtractionCandidate[] = [];
   const attempts: ExtractionAttemptRecord[] = [];
-  let lastCommitted: TrajectoryTurn | null = null;
-  let consumedTurns = 0;
+  const sent = reduced.trajectory.turns;
+  let completedThrough = -1;
   let model = '';
   let incompleteReason: string | null = null;
 
@@ -171,21 +171,23 @@ export const handleProposeCheckpoint = async (
     }
 
     candidates.push(...output.candidates);
-    lastCommitted = chunk.turns[chunk.turns.length - 1] ?? lastCommitted;
-    consumedTurns += chunk.turns.length;
+    completedThrough = chunk.completedThrough;
   }
 
   if (attempts.length > 0) {
     await deps.recordUsage({ projectId: project.id, attempts });
   }
 
-  if (lastCommitted === null) {
+  const lastCommitted = completedThrough < 0 ? null : sent[completedThrough];
+  if (lastCommitted === undefined || lastCommitted === null) {
     throw new ApiRequestError(
       'invalid_request',
       incompleteReason ??
-        'the extraction produced no committed chunk, so nothing was written and the trajectory is unconsumed',
+        'the extraction completed no whole turn, so nothing was written and the trajectory is unconsumed',
     );
   }
+
+  const consumedTurns = completedThrough + 1;
 
   const filtered = applyPrecisionFilter(candidates);
 
@@ -209,7 +211,7 @@ export const handleProposeCheckpoint = async (
       watermark: lastCommitted.ref,
       consumedTurns,
       model,
-      pendingTurns: pending.turns.length - consumedTurns,
+      pendingTurns: sent.length - consumedTurns,
       incompleteReason,
     },
   };
