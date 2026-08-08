@@ -41,6 +41,10 @@ CREATE TABLE checkpoint_usage (
     CHECK (input_tokens >= 0 AND output_tokens >= 0 AND duration_ms >= 0)
 );
 
+CREATE INDEX checkpoint_source_resume_idx
+  ON checkpoint (workspace_id, source, source_session_ref, created_at DESC)
+  WHERE source_session_ref IS NOT NULL;
+
 CREATE INDEX checkpoint_usage_metering_idx ON checkpoint_usage (workspace_id, created_at);
 
 ALTER TABLE checkpoint_usage ENABLE ROW LEVEL SECURITY;

@@ -1,5 +1,8 @@
 export const VERSION = '0.1.0';
 
+export type { EmbeddingErrorCode, EmbeddingProvider } from './embed/types.js';
+export { assertEmbeddingDimensions, embeddableText, EmbeddingError } from './embed/types.js';
+
 export * from './api/index.js';
 export { isStorableText, NULL_BYTE_ERROR } from './domain/text.js';
 export type {

@@ -80,7 +80,11 @@ describe('evaluateRateLimit', () => {
   it('allows a request that lands exactly on the limit', () => {
     const decision = evaluateRateLimit({
       windows,
-      counts: counts({ requests: 120, checkpoints_hourly: 60, checkpoints_daily: 500 }),
+      counts: counts({
+        requests: DEFAULT_RATE_LIMIT_CONFIG.requestsPerMinute,
+        checkpoints_hourly: DEFAULT_RATE_LIMIT_CONFIG.checkpointsPerHour,
+        checkpoints_daily: DEFAULT_RATE_LIMIT_CONFIG.checkpointsPerDay,
+      }),
       now: NOW,
     });
 

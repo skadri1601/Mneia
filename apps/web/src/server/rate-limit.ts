@@ -12,7 +12,7 @@ export interface RateLimitConfig {
 export const DEFAULT_RATE_LIMIT_CONFIG: RateLimitConfig = {
   requestsPerMinute: 120,
   checkpointsPerHour: 60,
-  checkpointsPerDay: 500,
+  checkpointsPerDay: 200,
   maxRequestBytes: 1_048_576,
 };
 
