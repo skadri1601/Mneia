@@ -8,7 +8,14 @@ import {
   handleCreateProject,
   handleGetProjectBySlug,
 } from '../../apps/web/src/server/api/handlers.js';
-import { listProjects, ProjectControlError } from '../../apps/web/src/server/projects.js';
+import {
+  archiveProject,
+  createProject,
+  getProject,
+  listProjects,
+  ProjectControlError,
+  renameProject,
+} from '../../apps/web/src/server/projects.js';
 import type { AccountContext } from '../../apps/web/src/server/store/account-store.js';
 import { PostgresProjectStore } from '../../apps/web/src/server/store/postgres-project-store.js';
 import type {
@@ -311,17 +318,66 @@ describe.skipIf(connectionString === undefined)(
       });
     });
 
-    it('is refused to that same member by the web control plane, which is lead-only', async () => {
+    it('is listed for that same member in the web app, which they were invited to use', async () => {
       await withJourney(async ({ adapter, projects }) => {
-        await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
+        const created = await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
 
-        const refusal = await slugsVisibleTo(projects, ACCOUNT_SECOND_A).then(
-          () => null,
-          (cause: unknown) => cause,
-        );
+        expect(await slugsVisibleTo(projects, ACCOUNT_SECOND_A)).toContain(REPO_SLUG);
 
-        expect(refusal).toBeInstanceOf(ProjectControlError);
-        expect((refusal as ProjectControlError).code).toBe('forbidden');
+        const opened = await getProject({
+          account: ACCOUNT_SECOND_A,
+          projectId: created.project.id,
+          store: projects,
+        });
+        expect(opened.id).toBe(created.project.id);
+      });
+    });
+
+    it('still lets only a lead create, rename, or archive one', async () => {
+      await withJourney(async ({ adapter, projects }) => {
+        const created = await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
+
+        const attempts: readonly (() => Promise<unknown>)[] = [
+          () =>
+            createProject({
+              account: ACCOUNT_SECOND_A,
+              slug: 'invoicing',
+              displayName: 'Invoicing',
+              store: projects,
+            }),
+          () =>
+            renameProject({
+              account: ACCOUNT_SECOND_A,
+              projectId: created.project.id,
+              displayName: 'Renamed by a member',
+              store: projects,
+            }),
+          () =>
+            archiveProject({
+              account: ACCOUNT_SECOND_A,
+              projectId: created.project.id,
+              expectedSlug: REPO_SLUG,
+              store: projects,
+            }),
+        ];
+
+        for (const attempt of attempts) {
+          const refusal = await attempt().then(
+            () => null,
+            (cause: unknown) => cause,
+          );
+          expect(refusal).toBeInstanceOf(ProjectControlError);
+          expect((refusal as ProjectControlError).code).toBe('forbidden');
+        }
+
+        const survived = await getProject({
+          account: ACCOUNT_LEAD_A,
+          projectId: created.project.id,
+          store: projects,
+        });
+        expect(survived.displayName).toBe('Checkout');
+        expect(survived.archivedAt).toBeNull();
+        expect(await slugsVisibleTo(projects, ACCOUNT_LEAD_A)).toEqual([REPO_SLUG]);
       });
     });
 

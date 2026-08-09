@@ -67,6 +67,13 @@ const exactlyOneProject = (rows: readonly SqlRow[]): ManagedProject => {
   return mapProject(rows[0] as SqlRow);
 };
 
+type ProjectAccess = 'read' | 'write';
+
+const FORBIDDEN_MESSAGE: Readonly<Record<ProjectAccess, string>> = {
+  read: 'The current actor is not a member of the default team for this workspace',
+  write: 'Only the default-team lead can create, rename, or archive a project',
+};
+
 export class PostgresProjectStore implements ProjectControlStore {
   constructor(private readonly source: PostgresConnectionSource) {}
 
@@ -74,7 +81,7 @@ export class PostgresProjectStore implements ProjectControlStore {
     account: AccountContext,
     input: ListProjectsInput,
   ): Promise<readonly ManagedProject[]> {
-    return this.inTransaction(account, async (session) => {
+    return this.inTransaction(account, 'read', async (session) => {
       const archivedPredicate = input.includeArchived ? '' : ' AND archived_at IS NULL';
       const result = await session.execute<SqlRow>(
         `SELECT ${PROJECT_COLUMNS}
@@ -88,7 +95,7 @@ export class PostgresProjectStore implements ProjectControlStore {
   }
 
   async getProject(account: AccountContext, projectId: string): Promise<ManagedProject> {
-    return this.inTransaction(account, async (session) => {
+    return this.inTransaction(account, 'read', async (session) => {
       const result = await session.execute<SqlRow>(
         `SELECT ${PROJECT_COLUMNS}
          FROM project
@@ -100,7 +107,7 @@ export class PostgresProjectStore implements ProjectControlStore {
   }
 
   async createProject(account: AccountContext, input: CreateProjectInput): Promise<ManagedProject> {
-    return this.inTransaction(account, async (session) => {
+    return this.inTransaction(account, 'write', async (session) => {
       const result = await session.execute<SqlRow>(
         `INSERT INTO project (id, workspace_id, slug, display_name)
          VALUES (gen_random_uuid(), $1, $2, $3)
@@ -121,7 +128,7 @@ export class PostgresProjectStore implements ProjectControlStore {
   }
 
   async renameProject(account: AccountContext, input: RenameProjectInput): Promise<ManagedProject> {
-    return this.inTransaction(account, async (session) => {
+    return this.inTransaction(account, 'write', async (session) => {
       const result = await session.execute<SqlRow>(
         `UPDATE project
          SET display_name = $3
@@ -137,7 +144,7 @@ export class PostgresProjectStore implements ProjectControlStore {
     account: AccountContext,
     input: ArchiveProjectInput,
   ): Promise<ManagedProject> {
-    return this.inTransaction(account, async (session) => {
+    return this.inTransaction(account, 'write', async (session) => {
       const result = await session.execute<SqlRow>(
         `UPDATE project
          SET archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP)
@@ -151,6 +158,7 @@ export class PostgresProjectStore implements ProjectControlStore {
 
   private async inTransaction<T>(
     account: AccountContext,
+    access: ProjectAccess,
     operation: (session: PostgresSession) => Promise<T>,
   ): Promise<T> {
     const session = await this.source.acquire();
@@ -177,16 +185,13 @@ export class PostgresProjectStore implements ProjectControlStore {
          WHERE membership.workspace_id = $1
            AND membership.team_id = $2
            AND membership.actor_id = $3
-           AND membership.role = 'lead'
+           AND (membership.role = 'lead' OR ($4 AND membership.role = 'member'))
            AND default_team.slug = 'default'
          LIMIT 1`,
-        [account.workspace.id, account.team.id, account.actor.id],
+        [account.workspace.id, account.team.id, account.actor.id, access === 'read'],
       );
       if (authorization.rows.length !== 1) {
-        throw new ProjectControlError(
-          'forbidden',
-          'The current actor is not the default-team lead for this workspace',
-        );
+        throw new ProjectControlError('forbidden', FORBIDDEN_MESSAGE[access]);
       }
       result = await operation(session);
       await session.execute('COMMIT');
