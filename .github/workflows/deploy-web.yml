@@ -152,15 +152,21 @@ jobs:
         env:
           HEALTH_URL: https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health
         run: |
+          reader="${GITHUB_WORKSPACE}/scripts/read-health-field.mjs"
+
           for attempt in $(seq 1 30); do
-            if curl -sS --max-time 10 -o /tmp/health.json "${HEALTH_URL}"; then
-              echo "answered after ${attempt} attempt(s)"
+            if curl -sS --max-time 10 -o /tmp/health.json "${HEALTH_URL}" \
+              && node "${reader}" status < /tmp/health.json > /dev/null 2>&1; then
+              echo "answered with a health report after ${attempt} attempt(s)"
               cat /tmp/health.json
+              echo
               exit 0
             fi
             sleep 5
           done
-          echo "::error::the deploy never answered; the previous container may still be serving"
+
+          echo "::error::the deploy never returned a health report. The last response was:"
+          head -c 500 /tmp/health.json || true
           exit 1
 
       - name: Verify the deployed app rather than assuming it
