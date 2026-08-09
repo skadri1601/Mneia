@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/nextjs';
 import { RUNTIME_ENVIRONMENT } from './lib/environment';
+import { scrubSensitiveHeaders } from './lib/scrub';
 
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
@@ -15,6 +16,7 @@ Sentry.init({
     frameContextLines: 10,
   },
   integrations: [Sentry.extraErrorDataIntegration({ depth: 10 })],
+  beforeSend: scrubSensitiveHeaders,
 });
 
 export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

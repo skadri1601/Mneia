@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/nextjs';
 import { RUNTIME_ENVIRONMENT } from './src/lib/environment';
+import { scrubSensitiveHeaders } from './src/lib/scrub';
 
 Sentry.init({
   dsn: process.env.SENTRY_DSN,
@@ -16,4 +17,5 @@ Sentry.init({
     frameContextLines: 10,
   },
   integrations: [Sentry.extraErrorDataIntegration({ depth: 10 })],
+  beforeSend: scrubSensitiveHeaders,
 });
