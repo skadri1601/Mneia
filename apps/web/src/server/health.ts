@@ -6,16 +6,23 @@ import {
   inspectRlsPosture,
   MIGRATIONS,
   RLS_BYPASS_ESCAPE_HATCH,
+  TELEMETRY_EVENT_TABLE,
 } from '@mneia/core';
 import { database } from './database.js';
-import type { EnvLike as TelemetryEnvLike, TelemetryPosture } from './telemetry-runtime.js';
-import { describeTelemetryPosture, planTelemetry } from './telemetry-runtime.js';
+import type {
+  EnvLike as TelemetryEnvLike,
+  TelemetryDelivery,
+  TelemetryPosture,
+} from './telemetry-runtime.js';
+import { describeTelemetryPosture, planTelemetry, telemetryDelivery } from './telemetry-runtime.js';
 
 export type HealthStatus = 'ok' | 'degraded';
 
 export type RlsHealth = 'enforced' | 'bypassed' | 'bypassed_by_escape_hatch' | 'unknown';
 
 export type SchemaHealth = 'current' | 'behind' | 'ahead' | 'unknown';
+
+export type TelemetryHealth = TelemetryPosture | 'failing';
 
 export type EnvLike = TelemetryEnvLike;
 
@@ -32,7 +39,7 @@ export interface HealthReport {
   readonly rls: RlsHealth;
   readonly schema: SchemaHealth;
   readonly schemaVersion: SchemaVersions;
-  readonly telemetry: TelemetryPosture;
+  readonly telemetry: TelemetryHealth;
   readonly extraction: ModelHealth;
   readonly extractionFallback: ModelHealth;
   readonly embeddings: ModelHealth;
@@ -103,6 +110,59 @@ export const describeSchemaPosture = (
 const describe = (error: unknown): string =>
   error instanceof Error ? error.message : `non-Error thrown: ${String(error)}`;
 
+interface PrivilegeRow {
+  readonly granted: boolean | string | null;
+}
+
+const canInsertTelemetry = async (session: PostgresSession): Promise<boolean | null> => {
+  try {
+    const result = await session.execute<PrivilegeRow>(
+      `SELECT has_table_privilege(current_user, '${TELEMETRY_EVENT_TABLE}', 'INSERT') AS granted`,
+    );
+    const granted = result.rows[0]?.granted ?? null;
+
+    if (typeof granted === 'boolean') return granted;
+    if (granted === 't' || granted === 'true') return true;
+    if (granted === 'f' || granted === 'false') return false;
+    return null;
+  } catch {
+    return null;
+  }
+};
+
+export const resolveTelemetryHealth = (
+  posture: TelemetryPosture,
+  writable: boolean | null,
+  delivery: TelemetryDelivery | null,
+): { readonly telemetry: TelemetryHealth; readonly detail: string | null } => {
+  if (posture !== 'persisted') {
+    return { telemetry: posture, detail: null };
+  }
+
+  if (delivery !== null && delivery.dropped > 0) {
+    return {
+      telemetry: 'failing',
+      detail: `the telemetry sink has dropped ${delivery.dropped} §17 event(s) since this process started and they are not recoverable — ${delivery.lastError ?? 'no error was recorded'}`,
+    };
+  }
+
+  if (writable === false) {
+    return {
+      telemetry: 'failing',
+      detail: `the application role cannot INSERT into ${TELEMETRY_EVENT_TABLE}, so every §17 event will be dropped — grant it before this loses the arbitration dataset`,
+    };
+  }
+
+  if (writable === null) {
+    return {
+      telemetry: 'failing',
+      detail: `could not read whether the application role may INSERT into ${TELEMETRY_EVENT_TABLE}, so whether §17 events are landing is unknown`,
+    };
+  }
+
+  return { telemetry: 'persisted', detail: null };
+};
+
 const readSchema = async (
   session: PostgresSession,
 ): Promise<{ readonly schema: SchemaHealth; readonly versions: SchemaVersions }> => {
@@ -160,11 +220,12 @@ export const checkHealth = async (
   source: PostgresConnectionSource = database,
   readEscapeHatch: () => string | undefined = () => process.env[RLS_BYPASS_ESCAPE_HATCH],
   env: EnvLike = process.env,
+  readDelivery: () => TelemetryDelivery | null = telemetryDelivery,
 ): Promise<HealthReport> => {
   const models = inspectModelPosture(env);
   const modelDetail = describeModelPosture(models);
   const plan = planTelemetry(env);
-  const telemetryDetail = describeTelemetryPosture(plan);
+  const postureDetail = describeTelemetryPosture(plan);
   let session: PostgresSession | undefined;
 
   try {
@@ -175,12 +236,19 @@ export const checkHealth = async (
     const { schema, versions } = await readSchema(session);
     const schemaDetail = describeSchemaPosture(schema, versions);
 
+    const writable = plan.posture === 'persisted' ? await canInsertTelemetry(session) : null;
+    const { telemetry, detail: telemetryDetail } = resolveTelemetryHealth(
+      plan.posture,
+      writable,
+      plan.posture === 'persisted' ? readDelivery() : null,
+    );
+
     const rlsOk = rls === 'enforced' || rls === 'bypassed_by_escape_hatch';
     const schemaOk = schema === 'current' || schema === 'ahead';
-    const telemetryOk = plan.posture !== 'dropped';
+    const telemetryOk = telemetry !== 'dropped' && telemetry !== 'failing';
     const status: HealthStatus = rlsOk && schemaOk && telemetryOk ? 'ok' : 'degraded';
 
-    const combined = [detail, schemaDetail, telemetryDetail, modelDetail].filter(
+    const combined = [detail, schemaDetail, postureDetail, telemetryDetail, modelDetail].filter(
       (part): part is string => part !== undefined && part !== null,
     );
 
@@ -190,7 +258,7 @@ export const checkHealth = async (
       rls,
       schema,
       schemaVersion: versions,
-      telemetry: plan.posture,
+      telemetry,
       ...models,
     };
 

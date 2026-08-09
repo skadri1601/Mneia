@@ -255,6 +255,47 @@ describe('createPostgresSink', () => {
     expect(serialised).not.toContain('kafka');
   });
 
+  it('counts what it delivered, so health can report landing rather than configuration', async () => {
+    const fake = fakeSource();
+    const sink = createPostgresSink({ source: fake.source, flushIntervalMs: 0 });
+
+    expect(sink.delivered).toBe(0);
+    expect(sink.dropped).toBe(0);
+    expect(sink.lastError).toBeNull();
+
+    await sink.write(sliceShown(WORKSPACE_A, 'slice-1'));
+    await sink.write(sliceShown(WORKSPACE_B, 'slice-2'));
+    await sink.flush();
+
+    expect(sink.delivered).toBe(2);
+    expect(sink.dropped).toBe(0);
+    expect(sink.lastError).toBeNull();
+  });
+
+  it('counts what it lost, and keeps the reason, so a failure cannot read as healthy', async () => {
+    const fake = fakeSource({ failInsert: true });
+    const sink = createPostgresSink({ source: fake.source, flushIntervalMs: 0 });
+
+    await sink.write(sliceShown(WORKSPACE_A, 'slice-1'));
+    await sink.write(sliceShown(WORKSPACE_A, 'slice-2'));
+    await sink.flush();
+
+    expect(sink.delivered).toBe(0);
+    expect(sink.dropped).toBe(2);
+    expect(sink.lastError?.message).toContain('telemetry_event');
+    expect(sink.lastError?.workspaceId).toBe(WORKSPACE_A);
+  });
+
+  it('counts a write refused after close as lost too', async () => {
+    const fake = fakeSource();
+    const sink = createPostgresSink({ source: fake.source, flushIntervalMs: 0 });
+
+    await sink.close();
+    await sink.write(sliceShown(WORKSPACE_A, 'slice-1'));
+
+    expect(sink.dropped).toBe(1);
+  });
+
   it('drops nothing silently once closed — a late event is reported, not swallowed', async () => {
     const fake = fakeSource();
     const failures: TelemetryPersistError[] = [];

@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { TelemetryEmitter, TelemetrySink } from '@mneia/core';
+import type { PostgresTelemetrySink, TelemetryEmitter, TelemetrySink } from '@mneia/core';
 import {
   createJsonlSink,
   createPostgresSink,
@@ -15,7 +15,17 @@ export const TELEMETRY_STORE_VAR = 'MNEIA_TELEMETRY_STORE';
 
 export const TELEMETRY_STORE_OFF_VALUES = ['off', 'false', 'no', 'none', '0'] as const;
 
+export const WEB_FLUSH_INTERVAL_MS = 500;
+
+export const SHUTDOWN_SIGNALS = ['SIGTERM', 'SIGINT'] as const;
+
 export type EnvLike = Readonly<Record<string, string | undefined>>;
+
+export interface TelemetryDelivery {
+  readonly delivered: number;
+  readonly dropped: number;
+  readonly lastError: string | null;
+}
 
 export type TelemetryPosture = 'persisted' | 'file_only' | 'opted_out' | 'dropped';
 
@@ -67,32 +77,65 @@ export const describeTelemetryPosture = (plan: TelemetryPlan): string | null => 
   }
 };
 
+let emitter: TelemetryEmitter | null = null;
+let storeSink: PostgresTelemetrySink | null = null;
+let shutdownRegistered = false;
+
+const registerShutdownFlush = (built: TelemetryEmitter): void => {
+  if (shutdownRegistered) {
+    return;
+  }
+  shutdownRegistered = true;
+
+  for (const signal of SHUTDOWN_SIGNALS) {
+    process.once(signal, () => {
+      void built.close().catch(() => undefined);
+    });
+  }
+};
+
 const build = (): TelemetryEmitter => {
   const plan = planTelemetry();
   const sinks: TelemetrySink[] = [];
 
   if (plan.store) {
-    sinks.push(
-      createPostgresSink({
-        source: database,
-        name: 'web',
-        onError: (error) => {
-          console.error(error.message);
-        },
-      }),
-    );
+    const sink = createPostgresSink({
+      source: database,
+      name: 'web',
+      flushIntervalMs: WEB_FLUSH_INTERVAL_MS,
+      onError: (error) => {
+        console.error(error.message);
+      },
+    });
+    storeSink = sink;
+    sinks.push(sink);
   }
 
   if (plan.filePath !== null) {
     sinks.push(createJsonlSink({ filePath: plan.filePath, name: 'web-jsonl' }));
   }
 
-  return createTelemetryEmitter({ sinks, env: process.env });
+  const built = createTelemetryEmitter({ sinks, env: process.env });
+  if (sinks.length > 0) {
+    registerShutdownFlush(built);
+  }
+  return built;
 };
-
-let emitter: TelemetryEmitter | null = null;
 
 export const telemetry = (): TelemetryEmitter => {
   emitter ??= build();
   return emitter;
+};
+
+export const telemetryDelivery = (): TelemetryDelivery | null => {
+  telemetry();
+
+  if (storeSink === null) {
+    return null;
+  }
+  return {
+    delivered: storeSink.delivered,
+    dropped: storeSink.dropped,
+    lastError: storeSink.lastError?.message ?? null,
+  };
 };

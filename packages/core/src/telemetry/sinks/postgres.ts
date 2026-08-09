@@ -49,6 +49,9 @@ export interface PostgresSinkOptions {
 
 export interface PostgresTelemetrySink extends TelemetrySink {
   readonly buffered: number;
+  readonly delivered: number;
+  readonly dropped: number;
+  readonly lastError: TelemetryPersistError | null;
 }
 
 const payloadOf = (event: TelemetryEvent): Record<string, unknown> => {
@@ -114,8 +117,14 @@ export function createPostgresSink(options: PostgresSinkOptions): PostgresTeleme
   let pending: Promise<void> = Promise.resolve();
   let timer: ReturnType<typeof setInterval> | null = null;
   let closed = false;
+  let delivered = 0;
+  let dropped = 0;
+  let lastError: TelemetryPersistError | null = null;
 
   const notify = (error: TelemetryPersistError): void => {
+    dropped += error.lostEvents;
+    lastError = error;
+
     if (report === undefined) {
       return;
     }
@@ -164,6 +173,7 @@ export function createPostgresSink(options: PostgresSinkOptions): PostgresTeleme
     for (const [workspaceId, events] of groupByWorkspace(batch)) {
       try {
         await write(workspaceId, events);
+        delivered += events.length;
       } catch (cause) {
         notify(
           new TelemetryPersistError(
@@ -203,6 +213,18 @@ export function createPostgresSink(options: PostgresSinkOptions): PostgresTeleme
 
     get buffered(): number {
       return buffer.length;
+    },
+
+    get delivered(): number {
+      return delivered;
+    },
+
+    get dropped(): number {
+      return dropped;
+    },
+
+    get lastError(): TelemetryPersistError | null {
+      return lastError;
     },
 
     write(event: TelemetryEvent): Promise<void> {

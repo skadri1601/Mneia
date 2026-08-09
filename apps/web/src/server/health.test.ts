@@ -8,6 +8,7 @@ import {
   describeModelPosture,
   EXPECTED_SCHEMA_VERSION,
   inspectModelPosture,
+  resolveTelemetryHealth,
 } from './health.js';
 
 const NO_KEYS = {};
@@ -46,6 +47,7 @@ class RecordingSession implements PostgresSession {
     private readonly onExecute?: (sql: string) => void,
     private readonly posture: Record<string, unknown> = enforcingRole,
     private readonly appliedSchema: number | null = EXPECTED_SCHEMA_VERSION,
+    private readonly canInsertTelemetry: boolean = true,
   ) {}
 
   async execute<TRow = Record<string, unknown>>(
@@ -63,6 +65,9 @@ class RecordingSession implements PostgresSession {
         throw new Error('relation "mneia_schema_migration" does not exist');
       }
       return { rows: [{ version: this.appliedSchema } as TRow] };
+    }
+    if (sql.includes('has_table_privilege')) {
+      return { rows: [{ granted: this.canInsertTelemetry } as TRow] };
     }
     return { rows: [] };
   }
@@ -83,11 +88,21 @@ const sourceOf = (session: PostgresSession): PostgresConnectionSource => ({
 
 const noEscapeHatch = () => undefined;
 
+const noDelivery = () => null;
+
+const deliveryOf =
+  (dropped: number, lastError: string | null = null) =>
+  () => ({
+    delivered: 0,
+    dropped,
+    lastError,
+  });
+
 describe('checkHealth', () => {
   it('reports ok only after a statement actually reached Postgres', async () => {
     const session = new RecordingSession();
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report).toEqual({
       status: 'ok',
@@ -108,7 +123,7 @@ describe('checkHealth', () => {
       close: async () => {},
     };
 
-    const report = await checkHealth(source, noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(source, noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.status).toBe('degraded');
     expect(report.database).toBe('unreachable');
@@ -120,7 +135,7 @@ describe('checkHealth', () => {
       throw new Error('terminating connection due to administrator command');
     });
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.status).toBe('degraded');
     expect(report.detail).toContain('terminating connection');
@@ -128,13 +143,13 @@ describe('checkHealth', () => {
 
   it('releases the connection on both the healthy and the failing path', async () => {
     const healthy = new RecordingSession();
-    await checkHealth(sourceOf(healthy), noEscapeHatch, NO_KEYS);
+    await checkHealth(sourceOf(healthy), noEscapeHatch, NO_KEYS, noDelivery);
     expect(healthy.released).toBe(1);
 
     const failing = new RecordingSession(() => {
       throw new Error('boom');
     });
-    await checkHealth(sourceOf(failing), noEscapeHatch, NO_KEYS);
+    await checkHealth(sourceOf(failing), noEscapeHatch, NO_KEYS, noDelivery);
     expect(failing.released).toBe(1);
   });
 
@@ -146,7 +161,7 @@ describe('checkHealth', () => {
       close: async () => {},
     };
 
-    const report = await checkHealth(source, noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(source, noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.detail).toBe('non-Error thrown: connection refused');
   });
@@ -156,7 +171,7 @@ describe('checkHealth RLS posture', () => {
   it('refuses to call a connection that bypasses RLS healthy', async () => {
     const session = new RecordingSession(undefined, bypassingRole);
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.rls).toBe('bypassed');
     expect(report.status).toBe('degraded');
@@ -166,7 +181,7 @@ describe('checkHealth RLS posture', () => {
   it('names the escape hatch rather than hiding it, and does not fail the deploy gate', async () => {
     const session = new RecordingSession(undefined, bypassingRole);
 
-    const report = await checkHealth(sourceOf(session), () => '1', NO_KEYS);
+    const report = await checkHealth(sourceOf(session), () => '1', NO_KEYS, noDelivery);
 
     expect(report.rls).toBe('bypassed_by_escape_hatch');
     expect(report.detail).toContain('MNEIA_ALLOW_RLS_BYPASS');
@@ -176,7 +191,7 @@ describe('checkHealth RLS posture', () => {
   it('treats an unreadable posture as unknown rather than assuming it is fine', async () => {
     const session = new RecordingSession(undefined, {});
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.rls).toBe('unknown');
     expect(report.status).toBe('degraded');
@@ -189,7 +204,7 @@ describe('checkHealth RLS posture', () => {
       role_is_superuser: true,
     });
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.rls).toBe('bypassed');
   });
@@ -225,7 +240,7 @@ describe('model posture', () => {
   it('surfaces the posture on the health report without failing the deploy', async () => {
     const session = new RecordingSession();
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.status).toBe('ok');
     expect(report.extraction).toBe('no_key');
@@ -235,7 +250,7 @@ describe('model posture', () => {
   it('reports no model detail once both keys are set', async () => {
     const session = new RecordingSession();
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, BOTH_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, BOTH_KEYS, noDelivery);
 
     expect(report).toEqual({
       status: 'ok',
@@ -253,7 +268,7 @@ describe('checkHealth schema posture', () => {
   it('reports current when the database is at the version this build expects', async () => {
     const session = new RecordingSession();
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.schema).toBe('current');
     expect(report.schemaVersion).toEqual({
@@ -265,7 +280,7 @@ describe('checkHealth schema posture', () => {
   it('refuses to call a build healthy against a database still behind it', async () => {
     const session = new RecordingSession(undefined, enforcingRole, EXPECTED_SCHEMA_VERSION - 1);
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.schema).toBe('behind');
     expect(report.status).toBe('degraded');
@@ -276,7 +291,7 @@ describe('checkHealth schema posture', () => {
   it('reports a database ahead of the build without failing it, since a rollback still serves', async () => {
     const session = new RecordingSession(undefined, enforcingRole, EXPECTED_SCHEMA_VERSION + 1);
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.schema).toBe('ahead');
     expect(report.status).toBe('ok');
@@ -286,7 +301,7 @@ describe('checkHealth schema posture', () => {
   it('treats an unreadable bookkeeping table as unknown rather than assuming agreement', async () => {
     const session = new RecordingSession(undefined, enforcingRole, null);
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.schema).toBe('unknown');
     expect(report.status).toBe('degraded');
@@ -303,7 +318,7 @@ describe('checkHealth telemetry posture', () => {
   it('reports persisted by default, because the moat is not opt-in', async () => {
     const session = new RecordingSession();
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
 
     expect(report.telemetry).toBe('persisted');
     expect(report.status).toBe('ok');
@@ -312,7 +327,12 @@ describe('checkHealth telemetry posture', () => {
   it('reports opted_out without degrading, because opting out is a right', async () => {
     const session = new RecordingSession();
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, { MNEIA_TELEMETRY: 'off' });
+    const report = await checkHealth(
+      sourceOf(session),
+      noEscapeHatch,
+      { MNEIA_TELEMETRY: 'off' },
+      noDelivery,
+    );
 
     expect(report.telemetry).toBe('opted_out');
     expect(report.status).toBe('ok');
@@ -321,10 +341,12 @@ describe('checkHealth telemetry posture', () => {
   it('reports file_only when the store sink is off but a path still catches events', async () => {
     const session = new RecordingSession();
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, {
-      MNEIA_TELEMETRY_STORE: 'off',
-      MNEIA_TELEMETRY_PATH: '/var/log/mneia/telemetry.jsonl',
-    });
+    const report = await checkHealth(
+      sourceOf(session),
+      noEscapeHatch,
+      { MNEIA_TELEMETRY_STORE: 'off', MNEIA_TELEMETRY_PATH: '/var/log/mneia/telemetry.jsonl' },
+      noDelivery,
+    );
 
     expect(report.telemetry).toBe('file_only');
     expect(report.detail).toContain('never reach telemetry_event');
@@ -333,12 +355,80 @@ describe('checkHealth telemetry posture', () => {
   it('degrades when events are discarded, since that silently loses the arbitration dataset', async () => {
     const session = new RecordingSession();
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, {
-      MNEIA_TELEMETRY_STORE: 'off',
-    });
+    const report = await checkHealth(
+      sourceOf(session),
+      noEscapeHatch,
+      { MNEIA_TELEMETRY_STORE: 'off' },
+      noDelivery,
+    );
 
     expect(report.telemetry).toBe('dropped');
     expect(report.status).toBe('degraded');
     expect(report.detail).toContain('moat');
+  });
+
+  it('refuses to report persisted when the role cannot INSERT, rather than certifying config alone', async () => {
+    const session = new RecordingSession(undefined, enforcingRole, EXPECTED_SCHEMA_VERSION, false);
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
+
+    expect(report.telemetry).toBe('failing');
+    expect(report.status).toBe('degraded');
+    expect(report.detail).toContain('cannot INSERT');
+  });
+
+  it('reports failing once the sink has actually dropped an event', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(
+      sourceOf(session),
+      noEscapeHatch,
+      NO_KEYS,
+      deliveryOf(3, 'relation "telemetry_event" does not exist'),
+    );
+
+    expect(report.telemetry).toBe('failing');
+    expect(report.status).toBe('degraded');
+    expect(report.detail).toContain('dropped 3');
+  });
+
+  it('does not run the privilege check when telemetry is off, so opting out costs nothing', async () => {
+    const session = new RecordingSession();
+
+    await checkHealth(sourceOf(session), noEscapeHatch, { MNEIA_TELEMETRY: 'off' }, noDelivery);
+
+    expect(session.statements.some((sql) => sql.includes('has_table_privilege'))).toBe(false);
+  });
+});
+
+describe('resolveTelemetryHealth', () => {
+  it('passes a non-persisted posture straight through', () => {
+    expect(resolveTelemetryHealth('opted_out', null, null).telemetry).toBe('opted_out');
+    expect(resolveTelemetryHealth('dropped', null, null).telemetry).toBe('dropped');
+    expect(resolveTelemetryHealth('file_only', null, null).telemetry).toBe('file_only');
+  });
+
+  it('treats an unreadable privilege as failing rather than assuming the grant exists', () => {
+    expect(resolveTelemetryHealth('persisted', null, null).telemetry).toBe('failing');
+  });
+
+  it('reports persisted only when the role may write and nothing has been dropped', () => {
+    const verdict = resolveTelemetryHealth('persisted', true, {
+      delivered: 12,
+      dropped: 0,
+      lastError: null,
+    });
+    expect(verdict.telemetry).toBe('persisted');
+    expect(verdict.detail).toBeNull();
+  });
+
+  it('lets a drop outrank a healthy privilege check, because the loss already happened', () => {
+    const verdict = resolveTelemetryHealth('persisted', true, {
+      delivered: 4,
+      dropped: 1,
+      lastError: 'connection terminated',
+    });
+    expect(verdict.telemetry).toBe('failing');
+    expect(verdict.detail).toContain('connection terminated');
   });
 });

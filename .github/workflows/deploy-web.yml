@@ -11,6 +11,14 @@ on:
       - '.dockerignore'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
+    inputs:
+      allow_unverified_schema:
+        description: >-
+          Ship even though the running build does not report schemaVersion. Only for the one
+          bootstrap deploy that introduces the field. Confirm production's schema version by hand
+          first — this waives the gate that exists to stop MNE-254 happening again.
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-web
@@ -71,6 +79,7 @@ jobs:
       - name: Refuse to ship a build the production database cannot satisfy
         env:
           HEALTH_URL: https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health
+          ALLOW_UNVERIFIED_SCHEMA: ${{ inputs.allow_unverified_schema }}
         run: |
           expected=$(ls packages/core/src/store/migrations/[0-9]*.ts \
             | grep -v '\.test\.ts$' \
@@ -96,8 +105,12 @@ jobs:
           case "${read_status}" in
             0) ;;
             3)
-              echo "::warning::the running build does not report schemaVersion, so it predates MNE-254. Shipping anyway; every deploy after this one is gated."
-              exit 0
+              if [ "${ALLOW_UNVERIFIED_SCHEMA}" = "true" ]; then
+                echo "::warning::the running build does not report schemaVersion and allow_unverified_schema was set, so the gate is waived for this run. Every deploy after this one is gated."
+                exit 0
+              fi
+              echo "::error::the running build does not report schemaVersion, so this gate cannot tell whether production is migrated. Refusing to ship: on the one rollout that introduces the field, waving it through is exactly the MNE-254 outage. Confirm production's schema version by hand, then re-run this workflow from the Actions tab with allow_unverified_schema=true."
+              exit 1
               ;;
             *)
               echo "::error::${HEALTH_URL} answered with something this gate could not read (${applied}). Refusing to ship: a gate that cannot read the schema version must fail closed, not wave the deploy through."
