@@ -1,6 +1,12 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { expect, test, vi } from 'vitest';
 
+const navigation = vi.hoisted(() => ({ pathname: '/projects' }));
+
+vi.mock('next/navigation', () => ({
+  usePathname: () => navigation.pathname,
+}));
+
 vi.mock('@clerk/nextjs', () => {
   const UserButton = ({ children }: { children?: React.ReactNode }) => (
     <div data-user-button="true">{children}</div>
@@ -83,4 +89,15 @@ test('loads the webfonts rather than falling through to a generic sans', () => {
 
   expect(markup).toContain('font-inter');
   expect(markup).toContain('font-jetbrains-mono');
+});
+
+test('keeps the signed-in header destinations and account control intact inside the project shell', () => {
+  navigation.pathname = '/projects/123e4567-e89b-12d3-a456-426614174000';
+  const markup = render();
+
+  expect(markup).toContain('href="/projects"');
+  expect(markup).toContain('href="/team"');
+  expect(markup.match(/href="https:\/\/mneia\.dev\//g)).toHaveLength(7);
+  expect(markup).toContain('data-user-button="true"');
+  expect(markup).toContain('href="#project-content"');
 });
