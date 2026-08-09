@@ -1,5 +1,6 @@
 .page {
   width: min(100% - (2 * var(--space-lg)), var(--width-text));
+  min-width: 0;
   margin-inline: auto;
   padding-block: var(--space-section);
 }
@@ -7,7 +8,16 @@
 .pageHeader {
   display: grid;
   gap: var(--space-sm);
+  min-width: 0;
   margin-block-end: var(--space-xxl);
+}
+
+.pageHeader h1,
+.pageHeader p,
+.settingsCard h2,
+.settingsCard p,
+.settingsCard code {
+  overflow-wrap: anywhere;
 }
 
 .pageHeader h1 {
@@ -24,16 +34,8 @@
   color: var(--tile-muted);
 }
 
-.backLink,
 .projectLink {
   color: var(--tile-link);
-}
-
-.backLink {
-  min-height: var(--target-min);
-  width: fit-content;
-  display: inline-flex;
-  align-items: center;
 }
 
 .projectGroups,
@@ -163,7 +165,6 @@
 .form input[type="text"]:focus-visible,
 .form button:focus-visible,
 .projectLink:focus-visible,
-.backLink:focus-visible,
 .archivedProjects summary:focus-visible {
   outline: 2px solid var(--primary-focus);
   outline-offset: 2px;
@@ -189,11 +190,4 @@
   .settingsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
-
-.projectNav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-md);
-  margin-block-start: var(--space-sm);
 }

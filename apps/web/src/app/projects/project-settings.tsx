@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import type { ManagedProject } from '../../server/store/project-store.js';
 import styles from './projects.module.css';
 
@@ -39,21 +38,11 @@ export function ProjectSettings({
         : undefined;
 
   return (
-    <main className={styles.page}>
-      <div className={styles.pageHeader}>
-        <Link className={styles.backLink} href="/projects">
-          Projects
-        </Link>
-        <h1>{project.displayName}</h1>
-        <p>
-          Repository binding: <code>{project.slug}</code>
-        </p>
-        <nav className={styles.projectNav} aria-label="Project memory">
-          <Link href={`/projects/${project.id}/decisions`}>Decisions</Link>
-          <Link href={`/projects/${project.id}/timeline`}>Timeline</Link>
-          <Link href={`/projects/${project.id}/review`}>Review queue</Link>
-        </nav>
-      </div>
+    <div className={styles.page}>
+      <header className={styles.pageHeader}>
+        <h1>Overview</h1>
+        <p>Manage this project&apos;s name and lifecycle.</p>
+      </header>
 
       {noticeMessage === undefined ? null : (
         <p className={styles.notice} role="status">
@@ -128,6 +117,6 @@ export function ProjectSettings({
           <p>Its repository binding remains reserved and its history remains available.</p>
         </section>
       )}
-    </main>
+    </div>
   );
 }

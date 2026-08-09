@@ -1,7 +1,7 @@
 import type { ContextItem, ItemKind, ItemStatus } from '@mneia/core';
 import { ITEM_KINDS, ITEM_STATUSES } from '@mneia/core';
 import { notFound } from 'next/navigation';
-import { browseDecisions, BROWSE_LIMIT } from '../../../../server/browse-runtime.js';
+import { BROWSE_LIMIT, browseDecisions } from '../../../../server/browse-runtime.js';
 import { getCurrentAccount } from '../../../../server/current-account.js';
 import styles from '../browse.module.css';
 
@@ -70,10 +70,9 @@ export default async function DecisionsPage({ params, searchParams }: DecisionsP
   }
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <header className={styles.pageHeader}>
-        <p>{account.workspace.displayName}</p>
-        <h1>Decisions in {project.slug}</h1>
+        <h1>Decisions</h1>
         <p>
           What this project has settled, and who settled it. Read-only — an item changes through a
           checkpoint or the review queue, never here.
@@ -154,6 +153,6 @@ export default async function DecisionsPage({ params, searchParams }: DecisionsP
           page, on purpose, because a decision browser that needs paging needs better filters.
         </p>
       ) : null}
-    </main>
+    </div>
   );
 }

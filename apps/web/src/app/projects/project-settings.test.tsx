@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import type { ManagedProject } from '../../server/store/project-store.js';
@@ -62,5 +63,51 @@ describe('ProjectSettings', () => {
 
     expect(html).toContain('This project is archived.');
     expect(html).not.toContain('<form');
+  });
+
+  it('titles the section Overview and explains what it manages', () => {
+    const html = renderToStaticMarkup(
+      <ProjectSettings project={PROJECT} renameAction={vi.fn()} archiveAction={vi.fn()} />,
+    );
+
+    expect(html).toContain('<h1>Overview</h1>');
+    expect(html).toContain('Manage this project');
+    expect(html).toContain('name and lifecycle.');
+  });
+
+  it('leaves orientation to the shell instead of repeating it', () => {
+    const html = renderToStaticMarkup(
+      <ProjectSettings project={PROJECT} renameAction={vi.fn()} archiveAction={vi.fn()} />,
+    );
+
+    expect(html).not.toContain('aria-label="Project memory"');
+    expect(html).not.toContain('href="/projects"');
+    expect(html).not.toContain(`href="/projects/${PROJECT.id}/decisions"`);
+    expect(html).not.toContain(`href="/projects/${PROJECT.id}/timeline"`);
+    expect(html).not.toContain(`href="/projects/${PROJECT.id}/review"`);
+    expect(html).not.toContain('<h1>Mneia</h1>');
+    expect(html).not.toContain('Repository binding: <code>');
+  });
+
+  it('renders no main landmark because the shell owns it', () => {
+    const html = renderToStaticMarkup(
+      <ProjectSettings project={PROJECT} renameAction={vi.fn()} archiveAction={vi.fn()} />,
+    );
+
+    expect(html).not.toContain('<main');
+  });
+
+  it('styles itself with defined design tokens only', () => {
+    const css = readFileSync(new URL('./projects.module.css', import.meta.url), 'utf8');
+
+    for (const token of [
+      '--tile-rule',
+      '--radius-sm',
+      '--radius-md',
+      '--size-label',
+      '--size-body-sm',
+    ]) {
+      expect(css).not.toContain(token);
+    }
   });
 });

@@ -50,9 +50,8 @@ export default async function ReviewPage({ params, searchParams }: ReviewPagePro
   const error = first(query.error);
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <header className={styles.pageHeader}>
-        <p>{account.workspace.displayName}</p>
         <h1>Review queue</h1>
         <p>
           Items an extraction proposed and nobody has confirmed yet. Anyone on the team can review
@@ -132,6 +131,6 @@ export default async function ReviewPage({ params, searchParams }: ReviewPagePro
           </button>
         </form>
       )}
-    </main>
+    </div>
   );
 }
