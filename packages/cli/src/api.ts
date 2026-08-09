@@ -53,6 +53,9 @@ function apiFailure(error: ApiError, command: string): CliError {
       'run mneia login again, or set MNEIA_TOKEN to a valid token in CI',
     );
   }
+  if (error.code === 'forbidden') {
+    return new CliError('failed', error.message, 'ask a workspace lead to do this for you');
+  }
   if (error.code === 'not_found') {
     return new CliError(
       'not_configured',

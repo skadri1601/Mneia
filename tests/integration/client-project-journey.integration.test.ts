@@ -5,6 +5,7 @@ vi.mock('server-only', () => ({}));
 vi.mock('../../apps/web/node_modules/server-only/index.js', () => ({}));
 
 import {
+  ApiRequestError,
   handleCreateProject,
   handleGetProjectBySlug,
 } from '../../apps/web/src/server/api/handlers.js';
@@ -17,6 +18,8 @@ import {
   renameProject,
 } from '../../apps/web/src/server/projects.js';
 import type { AccountContext } from '../../apps/web/src/server/store/account-store.js';
+import type { MembershipStore } from '../../apps/web/src/server/store/postgres-membership-store.js';
+import { PostgresMembershipStore } from '../../apps/web/src/server/store/postgres-membership-store.js';
 import { PostgresProjectStore } from '../../apps/web/src/server/store/postgres-project-store.js';
 import type {
   PostgresConnectionSource,
@@ -191,6 +194,7 @@ async function seed(admin: Client): Promise<void> {
 interface JourneyFixture {
   readonly adapter: PostgresStoreAdapter;
   readonly projects: PostgresProjectStore;
+  readonly memberships: MembershipStore;
 }
 
 let schemaCounter = 0;
@@ -213,6 +217,7 @@ async function withJourney(run: (fixture: JourneyFixture) => Promise<void>): Pro
     await run({
       adapter: new PostgresStoreAdapter(source),
       projects: new PostgresProjectStore(source),
+      memberships: new PostgresMembershipStore(source),
     });
   } finally {
     await source.close();
@@ -222,9 +227,20 @@ async function withJourney(run: (fixture: JourneyFixture) => Promise<void>): Pro
   }
 }
 
-const runInit = (adapter: PostgresStoreAdapter, scope: WorkspaceScope, slug: string) =>
+const runInit = (
+  adapter: PostgresStoreAdapter,
+  memberships: MembershipStore,
+  scope: WorkspaceScope,
+  slug: string,
+) =>
   adapter.withScope(scope, (store) =>
-    handleCreateProject(store, { slug, displayName: 'Checkout', repoUrl: null }),
+    handleCreateProject(store, { slug, displayName: 'Checkout', repoUrl: null }, { memberships }),
+  );
+
+const refusal = async (attempt: Promise<unknown>): Promise<unknown> =>
+  attempt.then(
+    () => null,
+    (cause: unknown) => cause,
   );
 
 const slugsVisibleTo = async (
@@ -266,8 +282,8 @@ describe.skipIf(connectionString === undefined)(
     });
 
     it('lands in the workspace the token belongs to, with an id the CLI can write to its config', async () => {
-      await withJourney(async ({ adapter }) => {
-        const result = await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
+      await withJourney(async ({ adapter, memberships }) => {
+        const result = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG);
 
         expect(result.created).toBe(true);
         expect(result.project.slug).toBe(REPO_SLUG);
@@ -279,9 +295,9 @@ describe.skipIf(connectionString === undefined)(
     });
 
     it('attaches to the same project when init runs twice, rather than failing or duplicating', async () => {
-      await withJourney(async ({ adapter, projects }) => {
-        const first = await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
-        const second = await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
+      await withJourney(async ({ adapter, projects, memberships }) => {
+        const first = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG);
+        const second = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG);
 
         expect(first.created).toBe(true);
         expect(second.created).toBe(false);
@@ -291,8 +307,8 @@ describe.skipIf(connectionString === undefined)(
     });
 
     it('appears in the web app for the account that created it', async () => {
-      await withJourney(async ({ adapter, projects }) => {
-        const created = await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
+      await withJourney(async ({ adapter, projects, memberships }) => {
+        const created = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG);
 
         const listed = await listProjects({
           account: ACCOUNT_LEAD_A,
@@ -306,8 +322,8 @@ describe.skipIf(connectionString === undefined)(
     });
 
     it('is visible to a second member of the same workspace through the client API', async () => {
-      await withJourney(async ({ adapter }) => {
-        const created = await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
+      await withJourney(async ({ adapter, memberships }) => {
+        const created = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG);
 
         const throughTheApi = await adapter.withScope(SCOPE_SECOND_A, (store) =>
           handleGetProjectBySlug(store, REPO_SLUG),
@@ -319,8 +335,8 @@ describe.skipIf(connectionString === undefined)(
     });
 
     it('is listed for that same member in the web app, which they were invited to use', async () => {
-      await withJourney(async ({ adapter, projects }) => {
-        const created = await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
+      await withJourney(async ({ adapter, projects, memberships }) => {
+        const created = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG);
 
         expect(await slugsVisibleTo(projects, ACCOUNT_SECOND_A)).toContain(REPO_SLUG);
 
@@ -334,8 +350,8 @@ describe.skipIf(connectionString === undefined)(
     });
 
     it('still lets only a lead create, rename, or archive one', async () => {
-      await withJourney(async ({ adapter, projects }) => {
-        const created = await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
+      await withJourney(async ({ adapter, projects, memberships }) => {
+        const created = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG);
 
         const attempts: readonly (() => Promise<unknown>)[] = [
           () =>
@@ -382,8 +398,8 @@ describe.skipIf(connectionString === undefined)(
     });
 
     it('is invisible to a member of a different workspace, by both routes', async () => {
-      await withJourney(async ({ adapter, projects }) => {
-        await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
+      await withJourney(async ({ adapter, projects, memberships }) => {
+        await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG);
 
         expect(await slugsVisibleTo(projects, ACCOUNT_LEAD_B)).not.toContain(REPO_SLUG);
 
@@ -395,9 +411,9 @@ describe.skipIf(connectionString === undefined)(
     });
 
     it('lets a different workspace hold the same slug without colliding', async () => {
-      await withJourney(async ({ adapter, projects }) => {
-        const acme = await runInit(adapter, SCOPE_LEAD_A, REPO_SLUG);
-        const globex = await runInit(adapter, SCOPE_LEAD_B, REPO_SLUG);
+      await withJourney(async ({ adapter, projects, memberships }) => {
+        const acme = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG);
+        const globex = await runInit(adapter, memberships, SCOPE_LEAD_B, REPO_SLUG);
 
         expect(globex.created).toBe(true);
         expect(globex.project.id).not.toBe(acme.project.id);
@@ -405,6 +421,45 @@ describe.skipIf(connectionString === undefined)(
 
         expect(await slugsVisibleTo(projects, ACCOUNT_LEAD_A)).toEqual([REPO_SLUG]);
         expect(await slugsVisibleTo(projects, ACCOUNT_LEAD_B)).toEqual([REPO_SLUG]);
+      });
+    });
+
+    it('refuses a member creating a new project through the client API, not only through the web', async () => {
+      await withJourney(async ({ adapter, projects, memberships }) => {
+        const denied = await refusal(runInit(adapter, memberships, SCOPE_SECOND_A, 'invoicing'));
+
+        expect(denied).toBeInstanceOf(ApiRequestError);
+        expect((denied as ApiRequestError).code).toBe('forbidden');
+        expect((denied as ApiRequestError).message).toContain('invoicing');
+        expect((denied as ApiRequestError).message).toContain('workspace lead');
+
+        const landed = await adapter.withScope(SCOPE_LEAD_A, (store) =>
+          handleGetProjectBySlug(store, 'invoicing'),
+        );
+        expect(landed.project).toBeNull();
+        expect(await slugsVisibleTo(projects, ACCOUNT_LEAD_A)).not.toContain('invoicing');
+      });
+    });
+
+    it('still lets that member attach to a project the lead already created', async () => {
+      await withJourney(async ({ adapter, memberships }) => {
+        const byLead = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG);
+        const byMember = await runInit(adapter, memberships, SCOPE_SECOND_A, REPO_SLUG);
+
+        expect(byMember.created).toBe(false);
+        expect(byMember.project.id).toBe(byLead.project.id);
+      });
+    });
+
+    it('refuses an actor with no membership at all, not merely a member', async () => {
+      await withJourney(async ({ adapter, memberships }) => {
+        const stranger: WorkspaceScope = { workspaceId: WORKSPACE_A, actorId: LEAD_B };
+
+        const denied = await refusal(runInit(adapter, memberships, stranger, 'invoicing'));
+
+        expect(denied).toBeInstanceOf(ApiRequestError);
+        expect((denied as ApiRequestError).code).toBe('forbidden');
+        expect((denied as ApiRequestError).message).toContain('non-member');
       });
     });
   },

@@ -4,6 +4,7 @@ import { type BearerIdentity, DeviceError } from './store/device-store.js';
 
 const STATUS_BY_CODE: Readonly<Record<ApiErrorCode, number>> = {
   invalid_token: 401,
+  forbidden: 403,
   invalid_request: 400,
   not_found: 404,
   supersede_refused: 409,

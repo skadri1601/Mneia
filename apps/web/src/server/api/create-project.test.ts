@@ -1,6 +1,7 @@
-import type { NewProject, Project, ScopedStore } from '@mneia/core';
+import type { NewProject, Project, ScopedStore, TeamRole } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
-import { handleCreateProject } from './handlers.js';
+import type { MembershipStore } from '../store/postgres-membership-store.js';
+import { ApiRequestError, handleCreateProject } from './handlers.js';
 
 const WORKSPACE = '22222222-2222-4222-8222-222222222222';
 const PROJECT = '33333333-3333-4333-8333-333333333333';
@@ -47,11 +48,17 @@ const harness = (bySlug: readonly (Project | null)[], onCreate?: () => never): H
 
 const input = { slug: 'mneia', displayName: 'Mneia', repoUrl: null };
 
+const asRole = (role: TeamRole | null): MembershipStore => ({
+  defaultTeamRole: () => Promise.resolve(role),
+});
+
+const lead = { memberships: asRole('lead') };
+
 describe('handleCreateProject', () => {
   it('creates the project when the slug is free, and says it created it', async () => {
     const sink = harness([null]);
 
-    const result = await handleCreateProject(sink.store, input);
+    const result = await handleCreateProject(sink.store, input, lead);
 
     expect(result.created).toBe(true);
     expect(result.project.slug).toBe('mneia');
@@ -61,7 +68,7 @@ describe('handleCreateProject', () => {
   it('attaches to the existing project rather than failing, so a second init is not an error', async () => {
     const sink = harness([project()]);
 
-    const result = await handleCreateProject(sink.store, input);
+    const result = await handleCreateProject(sink.store, input, lead);
 
     expect(result.created).toBe(false);
     expect(result.project.id).toBe(PROJECT);
@@ -75,7 +82,7 @@ describe('handleCreateProject', () => {
       );
     });
 
-    const result = await handleCreateProject(sink.store, input);
+    const result = await handleCreateProject(sink.store, input, lead);
 
     expect(result.created).toBe(false);
     expect(result.project.id).toBe(PROJECT);
@@ -87,18 +94,64 @@ describe('handleCreateProject', () => {
       throw new Error('connection terminated unexpectedly');
     });
 
-    await expect(handleCreateProject(sink.store, input)).rejects.toThrow(
+    await expect(handleCreateProject(sink.store, input, lead)).rejects.toThrow(
       'connection terminated unexpectedly',
     );
+  });
+
+  it('refuses a member creating a project, so the CLI cannot route around the lead-only rule', async () => {
+    const sink = harness([null]);
+
+    const denied = await handleCreateProject(sink.store, input, {
+      memberships: asRole('member'),
+    }).then(
+      () => null,
+      (cause: unknown) => cause,
+    );
+
+    expect(denied).toBeInstanceOf(ApiRequestError);
+    expect((denied as ApiRequestError).code).toBe('forbidden');
+    expect(sink.created).toEqual([]);
+  });
+
+  it('lets a member attach to a project that already exists, which is what init usually does', async () => {
+    const sink = harness([project()]);
+
+    const result = await handleCreateProject(sink.store, input, {
+      memberships: asRole('member'),
+    });
+
+    expect(result.created).toBe(false);
+    expect(result.project.id).toBe(PROJECT);
+    expect(sink.created).toEqual([]);
+  });
+
+  it('refuses an actor with no membership in the workspace at all', async () => {
+    const sink = harness([null]);
+
+    const denied = await handleCreateProject(sink.store, input, {
+      memberships: asRole(null),
+    }).then(
+      () => null,
+      (cause: unknown) => cause,
+    );
+
+    expect((denied as ApiRequestError).code).toBe('forbidden');
+    expect((denied as ApiRequestError).message).toContain('non-member');
+    expect(sink.created).toEqual([]);
   });
 
   it('never lets the caller choose the workspace — it comes from the scope', async () => {
     const sink = harness([null]);
 
-    await handleCreateProject(sink.store, {
-      ...input,
-      ...({ workspaceId: '99999999-9999-4999-8999-999999999999' } as Record<string, unknown>),
-    });
+    await handleCreateProject(
+      sink.store,
+      {
+        ...input,
+        ...({ workspaceId: '99999999-9999-4999-8999-999999999999' } as Record<string, unknown>),
+      },
+      lead,
+    );
 
     expect(sink.created[0]).toEqual({ slug: 'mneia', displayName: 'Mneia', repoUrl: null });
   });

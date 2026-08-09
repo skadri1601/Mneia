@@ -29,6 +29,7 @@ import {
   encodeSlice,
   resolveProject,
 } from '@mneia/core';
+import type { MembershipStore } from '../store/postgres-membership-store.js';
 
 export class ApiRequestError extends Error {
   readonly code: ApiErrorCode;
@@ -64,13 +65,26 @@ export const handleGetProject = async (
   return { project: project === null ? null : encodeProject(project) };
 };
 
+export interface CreateProjectDeps {
+  readonly memberships: MembershipStore;
+}
+
 export const handleCreateProject = async (
   store: ScopedStore,
   input: NewProjectWire,
+  deps: CreateProjectDeps,
 ): Promise<{ project: ProjectWire; created: boolean }> => {
   const existing = await store.getProjectBySlug(input.slug);
   if (existing !== null) {
     return { project: encodeProject(existing), created: false };
+  }
+
+  const role = await deps.memberships.defaultTeamRole(store.scope);
+  if (role !== 'lead') {
+    throw new ApiRequestError(
+      'forbidden',
+      `only a workspace lead can create a project, and this token belongs to a ${role ?? 'non-member'} — no project named "${input.slug}" exists yet. Ask a lead to create it, then run mneia init again to attach to it.`,
+    );
   }
 
   try {

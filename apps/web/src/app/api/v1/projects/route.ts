@@ -5,6 +5,7 @@ import {
   handleGetProjectBySlug,
 } from '../../../../server/api/handlers.js';
 import { serve } from '../../../../server/api/serve.js';
+import { memberships } from '../../../../server/membership-runtime.js';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,5 +31,5 @@ export const POST = (request: Request): Promise<Response> =>
   serve({
     request,
     schema: NewProjectWireSchema,
-    run: (store, input) => handleCreateProject(store, input),
+    run: (store, input) => handleCreateProject(store, input, { memberships: memberships() }),
   });
