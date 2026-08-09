@@ -81,13 +81,13 @@ jobs:
           HEALTH_URL: https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health
           ALLOW_UNVERIFIED_SCHEMA: ${{ inputs.allow_unverified_schema }}
         run: |
-          expected=$(ls packages/core/src/store/migrations/[0-9]*.ts \
-            | grep -v '\.test\.ts$' \
-            | xargs grep -hoP '^\s*version:\s*\K[0-9]+' \
-            | sort -n | tail -1)
+          if ! expected=$(node "${GITHUB_WORKSPACE}/scripts/schema-version.mjs"); then
+            echo "::error::could not read the schema version this build expects from packages/core/src/store/migrations; refusing to deploy blind"
+            exit 1
+          fi
 
           if ! [[ "${expected}" =~ ^[0-9]+$ ]] || [ "${expected}" -lt 1 ]; then
-            echo "::error::could not read the schema version this build expects from packages/core/src/store/migrations; refusing to deploy blind"
+            echo "::error::scripts/schema-version.mjs reported \"${expected}\", which is not a schema version; refusing to deploy blind"
             exit 1
           fi
           echo "this build expects schema version ${expected}"
