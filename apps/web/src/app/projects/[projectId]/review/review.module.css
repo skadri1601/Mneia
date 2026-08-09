@@ -1,7 +1,8 @@
 .page {
   width: min(100% - (2 * var(--space-lg)), var(--width-text));
+  min-width: 0;
   margin-inline: auto;
-  padding-block: var(--space-section);
+  padding-block: var(--space-xl) var(--space-section);
 }
 
 .pageHeader {
@@ -28,28 +29,42 @@
 .error {
   margin-block-end: var(--space-lg);
   padding: var(--space-sm) var(--space-md);
-  border-radius: var(--radius-sm);
+  border-radius: var(--rounded-sm);
+  overflow-wrap: anywhere;
 }
 
 .notice {
-  border: 1px solid var(--tile-rule);
+  border: 1px solid var(--tile-hairline);
 }
 
 .error {
   border: 1px solid var(--tile-link);
 }
 
+.empty {
+  max-width: 60ch;
+  min-width: 0;
+  padding: var(--space-lg);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-lg);
+  background: var(--surface-pearl);
+  overflow-wrap: anywhere;
+}
+
 .queue {
   display: grid;
   gap: var(--space-xl);
+  min-width: 0;
 }
 
 .item {
   display: grid;
   gap: var(--space-sm);
+  min-width: 0;
+  margin: 0;
   padding: var(--space-lg);
-  border: 1px solid var(--tile-rule);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-lg);
 }
 
 .itemHeader {
@@ -57,13 +72,15 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-sm);
+  min-width: 0;
 }
 
 .kind,
 .flag,
 .actor,
 .confidence {
-  font-size: var(--size-body-sm);
+  font-size: var(--size-fine-print);
+  overflow-wrap: anywhere;
 }
 
 .kind {
@@ -72,8 +89,8 @@
 
 .flag {
   padding-inline: var(--space-xs);
-  border: 1px solid var(--tile-rule);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-sm);
 }
 
 .actor,
@@ -81,25 +98,34 @@
   color: var(--tile-muted);
 }
 
+.why {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .field {
   display: grid;
   gap: var(--space-xxs);
+  min-width: 0;
 }
 
 .field span {
-  font-size: var(--size-body-sm);
+  font-size: var(--size-fine-print);
   color: var(--tile-muted);
 }
 
 .field input,
 .field textarea {
   min-height: var(--target-min);
+  min-width: 0;
+  max-width: 100%;
   padding: var(--space-xs) var(--space-sm);
-  border: 1px solid var(--tile-rule);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-sm);
   font: inherit;
   color: inherit;
   background: transparent;
+  overflow-wrap: anywhere;
 }
 
 .field textarea {
@@ -116,17 +142,27 @@
 
 .decision {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-lg);
 }
 
 .submit {
   min-height: var(--target-min);
   padding-inline: var(--space-lg);
-  border: 1px solid var(--tile-rule);
-  border-radius: var(--radius-sm);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-sm);
   font: inherit;
   color: inherit;
   background: transparent;
   cursor: pointer;
   justify-self: start;
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible,
+.checkbox input:focus-visible,
+.decision input:focus-visible,
+.submit:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
 }

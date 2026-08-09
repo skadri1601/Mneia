@@ -15,6 +15,82 @@
   gap: var(--space-xl);
 }
 
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.projectMenuToggle {
+  inline-size: var(--target-min);
+  block-size: var(--target-min);
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: var(--space-xxs);
+  padding: 0;
+  border: 0;
+  border-radius: var(--rounded-sm);
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.projectMenuToggle span {
+  inline-size: 20px;
+  block-size: 2px;
+  display: block;
+  border-radius: var(--rounded-pill);
+  background: currentColor;
+  opacity: 1;
+  transform: none;
+}
+
+html[data-project-menu="open"]:not([data-project-menu-ready]) .projectMenuToggle span:first-child,
+html[data-project-menu-ready] .projectMenuToggle[aria-expanded="true"] span:first-child {
+  transform: translateY(6px) rotate(45deg);
+}
+
+html[data-project-menu="open"]:not([data-project-menu-ready]) .projectMenuToggle span:nth-child(2),
+html[data-project-menu-ready] .projectMenuToggle[aria-expanded="true"] span:nth-child(2) {
+  opacity: 0;
+}
+
+html[data-project-menu="open"]:not([data-project-menu-ready]) .projectMenuToggle span:last-child,
+html[data-project-menu-ready] .projectMenuToggle[aria-expanded="true"] span:last-child {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+html[data-project-menu="closed"]:not([data-project-menu-ready]) .projectMenuToggle span {
+  opacity: 1;
+  transform: none;
+}
+
+html[data-project-menu-ready] .projectMenuToggle span {
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-project-menu-ready] .projectMenuToggle span {
+    transition: none;
+  }
+}
+
+.projectMenuToggle:hover {
+  background: var(--surface-pearl);
+}
+
+.projectMenuToggle:active {
+  transform: scale(var(--press-scale));
+}
+
+.projectMenuToggle:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+
 .brand {
   --mark-signal: var(--primary);
   min-height: var(--target-min);

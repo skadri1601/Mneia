@@ -49,15 +49,13 @@ export default async function TimelinePage({ params, searchParams }: TimelinePag
   const { then, since, noLongerHolds } = diffBeliefs(believedThen, believedNow);
 
   return (
-    <main className={styles.page}>
+    <div className={styles.page}>
       <header className={styles.pageHeader}>
-        <p>{account.workspace.displayName}</p>
-        <h1>
-          What {project.slug} believed on {formatDate(asOf)}
-        </h1>
+        <h1>Timeline</h1>
         <p>
-          Read as of a date, not filtered by today&apos;s status. An item that has since been
-          superseded still appears here, because on that date it was what the project believed.
+          What this project believed on {formatDate(asOf)}, read as of a date rather than filtered
+          by today&apos;s status. An item that has since been superseded still appears here, because
+          on that date it was what the project believed.
         </p>
       </header>
 
@@ -146,6 +144,6 @@ export default async function TimelinePage({ params, searchParams }: TimelinePag
           Read a narrower window until the timeline pages properly.
         </p>
       ) : null}
-    </main>
+    </div>
   );
 }

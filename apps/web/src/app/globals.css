@@ -47,3 +47,24 @@ button,
 input {
   font: inherit;
 }
+
+.project-skip-link {
+  position: fixed;
+  inset-block-start: var(--space-xs);
+  inset-inline-start: var(--space-xs);
+  z-index: 100;
+  min-block-size: var(--target-min);
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--space-sm);
+  border-radius: var(--rounded-sm);
+  background: var(--primary);
+  color: var(--on-primary);
+  transform: translateY(-150%);
+}
+
+.project-skip-link:focus {
+  transform: translateY(0);
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}

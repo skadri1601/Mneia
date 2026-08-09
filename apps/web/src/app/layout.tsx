@@ -3,6 +3,11 @@ import type { Metadata } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 import { AppHeader } from '../components/AppHeader.js';
+import {
+  ProjectMenuProvider,
+  ProjectSkipLink,
+} from '../components/project-workspace/ProjectMenuProvider.js';
+import { PROJECT_MENU_BOOTSTRAP } from '../components/project-workspace/project-menu-state.js';
 import './globals.css';
 
 const inter = Inter({
@@ -24,10 +29,20 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
     <ClerkProvider>
-      <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
+      <html
+        lang="en"
+        className={`${inter.variable} ${jetbrainsMono.variable}`}
+        suppressHydrationWarning
+      >
+        <head>
+          <script>{PROJECT_MENU_BOOTSTRAP}</script>
+        </head>
         <body>
-          <AppHeader />
-          {children}
+          <ProjectMenuProvider>
+            <ProjectSkipLink />
+            <AppHeader />
+            {children}
+          </ProjectMenuProvider>
         </body>
       </html>
     </ClerkProvider>

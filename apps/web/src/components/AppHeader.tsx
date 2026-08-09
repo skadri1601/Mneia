@@ -4,6 +4,7 @@ import { MARKETING_SITE_URL } from '../site.js';
 import { AccountMenu } from './AccountMenu.js';
 import styles from './AppHeader.module.css';
 import { MneiaLetter } from './MneiaMark.js';
+import { ProjectMenuToggle } from './project-workspace/ProjectMenuProvider.js';
 
 const BRAND = (
   <>
@@ -27,9 +28,12 @@ export function AppHeader() {
     <header className={styles.header}>
       <div className={styles.inner}>
         <SignedIn>
-          <Link className={styles.brand} href="/projects">
-            {BRAND}
-          </Link>
+          <div className={styles.identity}>
+            <ProjectMenuToggle />
+            <Link className={styles.brand} href="/projects">
+              {BRAND}
+            </Link>
+          </div>
         </SignedIn>
         <SignedOut>
           <a className={styles.brand} href={MARKETING_SITE_URL}>
