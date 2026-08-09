@@ -9,6 +9,7 @@ export const ENDPOINT_ENV_VAR = 'MNEIA_API_URL';
 export const TELEMETRY_ENV_VAR = 'MNEIA_TELEMETRY';
 export const CREDENTIALS_PATH_ENV_VAR = 'MNEIA_CREDENTIALS_PATH';
 export const LOCAL_CONFIG_PATH_ENV_VAR = 'MNEIA_LOCAL_CONFIG';
+export const HOME_ENV_VAR = 'MNEIA_HOME';
 export const DATABASE_URL_ENV_VAR = 'DATABASE_URL';
 
 export const DEFAULT_ENDPOINT = 'https://app.mneia.dev';
@@ -118,8 +119,16 @@ export function projectConfigPath(cwd: string): string {
   return join(resolve(cwd), CONFIG_DIR, CONFIG_FILE);
 }
 
-function homeConfigPath(fileName: string): string {
-  return join(homedir(), CONFIG_DIR, fileName);
+export function mneiaHomeDir(env: EnvLike): string {
+  const override = env[HOME_ENV_VAR];
+  if (override !== undefined && override.trim().length > 0 && isAbsolute(override.trim())) {
+    return override.trim();
+  }
+  return join(homedir(), CONFIG_DIR);
+}
+
+function homeConfigPath(env: EnvLike, fileName: string): string {
+  return join(mneiaHomeDir(env), fileName);
 }
 
 export function credentialsPath(env: EnvLike): string {
@@ -127,7 +136,7 @@ export function credentialsPath(env: EnvLike): string {
   if (override !== undefined && override.trim().length > 0 && isAbsolute(override.trim())) {
     return override.trim();
   }
-  return homeConfigPath(CREDENTIALS_FILE);
+  return homeConfigPath(env, CREDENTIALS_FILE);
 }
 
 export function localConfigPath(env: EnvLike): string {
@@ -135,7 +144,7 @@ export function localConfigPath(env: EnvLike): string {
   if (override !== undefined && override.trim().length > 0) {
     return resolve(override.trim());
   }
-  return homeConfigPath(LOCAL_CONFIG_FILE);
+  return homeConfigPath(env, LOCAL_CONFIG_FILE);
 }
 
 export function describeDatabaseTarget(databaseUrl: string): string {
@@ -437,11 +446,15 @@ async function loadLocalBinding(
     humanActorId: result.data.humanActorId ?? null,
     projectId: result.data.projectId ?? null,
     projectSlug: result.data.projectSlug ?? null,
-    telemetryPath: resolveLocalPath(path, result.data.telemetryPath, homeConfigPath(EVENTS_FILE)),
+    telemetryPath: resolveLocalPath(
+      path,
+      result.data.telemetryPath,
+      homeConfigPath(env, EVENTS_FILE),
+    ),
     reviewQueuePath: resolveLocalPath(
       path,
       result.data.reviewQueuePath,
-      homeConfigPath(REVIEW_QUEUE_FILE),
+      homeConfigPath(env, REVIEW_QUEUE_FILE),
     ),
     configPath: path,
   };

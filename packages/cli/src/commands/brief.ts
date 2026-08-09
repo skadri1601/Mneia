@@ -7,7 +7,10 @@ type ConfigModule = typeof import('../config.js');
 
 export type ProjectConfig = Awaited<ReturnType<ConfigModule['requireProjectConfig']>>;
 
-export type ProjectConfigLoader = (cwd: string) => Promise<ProjectConfig> | ProjectConfig;
+export type ProjectConfigLoader = (
+  cwd: string,
+  env: Readonly<Record<string, string | undefined>>,
+) => Promise<ProjectConfig> | ProjectConfig;
 
 export interface BriefRequest {
   readonly config: ProjectConfig;
@@ -145,7 +148,7 @@ export function createBriefCommand(deps: BriefDeps): CommandDefinition {
     async run(invocation: CommandInvocation): Promise<number> {
       const task = readTask(invocation);
       const tokenBudget = readBudget(invocation.flags);
-      const config = await deps.loadConfig(invocation.io.cwd);
+      const config = await deps.loadConfig(invocation.io.cwd, invocation.io.env);
       const slice = await callApi(config.endpoint, 'brief', () =>
         deps.api.rehydrate({ config, task, tokenBudget }),
       );
@@ -155,9 +158,9 @@ export function createBriefCommand(deps: BriefDeps): CommandDefinition {
   };
 }
 
-const defaultLoadConfig: ProjectConfigLoader = async (cwd) => {
+const defaultLoadConfig: ProjectConfigLoader = async (cwd, env) => {
   const { requireProjectConfig } = await import('../config.js');
-  return requireProjectConfig(cwd);
+  return requireProjectConfig(cwd, env);
 };
 
 export const briefCommand: CommandDefinition = createBriefCommand({

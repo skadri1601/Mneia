@@ -66,6 +66,8 @@ Hosted API (the default):
   MNEIA_TOKEN            Mneia API token from mneia login. Set it in the MCP
                          client's server config.
   MNEIA_API_URL          Mneia API endpoint. Defaults to https://app.mneia.dev.
+  MNEIA_HOME             Directory holding credentials and the local binding.
+                         Must be absolute. Defaults to ~/.mneia.
 
 Local store (dogfooding only; takes precedence when the file exists):
   ~/.mneia/local.json    binds this server straight to a Postgres store. Requires
