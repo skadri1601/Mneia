@@ -1,8 +1,8 @@
 import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { z } from 'zod';
 import { CliError } from './command.js';
+import { mneiaHomeDir } from './config.js';
 
 export const LOCAL_CONFIG_FILE = 'local.json';
 export const LOCAL_CONFIG_ENV_VAR = 'MNEIA_LOCAL_CONFIG';
@@ -29,7 +29,7 @@ export function localConfigPath(
   if (override !== undefined && override.length > 0 && isAbsolute(override)) {
     return override;
   }
-  return join(homedir(), '.mneia', LOCAL_CONFIG_FILE);
+  return join(mneiaHomeDir(env), LOCAL_CONFIG_FILE);
 }
 
 export async function loadLocalBinding(

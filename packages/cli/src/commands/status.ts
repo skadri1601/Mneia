@@ -345,7 +345,7 @@ export function createStatusCommand(deps: StatusDeps): CommandDefinition {
     async run(invocation: CommandInvocation): Promise<number> {
       assertNoPositionals(invocation.args);
       const now = (deps.now ?? systemClock)();
-      const config = await deps.loadConfig(invocation.io.cwd);
+      const config = await deps.loadConfig(invocation.io.cwd, invocation.io.env);
       const report = await callApi(config.endpoint, 'status', () => deps.api.status({ config }));
       invocation.io.stdout(
         invocation.json ? renderJson(report, config, now) : renderHuman(report, config, now),
@@ -355,9 +355,9 @@ export function createStatusCommand(deps: StatusDeps): CommandDefinition {
   };
 }
 
-const defaultLoadConfig: ProjectConfigLoader = async (cwd) => {
+const defaultLoadConfig: ProjectConfigLoader = async (cwd, env) => {
   const { requireProjectConfig } = await import('../config.js');
-  return requireProjectConfig(cwd);
+  return requireProjectConfig(cwd, env);
 };
 
 export const statusCommand: CommandDefinition = createStatusCommand({

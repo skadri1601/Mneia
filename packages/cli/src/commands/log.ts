@@ -382,7 +382,7 @@ export function createLogCommand(deps: LogDeps): CommandDefinition {
       assertNoPositionals(invocation.args);
       const limit = readLimit(invocation.flags);
       const since = readSince(invocation.flags, (deps.now ?? systemClock)());
-      const config = await deps.loadConfig(invocation.io.cwd);
+      const config = await deps.loadConfig(invocation.io.cwd, invocation.io.env);
       const page = await callApi(config.endpoint, 'log', () =>
         deps.api.log({ config, limit, since }),
       );
@@ -396,9 +396,9 @@ export function createLogCommand(deps: LogDeps): CommandDefinition {
   };
 }
 
-const defaultLoadConfig: ProjectConfigLoader = async (cwd) => {
+const defaultLoadConfig: ProjectConfigLoader = async (cwd, env) => {
   const { requireProjectConfig } = await import('../config.js');
-  return requireProjectConfig(cwd);
+  return requireProjectConfig(cwd, env);
 };
 
 export const logCommand: CommandDefinition = createLogCommand({

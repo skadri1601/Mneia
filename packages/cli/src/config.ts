@@ -11,6 +11,17 @@ export const ENDPOINT_ENV_VAR = 'MNEIA_API_URL';
 export const DEFAULT_ENDPOINT = 'https://app.mneia.dev';
 export const AUTH_URL_ENV_VAR = 'MNEIA_AUTH_URL';
 export const DEFAULT_AUTH_URL = 'https://app.mneia.dev';
+export const HOME_ENV_VAR = 'MNEIA_HOME';
+
+export function mneiaHomeDir(
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string {
+  const override = env[HOME_ENV_VAR];
+  if (override !== undefined && override.trim().length > 0 && isAbsolute(override.trim())) {
+    return override.trim();
+  }
+  return join(homedir(), CONFIG_DIR);
+}
 
 export function resolveAuthUrl(
   env: Readonly<Record<string, string | undefined>> = process.env,
@@ -41,10 +52,13 @@ export function configPathFor(cwd: string): string {
   return join(resolve(cwd), CONFIG_DIR, CONFIG_FILE);
 }
 
-export function notConfiguredError(cwd: string): CliError {
+export function notConfiguredError(
+  cwd: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): CliError {
   return new CliError(
     'not_configured',
-    `no Mneia project is bound to ${resolve(cwd)} — neither ${configPathFor(cwd)} nor ~/.mneia/local.json exists`,
+    `no Mneia project is bound to ${resolve(cwd)} — neither ${configPathFor(cwd)} nor ${join(mneiaHomeDir(env), 'local.json')} exists`,
     'run mneia login to sign this machine in, then mneia init to bind this repo to a project',
   );
 }
@@ -120,7 +134,7 @@ export async function requireProjectConfig(
   const { loadLocalBinding, localConfigPath } = await import('./local-binding.js');
   const binding = await loadLocalBinding(env);
   if (binding === null) {
-    throw notConfiguredError(cwd);
+    throw notConfiguredError(cwd, env);
   }
 
   return {
@@ -139,7 +153,7 @@ export function credentialsPath(
   if (override !== undefined && override.length > 0 && isAbsolute(override)) {
     return override;
   }
-  return join(homedir(), CONFIG_DIR, 'credentials');
+  return join(mneiaHomeDir(env), 'credentials');
 }
 
 export async function resolveToken(

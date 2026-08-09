@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const API_ERROR_CODES = [
   'invalid_token',
+  'forbidden',
   'invalid_request',
   'not_found',
   'supersede_refused',
@@ -53,8 +54,11 @@ export interface HttpTransport {
 const trimTrailingSlash = (value: string): string => value.replace(/\/+$/, '');
 
 const statusToCode = (status: number): ApiErrorCode => {
-  if (status === 401 || status === 403) {
+  if (status === 401) {
     return 'invalid_token';
+  }
+  if (status === 403) {
+    return 'forbidden';
   }
   if (status === 404) {
     return 'not_found';

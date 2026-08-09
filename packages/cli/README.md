@@ -93,7 +93,8 @@ confirmed.
 | `MNEIA_TOKEN` | API token. Set it in CI instead of running `mneia login`. Takes precedence over `~/.mneia/credentials`. |
 | `MNEIA_API_URL` | API base URL. Defaults to `https://app.mneia.dev`. |
 | `MNEIA_AUTH_URL` | Where `mneia login` sends you to approve a device code. Defaults to `https://app.mneia.dev`. |
-| `MNEIA_CREDENTIALS_PATH` | Absolute path to the credentials file, instead of `~/.mneia/credentials`. |
+| `MNEIA_HOME` | Absolute path to the directory holding the credentials and the local binding. Defaults to `~/.mneia`. `@mneia/mcp-server` honours it too, so a login written under it is found by the server. |
+| `MNEIA_CREDENTIALS_PATH` | Absolute path to the credentials file, instead of `<MNEIA_HOME>/credentials`. |
 
 Every command is an authenticated API call against your workspace. There is no sync step and no
 local replica to reconcile.

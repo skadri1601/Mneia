@@ -191,7 +191,7 @@ describe('PostgresProjectStore', () => {
       'BEGIN',
       'SET TRANSACTION ISOLATION LEVEL READ COMMITTED',
       'SELECT set_config($1, $2, true)',
-      "SELECT 1 AS authorized FROM team_member AS membership INNER JOIN team AS default_team ON default_team.workspace_id = membership.workspace_id AND default_team.id = membership.team_id WHERE membership.workspace_id = $1 AND membership.team_id = $2 AND membership.actor_id = $3 AND membership.role = 'lead' AND default_team.slug = 'default' LIMIT 1",
+      "SELECT 1 AS authorized FROM team_member AS membership INNER JOIN team AS default_team ON default_team.workspace_id = membership.workspace_id AND default_team.id = membership.team_id WHERE membership.workspace_id = $1 AND membership.team_id = $2 AND membership.actor_id = $3 AND (membership.role = 'lead' OR ($4 AND membership.role = 'member')) AND default_team.slug = 'default' LIMIT 1",
       'SELECT id, workspace_id, team_id, slug, display_name, repo_url, archived_at, created_at FROM project WHERE workspace_id = $1 AND archived_at IS NULL ORDER BY display_name ASC, id ASC',
       'COMMIT',
     ]);
@@ -199,7 +199,7 @@ describe('PostgresProjectStore', () => {
       [],
       [],
       ['mneia.workspace_id', WORKSPACE_ID],
-      [WORKSPACE_ID, TEAM_ID, ACTOR_ID],
+      [WORKSPACE_ID, TEAM_ID, ACTOR_ID, true],
       [WORKSPACE_ID],
       [],
     ]);
@@ -207,7 +207,7 @@ describe('PostgresProjectStore', () => {
     expect(session.discardCount).toBe(0);
   });
 
-  it('rejects an account whose actor is not the persisted default-team lead', async () => {
+  it('rejects an account whose actor is not a persisted member of the default team', async () => {
     const session = new FakeSession([[], [], [], [], []]);
     const store = new PostgresProjectStore(new FakeSource(session));
 
@@ -218,7 +218,7 @@ describe('PostgresProjectStore', () => {
       'BEGIN',
       'SET TRANSACTION ISOLATION LEVEL READ COMMITTED',
       'SELECT set_config($1, $2, true)',
-      "SELECT 1 AS authorized FROM team_member AS membership INNER JOIN team AS default_team ON default_team.workspace_id = membership.workspace_id AND default_team.id = membership.team_id WHERE membership.workspace_id = $1 AND membership.team_id = $2 AND membership.actor_id = $3 AND membership.role = 'lead' AND default_team.slug = 'default' LIMIT 1",
+      "SELECT 1 AS authorized FROM team_member AS membership INNER JOIN team AS default_team ON default_team.workspace_id = membership.workspace_id AND default_team.id = membership.team_id WHERE membership.workspace_id = $1 AND membership.team_id = $2 AND membership.actor_id = $3 AND (membership.role = 'lead' OR ($4 AND membership.role = 'member')) AND default_team.slug = 'default' LIMIT 1",
       'ROLLBACK',
     ]);
     expect(session.releaseCount).toBe(1);
@@ -304,6 +304,25 @@ describe('PostgresProjectStore', () => {
       'UPDATE project SET archived_at = COALESCE(archived_at, CURRENT_TIMESTAMP) WHERE workspace_id = $1 AND id = $2 AND slug = $3 RETURNING id, workspace_id, team_id, slug, display_name, repo_url, archived_at, created_at',
     );
     expect(session.calls.at(-2)?.params).toEqual([WORKSPACE_ID, PROJECT_ID, 'mneia']);
+  });
+
+  it('admits a member to a read and holds a write to the lead, by the same authorization query', async () => {
+    const read = new FakeSession(authorizedSteps([projectRow()], []));
+    await new PostgresProjectStore(new FakeSource(read)).listProjects(account, {
+      includeArchived: false,
+    });
+
+    const write = new FakeSession(authorizedSteps([projectRow()], []));
+    await new PostgresProjectStore(new FakeSource(write)).renameProject(account, {
+      projectId: PROJECT_ID,
+      displayName: 'Memory',
+    });
+
+    const authorizationParams = (session: FakeSession): readonly unknown[] | undefined =>
+      session.calls.find(({ sql }) => sql.includes('AS authorized'))?.params;
+
+    expect(authorizationParams(read)).toEqual([WORKSPACE_ID, TEAM_ID, ACTOR_ID, true]);
+    expect(authorizationParams(write)).toEqual([WORKSPACE_ID, TEAM_ID, ACTOR_ID, false]);
   });
 
   it('discards a session when an operation and rollback both fail', async () => {

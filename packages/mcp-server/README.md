@@ -64,7 +64,8 @@ Two rules are enforced by the server, not left to the agent:
 |---|---|
 | `MNEIA_TOKEN` | Mneia API token from `mneia login`. Set it in the MCP client's server config. |
 | `MNEIA_API_URL` | API endpoint. Defaults to `https://app.mneia.dev`. |
-| `MNEIA_CREDENTIALS_PATH` | Absolute path to the credentials file, instead of `~/.mneia/credentials`. |
+| `MNEIA_HOME` | Absolute path to the directory holding the credentials and the local binding. Defaults to `~/.mneia`. `@mneia/cli` honours it too, so a login written under it is found here. |
+| `MNEIA_CREDENTIALS_PATH` | Absolute path to the credentials file, instead of `<MNEIA_HOME>/credentials`. |
 | `MNEIA_TELEMETRY` | Set to `off` to opt out of usage events. |
 
 ## Privacy

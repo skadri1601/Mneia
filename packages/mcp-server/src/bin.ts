@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
   HostedIdentity,
@@ -26,6 +25,7 @@ import {
   ConfigError,
   describeConfigError,
   describeDatabaseTarget,
+  hostedReviewQueuePath,
   loadServerConfig,
 } from './config.js';
 import type { ErasedToolDefinition } from './registry.js';
@@ -66,6 +66,8 @@ Hosted API (the default):
   MNEIA_TOKEN            Mneia API token from mneia login. Set it in the MCP
                          client's server config.
   MNEIA_API_URL          Mneia API endpoint. Defaults to https://app.mneia.dev.
+  MNEIA_HOME             Directory holding credentials and the local binding.
+                         Must be absolute. Defaults to ~/.mneia.
 
 Local store (dogfooding only; takes precedence when the file exists):
   ~/.mneia/local.json    binds this server straight to a Postgres store. Requires
@@ -299,10 +301,6 @@ interface HostedRuntime {
   readonly start: () => Promise<void>;
   readonly close: () => Promise<void>;
   readonly describe: () => string;
-}
-
-export function hostedReviewQueuePath(): string {
-  return join(homedir(), '.mneia', 'review-queue.jsonl');
 }
 
 async function resolveBoundProject(

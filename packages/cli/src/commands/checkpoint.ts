@@ -532,7 +532,7 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
       const trigger = readTrigger(invocation.flags);
       const now = deps.now ?? systemClock;
       const telemetry = deps.telemetry ?? createNoopEmitter();
-      const config = await deps.loadConfig(invocation.io.cwd);
+      const config = await deps.loadConfig(invocation.io.cwd, invocation.io.env);
 
       const proposal = await callApi(config.endpoint, 'checkpoint', () =>
         deps.api.propose({ config, trigger }),
@@ -638,9 +638,9 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
   };
 }
 
-const defaultLoadConfig: ProjectConfigLoader = async (cwd) => {
+const defaultLoadConfig: ProjectConfigLoader = async (cwd, env) => {
   const { requireProjectConfig } = await import('../config.js');
-  return requireProjectConfig(cwd);
+  return requireProjectConfig(cwd, env);
 };
 
 let processPrompter: Prompter | null = null;

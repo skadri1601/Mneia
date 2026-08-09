@@ -1,3 +1,4 @@
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Actor, ContextItem } from '@mneia/core';
@@ -153,6 +154,7 @@ interface RunOptions {
   readonly flags?: Readonly<Record<string, string | boolean>>;
   readonly json?: boolean;
   readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 interface RunResult {
@@ -172,7 +174,7 @@ async function run(command: CommandDefinition, options: RunOptions = {}): Promis
       err.push(text);
     },
     cwd: options.cwd ?? '/repo',
-    env: {},
+    env: options.env ?? {},
   };
 
   const code = await command.run({
@@ -368,11 +370,13 @@ describe('mneia log', () => {
   it('points an unbound machine at login and init, not at a repo-only script', async () => {
     const command = createLogCommand({
       api: recordingApi(TIMELINE),
-      loadConfig: (cwd) => requireProjectConfig(cwd),
+      loadConfig: (cwd, env) => requireProjectConfig(cwd, env),
     });
 
+    const home = await mkdtemp(join(tmpdir(), 'mneia-log-home-'));
     const error = await failure(command, {
-      cwd: join(tmpdir(), 'mneia-log-not-configured-3f9c1a2b'),
+      cwd: await mkdtemp(join(tmpdir(), 'mneia-log-repo-')),
+      env: { MNEIA_HOME: home },
     });
 
     expect(error.kind).toBe('not_configured');
