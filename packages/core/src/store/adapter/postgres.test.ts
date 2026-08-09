@@ -400,6 +400,23 @@ describe('PostgresStoreAdapter transaction cleanup', () => {
   });
 });
 
+describe('PostgresStoreAdapter scoped membership lookup', () => {
+  it('shares one team membership query across concurrent reads', async () => {
+    const session = new FakeSession();
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    await adapter.withScope(SCOPE, async (store) => {
+      await Promise.all([
+        store.listContextItems({ projectId: PROJECT, limit: 1 }),
+        store.listContextItems({ projectId: PROJECT, loadBearing: true, limit: 1 }),
+        store.listContextItems({ projectId: PROJECT, statuses: ['superseded'], limit: 1 }),
+      ]);
+    });
+
+    expect(session.calls.filter((sql) => sql.includes('FROM team_member'))).toHaveLength(1);
+  });
+});
+
 describe('PostgresStoreAdapter row-level security guard', () => {
   it('refuses a connection that bypasses row-level security before it opens a transaction', async () => {
     const session = new FakeSession(null, true);

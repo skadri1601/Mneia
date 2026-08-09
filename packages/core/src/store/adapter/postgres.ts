@@ -289,7 +289,7 @@ const describeCause = (cause: unknown): string =>
 class PostgresScopedStore implements ReviewCapableStore {
   private attached = true;
   private savepoints = 0;
-  private teamIds: readonly Uuid[] | null = null;
+  private teamIds: Promise<readonly Uuid[]> | null = null;
   private scopedActor: Actor | null = null;
 
   constructor(
@@ -340,14 +340,16 @@ class PostgresScopedStore implements ReviewCapableStore {
     }
   }
 
-  private async actorTeamIds(): Promise<readonly Uuid[]> {
-    if (this.teamIds === null) {
-      const rows = await this.rows(
-        'SELECT team_id FROM team_member WHERE workspace_id = $1 AND actor_id = $2',
-        [this.scope.workspaceId, this.scope.actorId],
-      );
-      this.teamIds = rows.map((row) => toUuid(row, 'team_id'));
-    }
+  private async readActorTeamIds(): Promise<readonly Uuid[]> {
+    const rows = await this.rows(
+      'SELECT team_id FROM team_member WHERE workspace_id = $1 AND actor_id = $2',
+      [this.scope.workspaceId, this.scope.actorId],
+    );
+    return rows.map((row) => toUuid(row, 'team_id'));
+  }
+
+  private actorTeamIds(): Promise<readonly Uuid[]> {
+    this.teamIds ??= this.readActorTeamIds();
     return this.teamIds;
   }
 
