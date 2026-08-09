@@ -86,6 +86,22 @@ npx @mneia/cli checkpoint
 Review what it proposes, keep at least one item, then rehydrate again and the item comes back in the
 slice. That round trip — checkpoint in one session, rehydrate in the next — **is** the product.
 
+## Checking the whole thing at once
+
+`pnpm verify:journey` walks the steps above against a temporary `MNEIA_HOME` and a temporary
+repository, times each command, and prints the `.mneia/config.json` that `init` wrote. It never
+touches your real `~/.mneia`, so it is safe to run on a machine already signed in.
+
+```bash
+pnpm verify:journey                 # against the published @mneia/cli@latest
+pnpm verify:journey --local         # against the workspace build
+pnpm verify:journey --in .          # run it in this repo, so checkpoint has a session to read
+```
+
+With no credential it prints the one `login` command to run and exits 2 rather than guessing.
+`checkpoint` is advisory: it discovers an agent session for the working directory, so a fresh
+temporary repository has none — use `--in` with a repository you have an open session in.
+
 ## When it does not work
 
 | Symptom | Cause | Fix |
@@ -117,5 +133,6 @@ Then `~/.mneia/local.json`:
 }
 ```
 
-That directory is always `~/.mneia` and cannot be relocated by configuration. Override `USERPROFILE`
-or `HOME` for the process if you need a second one side by side.
+That directory defaults to `~/.mneia`. Set `MNEIA_HOME` to an absolute path to put it elsewhere — the
+CLI and the MCP server both honour it, so a login written under one is found by the other. That is
+the supported way to run two configurations side by side.

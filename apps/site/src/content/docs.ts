@@ -643,6 +643,11 @@ const CLI: DocPage = {
               'Set to `off`, `false`, `no`, `none`, or `0` to opt out entirely',
             ],
             [
+              '`MNEIA_HOME`',
+              '`~/.mneia`',
+              'Absolute path to the directory holding the credentials and the local binding. The MCP server reads the same variable',
+            ],
+            [
               '`MNEIA_CREDENTIALS_PATH`',
               '`~/.mneia/credentials`',
               'Absolute path to the credentials file',

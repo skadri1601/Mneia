@@ -83,9 +83,12 @@ With none of the three it **refuses to start** and names all three paths it look
 right behaviour and the error is genuinely actionable — but note it exits rather than starting and
 failing per call, so a client will report the server as failed rather than showing a message.
 
-**The config directory cannot be relocated.** It is always `os.homedir() + /.mneia`, with no
-environment override. Running two configurations side by side, or running in CI, means overriding
-`USERPROFILE` or `HOME` for the process. Worth an env var later; noted here so it is not rediscovered.
+**`MNEIA_HOME` relocates the config directory**, which defaults to `os.homedir() + /.mneia`. It must
+be absolute, and the CLI and the MCP server honour it together — `mneia login` writes the credential
+the server reads, so moving one without the other would leave a working login the server cannot find.
+That is how you run two configurations side by side, or run in CI, without overriding `USERPROFILE`
+or `HOME` for the whole process (MNE-260, 2026-08-08). `MNEIA_CREDENTIALS_PATH` and
+`MNEIA_LOCAL_CONFIG` still win over it where they name a single file.
 
 ## The RLS guard fires on the local path too
 
