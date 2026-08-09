@@ -31,6 +31,7 @@ which is undefined here and silently tagged every production error as `developme
 | `NEXT_PUBLIC_SENTRY_DSN` | For browser error reporting | none | `src/instrumentation-client.ts` |
 | `SENTRY_DSN` | For server and edge error reporting | none | `sentry.server.config.ts`, `sentry.edge.config.ts` |
 | `SENTRY_AUTH_TOKEN` | Build time, for readable stack traces | none | `withSentryConfig` source map upload |
+| `SENTRY_PROBE_SECRET` | Only to run the error-capture probe | none | `POST /api/sentry-check` — unset means the route 404s |
 
 `NEXT_PUBLIC_SITE_URL` must have no trailing slash and must match the domain the site is actually
 served from. Every absolute URL the site emits is derived from it, so a wrong value points canonicals
@@ -69,7 +70,8 @@ reporting. And **do not "unify" this import back to `@sentry/nextjs`.**
 |---|---|---|---|
 | Before MNE-198 | 12888 KiB | **3032 KiB** | 40 KiB |
 | After MNE-198 | 10740 KiB | **2503 KiB** | 569 KiB |
-| Now, with MNE-222's consent gate | 11068 KiB | **2538 KiB** | 534 KiB |
+| With MNE-222's consent gate | 11068 KiB | **2538 KiB** | 534 KiB |
+| Now, with MNE-240's `/api/sentry-check` | 11113 KiB | **2541 KiB** | 531 KiB |
 
 Cloudflare's hard limit is **3072 KiB gzipped** and validation fails with `code: 10027`. Re-measure
 with `pnpm exec wrangler deploy --dry-run` before adding any server-side dependency.
@@ -102,8 +104,40 @@ assuming it was "very likely silently degraded or dead":
   erroring, and equally consistent with production capture being broken, and the two cannot be told
   apart from the outside.
 
-Settling it needs a deliberate error thrown on the deployed Worker. The `/sentry-check` route that
-MNE-190 used for exactly this was removed and would have to come back behind a guard.
+Settling it needs a deliberate error thrown on the deployed Worker. **`POST /api/sentry-check` is
+that route, and it is permanent** — see below.
+
+### `/api/sentry-check`, the guarded probe
+
+A permanent operational check (MNE-240), not scaffolding to delete. "No production event has ever
+arrived" is only meaningful if you can make one arrive on demand; without this route the two readings
+above stay indistinguishable forever.
+
+**It is inert unless `SENTRY_PROBE_SECRET` is set**, and it answers `404` — never `401` — to a
+missing or wrong secret, so it does not confirm its own existence to a scanner. That matters: a bare
+public route here is a way to burn the project's Sentry quota. The comparison is constant-time over
+encoded bytes; `src/lib/probe.test.ts` covers the prefix, superstring, case, and multi-byte cases a
+naive `===` or `startsWith` would let through.
+
+| | |
+|---|---|
+| Method | `POST` only |
+| Header | `x-mneia-probe: $SENTRY_PROBE_SECRET` |
+| `?marker=` | Free text echoed into the error message, so you can find *your* event |
+| `?mode=throw` | Throws instead of capturing, exercising `onRequestError` rather than `captureException` |
+
+Default mode returns `{ eventId, delivered, environment, marker }`. `delivered` is the result of
+`Sentry.flush()` — load-bearing on Workers, which can terminate before an in-flight event is sent, so
+a `true` here means the transport actually completed rather than merely being queued.
+
+```
+curl -sS -X POST "https://mneia.dev/api/sentry-check?marker=$(date +%s)" \
+  -H "x-mneia-probe: ${SENTRY_PROBE_SECRET}"
+```
+
+Then confirm in Sentry that the event is tagged `environment: production` and that the stack names
+first-party frames. Run it after any change to the Sentry wiring, the `wrangler.jsonc` compatibility
+flags, or the SDK version — all three have broken capture before.
 
 **`includeLocalVariables` was removed on MNE-198 because it never worked on `workerd`.** It is a
 `@sentry/node` option that needs `node:inspector`. Under `nodejs_compat` that module *imports* — which
