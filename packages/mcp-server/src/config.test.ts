@@ -1,13 +1,22 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { EnvLike, FileReader } from './config.js';
 import {
+  CONFIG_DIR,
   ConfigError,
+  CREDENTIALS_FILE,
   credentialsPath,
   DEFAULT_ENDPOINT,
   describeConfigError,
   ENDPOINT_ENV_VAR,
+  hostedReviewQueuePath,
+  LOCAL_CONFIG_FILE,
   loadServerConfig,
+  localConfigPath,
+  mneiaHomeDir,
   projectConfigPath,
+  REVIEW_QUEUE_FILE,
   TELEMETRY_ENV_VAR,
   TOKEN_ENV_VAR,
 } from './config.js';
@@ -218,5 +227,29 @@ describe('loadServerConfig project binding', () => {
 
     expect(config.project).toBeNull();
     expect(config.cwd).toContain('payments');
+  });
+});
+
+describe('MNEIA_HOME', () => {
+  const HOME = '/srv/agents/mneia-home';
+
+  it('moves the credentials, the local binding, and the hosted review queue together', () => {
+    const env: EnvLike = { MNEIA_HOME: HOME };
+
+    expect(mneiaHomeDir(env)).toBe(HOME);
+    expect(credentialsPath(env)).toBe(join(HOME, CREDENTIALS_FILE));
+    expect(localConfigPath(env)).toBe(join(HOME, LOCAL_CONFIG_FILE));
+    expect(hostedReviewQueuePath(env)).toBe(join(HOME, REVIEW_QUEUE_FILE));
+  });
+
+  it('keeps the hosted review queue out of the real home, which is where pending items land', () => {
+    const home = join(homedir(), CONFIG_DIR);
+
+    expect(hostedReviewQueuePath({ MNEIA_HOME: HOME }).startsWith(home)).toBe(false);
+    expect(hostedReviewQueuePath({})).toBe(join(home, REVIEW_QUEUE_FILE));
+  });
+
+  it('ignores a relative MNEIA_HOME rather than resolving it against the working directory', () => {
+    expect(mneiaHomeDir({ MNEIA_HOME: 'mneia-home' })).toBe(join(homedir(), CONFIG_DIR));
   });
 });

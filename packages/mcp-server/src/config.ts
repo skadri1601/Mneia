@@ -147,6 +147,10 @@ export function localConfigPath(env: EnvLike): string {
   return homeConfigPath(env, LOCAL_CONFIG_FILE);
 }
 
+export function hostedReviewQueuePath(env: EnvLike = process.env): string {
+  return homeConfigPath(env, REVIEW_QUEUE_FILE);
+}
+
 export function describeDatabaseTarget(databaseUrl: string): string {
   try {
     const parsed = new URL(databaseUrl);

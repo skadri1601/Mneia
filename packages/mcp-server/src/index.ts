@@ -24,6 +24,7 @@ export {
   ENDPOINT_ENV_VAR,
   EVENTS_FILE,
   HOME_ENV_VAR,
+  hostedReviewQueuePath,
   LOCAL_CONFIG_FILE,
   LOCAL_CONFIG_PATH_ENV_VAR,
   loadServerConfig,

@@ -8,6 +8,12 @@ MCP client" that has only ever been run in one is the single-vendor product we a
 
 Last verified **2026-08-08** against `@mneia/mcp-server` 0.1.1, protocol `2025-06-18`.
 
+**Verified against a `pnpm pack` tarball installed with `npm install`, not the workspace build.** That
+distinction matters: `npm pack` leaves `workspace:^` in the dependency block and the install fails
+outright with `EUNSUPPORTEDPROTOCOL`, while `pnpm pack` rewrites it to `^0.1.1`. `release.yml` uses
+`pnpm pack`. Anyone re-checking this by hand should too, or they will be testing a package that
+cannot be installed.
+
 ## What the server offers, verified by a real stdio session
 
 Driven by writing JSON-RPC frames to the server's stdin and reading its stdout — no client involved,

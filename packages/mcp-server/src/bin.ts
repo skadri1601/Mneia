@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type {
   HostedIdentity,
@@ -26,6 +25,7 @@ import {
   ConfigError,
   describeConfigError,
   describeDatabaseTarget,
+  hostedReviewQueuePath,
   loadServerConfig,
 } from './config.js';
 import type { ErasedToolDefinition } from './registry.js';
@@ -301,10 +301,6 @@ interface HostedRuntime {
   readonly start: () => Promise<void>;
   readonly close: () => Promise<void>;
   readonly describe: () => string;
-}
-
-export function hostedReviewQueuePath(): string {
-  return join(homedir(), '.mneia', 'review-queue.jsonl');
 }
 
 async function resolveBoundProject(
