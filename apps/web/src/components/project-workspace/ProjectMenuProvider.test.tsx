@@ -2,7 +2,7 @@
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { act } from 'react';
+import { act, type ComponentPropsWithRef, type ReactNode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -12,7 +12,12 @@ vi.mock('next/navigation', () => ({
   usePathname: () => navigation.pathname,
 }));
 
+vi.mock('next/link', () => ({
+  default: (props: ComponentPropsWithRef<'a'>) => <a {...props} />,
+}));
+
 import { ProjectMenuProvider, ProjectMenuToggle, ProjectSkipLink } from './ProjectMenuProvider.js';
+import { ProjectWorkspace } from './ProjectWorkspace.js';
 import {
   PROJECT_MENU_BOOTSTRAP,
   PROJECT_MENU_QUERY,
@@ -20,6 +25,11 @@ import {
 } from './project-menu-state.js';
 
 const projectId = '123e4567-e89b-12d3-a456-426614174000';
+const PROJECT = {
+  id: projectId,
+  displayName: 'Analytical Engine',
+  slug: 'analytical-engine',
+};
 const headerStyles = readFileSync(
   resolve(process.cwd(), 'apps/web/src/components/AppHeader.module.css'),
   'utf8',
@@ -279,6 +289,162 @@ describe('ProjectMenuProvider', () => {
     expect(headerStyles).toContain('transition: none;');
   });
 });
+
+describe('ProjectMenuProvider mobile drawer', () => {
+  test('starts closed on mobile even when the saved desktop preference is open', async () => {
+    window.localStorage.setItem(PROJECT_MENU_STORAGE_KEY, 'open');
+    matchMediaController.setMobile(true);
+
+    await renderWorkspace();
+
+    expect(getMenuToggle().getAttribute('aria-expanded')).toBe('false');
+    expect(document.documentElement.dataset.projectMenu).toBe('closed');
+  });
+
+  test('moves focus to the Overview destination when the drawer opens', async () => {
+    matchMediaController.setMobile(true);
+    await renderWorkspace();
+
+    await clickMenuToggle();
+
+    expect(getMenuToggle().getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(getDestination('Overview'));
+  });
+
+  test('makes the project content inert only while the drawer is open', async () => {
+    matchMediaController.setMobile(true);
+    await renderWorkspace();
+    expect(getProjectContent().hasAttribute('inert')).toBe(false);
+
+    await clickMenuToggle();
+
+    expect(getProjectContent().hasAttribute('inert')).toBe(true);
+  });
+
+  test('closes the drawer on Escape and returns focus to the header toggle', async () => {
+    matchMediaController.setMobile(true);
+    await renderWorkspace();
+    await clickMenuToggle();
+
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+
+    expect(getMenuToggle().getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(getMenuToggle());
+  });
+
+  test('closes the drawer from the backdrop and returns focus to the header toggle', async () => {
+    matchMediaController.setMobile(true);
+    await renderWorkspace();
+    await clickMenuToggle();
+
+    const backdrop = container?.querySelector('button[aria-label="Close project menu"]');
+    if (!(backdrop instanceof HTMLButtonElement)) {
+      throw new Error('expected a drawer backdrop button');
+    }
+    await act(async () => backdrop.click());
+
+    expect(getMenuToggle().getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(getMenuToggle());
+  });
+
+  test('closes the drawer when a destination is selected', async () => {
+    matchMediaController.setMobile(true);
+    await renderWorkspace();
+    await clickMenuToggle();
+
+    const timeline = getDestination('Timeline');
+    timeline.addEventListener('click', (event) => event.preventDefault());
+    await act(async () => timeline.click());
+
+    expect(getMenuToggle().getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('closes the drawer when the pathname changes without stealing focus', async () => {
+    matchMediaController.setMobile(true);
+    await renderWorkspace();
+    await clickMenuToggle();
+    expect(getMenuToggle().getAttribute('aria-expanded')).toBe('true');
+
+    navigation.pathname = `/projects/${projectId}/timeline`;
+    await rerenderWorkspace();
+
+    expect(getMenuToggle().getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).not.toBe(getMenuToggle());
+  });
+
+  test('restores the saved desktop preference when returning to desktop', async () => {
+    window.localStorage.setItem(PROJECT_MENU_STORAGE_KEY, 'closed');
+    await renderWorkspace();
+    expect(getMenuToggle().getAttribute('aria-expanded')).toBe('false');
+
+    await act(async () => matchMediaController.setMobile(true));
+    await clickMenuToggle();
+    expect(getMenuToggle().getAttribute('aria-expanded')).toBe('true');
+
+    await act(async () => matchMediaController.setMobile(false));
+
+    expect(getMenuToggle().getAttribute('aria-expanded')).toBe('false');
+    expect(window.localStorage.getItem(PROJECT_MENU_STORAGE_KEY)).toBe('closed');
+  });
+});
+
+function workspaceTree(): ReactNode {
+  return (
+    <ProjectMenuProvider>
+      <ProjectMenuToggle />
+      <ProjectWorkspace project={PROJECT}>
+        <button type="button">Route action</button>
+      </ProjectWorkspace>
+    </ProjectMenuProvider>
+  );
+}
+
+async function renderWorkspace(): Promise<void> {
+  container = document.createElement('div');
+  document.body.append(container);
+  root = createRoot(container);
+  await act(async () => {
+    root?.render(workspaceTree());
+  });
+}
+
+async function rerenderWorkspace(): Promise<void> {
+  await act(async () => {
+    root?.render(workspaceTree());
+  });
+}
+
+function getMenuToggle(): HTMLButtonElement {
+  const toggle = container?.querySelector('button[aria-controls="project-navigation"]');
+  if (!(toggle instanceof HTMLButtonElement)) {
+    throw new Error('expected a project menu toggle button');
+  }
+  return toggle;
+}
+
+async function clickMenuToggle(): Promise<void> {
+  await act(async () => getMenuToggle().click());
+}
+
+function getProjectContent(): HTMLElement {
+  const content = container?.querySelector('#project-content');
+  if (!(content instanceof HTMLElement)) {
+    throw new Error('expected the project content landmark');
+  }
+  return content;
+}
+
+function getDestination(label: string): HTMLAnchorElement {
+  const destination = [...(container?.querySelectorAll('#project-navigation a') ?? [])].find(
+    (link) => link.textContent === label,
+  );
+  if (!(destination instanceof HTMLAnchorElement)) {
+    throw new Error(`expected a ${label} destination`);
+  }
+  return destination;
+}
 
 async function renderMenu(): Promise<void> {
   container = document.createElement('div');

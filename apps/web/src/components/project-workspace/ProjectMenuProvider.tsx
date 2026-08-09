@@ -102,6 +102,21 @@ export function ProjectMenuProvider({ children }: Readonly<{ children: ReactNode
     dispatch({ type: 'dismissed' });
   }, []);
 
+  useEffect(() => {
+    if (!state.mobile || !state.mobileOpen) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        dismiss(true);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [dismiss, state.mobile, state.mobileOpen]);
+
   return (
     <ProjectMenuContext.Provider
       value={{ active, mobile: state.mobile, open, toggleRef, toggle, dismiss }}
