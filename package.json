@@ -32,8 +32,10 @@
     "latency:rehydrate": "node scripts/rehydrate-latency.mjs",
     "funnel:report": "node scripts/funnel-report.mjs",
     "changeset": "changeset",
-    "version:packages": "changeset version",
-    "release:dry": "changeset publish --dry-run"
+    "version:packages": "changeset version && node scripts/sync-version.mjs",
+    "release:dry": "changeset publish --dry-run",
+    "sync:version": "node scripts/sync-version.mjs",
+    "check:version": "node scripts/sync-version.mjs --check"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",

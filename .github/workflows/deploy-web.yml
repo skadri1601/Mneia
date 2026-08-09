@@ -151,7 +151,7 @@ jobs:
           HEALTH_URL: https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health
         run: |
           for attempt in $(seq 1 30); do
-            if curl -sS --max-time 10 -o /tmp/health.json "${HEALTH_URL}"; then
+            if curl -fsS --max-time 10 -o /tmp/health.json "${HEALTH_URL}"; then
               echo "answered after ${attempt} attempt(s)"
               cat /tmp/health.json
               exit 0

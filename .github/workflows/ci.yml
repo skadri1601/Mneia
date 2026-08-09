@@ -32,6 +32,9 @@ jobs:
       - name: lint (errors only)
         run: pnpm lint:ci
 
+      - name: the reported version matches the published one
+        run: pnpm check:version
+
       - name: build every workspace member
         run: pnpm -r --if-present build
         env:
