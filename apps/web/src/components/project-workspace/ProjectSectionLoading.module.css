@@ -1,0 +1,153 @@
+.section {
+  display: grid;
+  gap: var(--space-md);
+  padding-block: var(--space-lg);
+  animation: project-section-arrive 180ms ease-out both;
+}
+
+@keyframes project-section-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.status {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.heading,
+.line,
+.lineShort,
+.control,
+.chip,
+.filters,
+.count,
+.dateControl {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--rounded-sm);
+  background: var(--surface-pearl);
+}
+
+.heading::after,
+.line::after,
+.lineShort::after,
+.control::after,
+.chip::after,
+.filters::after,
+.count::after,
+.dateControl::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent 0%, var(--canvas) 50%, transparent 100%);
+  animation: project-section-shimmer 1400ms ease-in-out infinite;
+}
+
+@keyframes project-section-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.heading {
+  block-size: 34px;
+  inline-size: min(100%, 260px);
+}
+
+.line {
+  block-size: 14px;
+}
+
+.lineShort {
+  block-size: 14px;
+  inline-size: min(100%, 180px);
+}
+
+.control {
+  block-size: var(--target-min);
+  inline-size: min(100%, 220px);
+}
+
+.chip {
+  block-size: 14px;
+  inline-size: 96px;
+}
+
+.filters {
+  block-size: 84px;
+}
+
+.count {
+  block-size: 14px;
+  inline-size: min(100%, 120px);
+}
+
+.dateControl {
+  block-size: var(--target-min);
+  inline-size: min(100%, 260px);
+}
+
+.card,
+.row,
+.beliefSection,
+.reviewCard {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: var(--space-md);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-lg);
+}
+
+.card {
+  gap: var(--space-md);
+}
+
+.beliefSection {
+  gap: var(--space-md);
+  border-style: dashed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .section,
+  .card,
+  .row,
+  .beliefSection,
+  .reviewCard {
+    animation: none;
+    transition: none;
+    transform: none;
+    opacity: 1;
+  }
+
+  .heading::after,
+  .line::after,
+  .lineShort::after,
+  .control::after,
+  .chip::after,
+  .filters::after,
+  .count::after,
+  .dateControl::after {
+    animation: none;
+    transform: none;
+    background: none;
+  }
+}
