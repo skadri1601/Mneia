@@ -60,12 +60,13 @@ const parseArgs = (argv) => {
   return options;
 };
 
-const run = (command, args, cwd, env) =>
+const run = (command, args, cwd, env, shell = false) =>
   new Promise((resolve) => {
     const started = performance.now();
     const child = spawn(command, args, {
       cwd,
       env: { ...process.env, ...env },
+      shell,
     });
     let stdout = '';
     let stderr = '';
@@ -90,8 +91,18 @@ const run = (command, args, cwd, env) =>
 
 const seconds = (ms) => `${(ms / 1000).toFixed(1)}s`;
 
+const VERSION_SPEC = /^[A-Za-z0-9][A-Za-z0-9._+-]*$|^[\^~][0-9][A-Za-z0-9._+-]*$/;
+
+let install = null;
+
 const main = async () => {
   const options = parseArgs(process.argv.slice(2));
+
+  if (!VERSION_SPEC.test(options.version)) {
+    throw new Error(
+      `--version expects a dist-tag or a single semver like latest, 0.2.0, ^0.2.0 or 1.0.0-rc.1; got "${options.version}". It is interpolated into an npm install, so anything outside that shape is refused rather than passed through.`,
+    );
+  }
 
   const home = options.home ?? join(tmpdir(), 'mneia-verify-home');
   if (options.fresh) await rm(home, { recursive: true, force: true });
@@ -105,27 +116,18 @@ const main = async () => {
     MNEIA_AUTH_URL: options.endpoint,
   };
 
-  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const invoke =
-    options.source === 'local'
-      ? (args) =>
-          run(
-            process.execPath,
-            [join(process.cwd(), 'packages/cli/dist/bin.js'), ...args],
-            repo,
-            env,
-          )
-      : (args) => run(npx, ['-y', `@mneia/cli@${options.version}`, ...args], repo, env);
-
-  const label =
-    options.source === 'local'
-      ? 'packages/cli/dist/bin.js (workspace build)'
-      : `@mneia/cli@${options.version} from the registry`;
-
-  process.stdout.write(`Verifying ${label}\n`);
+  process.stdout.write(
+    `Verifying ${
+      options.source === 'local'
+        ? 'packages/cli/dist/bin.js (workspace build)'
+        : `@mneia/cli@${options.version} installed from the registry`
+    }\n`,
+  );
   process.stdout.write(`  endpoint  ${options.endpoint}\n`);
   process.stdout.write(`  home      ${home}\n`);
-  process.stdout.write(`  repo      ${repo}\n\n`);
+  process.stdout.write(`  repo      ${repo}\n`);
+
+  process.stdout.write('\n');
 
   if (options.in === null) {
     await mkdir(join(repo, '.git'), { recursive: true });
@@ -161,6 +163,41 @@ const main = async () => {
     process.exitCode = 2;
     return;
   }
+
+  let binary = join(process.cwd(), 'packages/cli/dist/bin.js');
+
+  if (options.source === 'published') {
+    install = await mkdtemp(join(tmpdir(), 'mneia-verify-install-'));
+    await writeFile(join(install, 'package.json'), '{"name":"mneia-verify","private":true}\n');
+    const added = await run(
+      'npm',
+      [
+        'install',
+        '--no-audit',
+        '--no-fund',
+        '--no-progress',
+        '--loglevel',
+        'error',
+        `@mneia/cli@${options.version}`,
+      ],
+      install,
+      {},
+      process.platform === 'win32',
+    );
+    if (added.code !== 0) {
+      process.stdout.write(
+        `FAIL  installing @mneia/cli@${options.version} from the registry (exit ${added.code})\n${
+          `${added.stderr}${added.stdout}`.trim() || '(npm produced no output)'
+        }\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    binary = join(install, 'node_modules', '@mneia', 'cli', 'dist', 'bin.js');
+    process.stdout.write(`  installed into ${install}\n`);
+  }
+
+  const invoke = (args) => run(process.execPath, [binary, ...args], repo, env);
 
   const project = options.project ?? 'mneia-verify';
 
@@ -235,7 +272,13 @@ const main = async () => {
   process.exitCode = failed ? 1 : 0;
 };
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-  process.exitCode = 1;
-});
+main()
+  .catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    if (install !== null) {
+      await rm(install, { recursive: true, force: true });
+    }
+  });
