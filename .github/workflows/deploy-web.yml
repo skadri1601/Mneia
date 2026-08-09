@@ -135,6 +135,7 @@ jobs:
           IMAGE: ${{ needs.build.outputs.image }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          MNEIA_INVITE_FROM: ${{ vars.MNEIA_INVITE_FROM }}
         run: |
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin \
@@ -142,6 +143,7 @@ jobs:
              && export MNEIA_WEB_IMAGE='${IMAGE}' \
              && export OPENAI_API_KEY='${OPENAI_API_KEY}' \
              && export ANTHROPIC_API_KEY='${ANTHROPIC_API_KEY}' \
+             && export MNEIA_INVITE_FROM='${MNEIA_INVITE_FROM}' \
              && docker compose pull \
              && docker compose up -d --remove-orphans \
              && docker image prune -f"
