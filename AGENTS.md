@@ -122,6 +122,7 @@ pnpm lint             # biome check — everything, warnings included
 pnpm db:migrate       # apply pending migrations to DATABASE_URL — local and the Neon workflow
 pnpm db:snapshot      # regenerate db/structure.sql from DATABASE_URL — run it with every migration
 pnpm db:snapshot --check  # fail if db/structure.sql and the migrations disagree — CI runs this
+pnpm db:version       # READ-ONLY: report the schema version a database is on, and applies nothing
 pnpm waitlist:notify  # preview or send a waitlist campaign — local only, see below
 pnpm check:publish    # refuse an npm publish that would fail or ship a broken manifest
 pnpm changeset        # record a user-visible change against the client packages
