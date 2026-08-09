@@ -1,4 +1,4 @@
-import { Client } from 'pg';
+import { Client, Pool, type PoolClient } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SqlResult, SqlValue } from '../../packages/core/src/index.js';
 import {
@@ -57,7 +57,7 @@ const connect = async (): Promise<Client> => {
 };
 
 class BenchSession implements PostgresSession {
-  constructor(private readonly client: Client) {}
+  constructor(private readonly client: PoolClient) {}
 
   async execute<TRow = Record<string, unknown>>(
     sql: string,
@@ -70,31 +70,29 @@ class BenchSession implements PostgresSession {
     return { rows: result.rows as TRow[] };
   }
 
-  async release(): Promise<void> {}
+  async release(): Promise<void> {
+    this.client.release();
+  }
 
   async discard(): Promise<void> {
-    await this.client.end();
+    this.client.release(true);
   }
 }
 
 class BenchConnectionSource implements PostgresConnectionSource {
-  private readonly clients: Client[] = [];
+  private readonly pool = new Pool({ connectionString });
 
   constructor(private readonly schema: string) {}
 
   async acquire(): Promise<PostgresSession> {
-    const client = await connect();
+    const client = await this.pool.connect();
     await client.query(`SET search_path TO "${this.schema}", public`);
     await client.query(`SET ROLE ${APP_ROLE}`);
-    this.clients.push(client);
     return new BenchSession(client);
   }
 
   async close(): Promise<void> {
-    const open = this.clients.splice(0, this.clients.length);
-    for (const client of open) {
-      await client.end();
-    }
+    await this.pool.end();
   }
 }
 

@@ -266,6 +266,44 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
     });
   });
 
+  it('returns active candidates, mandatory constraints, and recent superseded items together', async () => {
+    await withAdapter(async (adapter) => {
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const previous = await store.insertContextItem(
+          newItem(PROJECT_A, ACTOR_A, 'Use the legacy deployment path'),
+        );
+        const replacement = await store.supersedeContextItem(previous.id, {
+          ...newItem(PROJECT_A, ACTOR_A, 'Use the guarded deployment path'),
+          supersedesId: previous.id,
+        });
+        const constraint = await store.insertContextItem({
+          projectId: PROJECT_A,
+          kind: 'constraint',
+          title: 'Never deploy without the schema gate',
+          loadBearing: true,
+        });
+
+        const select = store.selectRehydrationCandidates;
+        expect(select).toBeDefined();
+        if (select === undefined) return;
+
+        const groups = await select.call(store, {
+          projectId: PROJECT_A,
+          asOf: new Date(Date.now() + 60_000),
+          candidateLimit: 160,
+          mandatoryLimit: 1000,
+          supersededLimit: 5,
+        });
+
+        expect(groups.candidates.map((item) => item.id)).toEqual(
+          expect.arrayContaining([replacement.id, constraint.id]),
+        );
+        expect(groups.mandatory.map((item) => item.id)).toEqual([constraint.id]);
+        expect(groups.superseded.map((item) => item.id)).toEqual([previous.id]);
+      });
+    });
+  });
+
   it('links a superseded item in both directions', async () => {
     await withAdapter(async (adapter) => {
       await adapter.withScope(SCOPE_A, async (store) => {

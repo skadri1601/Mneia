@@ -67,37 +67,58 @@ export async function assembleSlice(request: AssembleSliceRequest): Promise<Asse
   const embeddingModel = request.embeddingModel ?? null;
   const semantic = taskEmbedding !== null && embeddingModel !== null;
 
-  const [candidates, mandatory, superseded] = await Promise.all([
-    through('searchContextItems', () =>
-      store.searchContextItems({
+  let candidates: readonly ContextItem[];
+  let mandatory: readonly ContextItem[];
+  let superseded: readonly ContextItem[];
+
+  const selectRehydrationCandidates = store.selectRehydrationCandidates;
+  if (selectRehydrationCandidates !== undefined) {
+    const groups = await through('selectRehydrationCandidates', () =>
+      selectRehydrationCandidates.call(store, {
         projectId: project.id,
-        statuses: ACTIVE_STATUSES,
         asOf: now,
-        limit: candidateLimitFor(tokenBudget),
+        candidateLimit: candidateLimitFor(tokenBudget),
+        mandatoryLimit: MANDATORY_ITEM_LIMIT,
+        supersededLimit: RECENT_SUPERSEDED_LIMIT,
         ...(semantic && taskEmbedding !== null && embeddingModel !== null
-          ? { embedding: taskEmbedding, embeddingModel, withEmbedding: true }
+          ? { embedding: taskEmbedding, embeddingModel }
           : {}),
       }),
-    ),
-    through('listContextItems for load-bearing constraints', () =>
-      store.listContextItems({
-        projectId: project.id,
-        kinds: MANDATORY_KINDS,
-        statuses: ACTIVE_STATUSES,
-        loadBearing: true,
-        asOf: now,
-        limit: MANDATORY_ITEM_LIMIT,
-      }),
-    ),
-    through('listContextItems for recently superseded items', () =>
-      store.listContextItems({
-        projectId: project.id,
-        kinds: SUPERSEDED_KINDS,
-        statuses: SUPERSEDED_STATUSES,
-        limit: RECENT_SUPERSEDED_LIMIT,
-      }),
-    ),
-  ]);
+    );
+    ({ candidates, mandatory, superseded } = groups);
+  } else {
+    [candidates, mandatory, superseded] = await Promise.all([
+      through('searchContextItems', () =>
+        store.searchContextItems({
+          projectId: project.id,
+          statuses: ACTIVE_STATUSES,
+          asOf: now,
+          limit: candidateLimitFor(tokenBudget),
+          ...(semantic && taskEmbedding !== null && embeddingModel !== null
+            ? { embedding: taskEmbedding, embeddingModel, withEmbedding: true }
+            : {}),
+        }),
+      ),
+      through('listContextItems for load-bearing constraints', () =>
+        store.listContextItems({
+          projectId: project.id,
+          kinds: MANDATORY_KINDS,
+          statuses: ACTIVE_STATUSES,
+          loadBearing: true,
+          asOf: now,
+          limit: MANDATORY_ITEM_LIMIT,
+        }),
+      ),
+      through('listContextItems for recently superseded items', () =>
+        store.listContextItems({
+          projectId: project.id,
+          kinds: SUPERSEDED_KINDS,
+          statuses: SUPERSEDED_STATUSES,
+          limit: RECENT_SUPERSEDED_LIMIT,
+        }),
+      ),
+    ]);
+  }
 
   const scored = scoreItems({
     items: mergeCandidates(mandatory, superseded, candidates),
