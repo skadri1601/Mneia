@@ -49,6 +49,9 @@ jobs:
             exit 1
           fi
 
+      - name: refuse to publish a client that misreports its own version
+        run: pnpm check:version
+
       - name: refuse to publish a package that already exists at this version
         run: node scripts/check-publish.mjs
 
