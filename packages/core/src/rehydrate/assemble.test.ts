@@ -62,6 +62,47 @@ const storeWith = (items: readonly ContextItem[], recorded: Recorded): ScopedSto
   }) as unknown as ScopedStore;
 
 describe('assembleSlice semantic ranking', () => {
+  it('uses one batched store read when the adapter supports it', async () => {
+    const requests: unknown[] = [];
+    const store = {
+      scope: {
+        workspaceId: PROJECT.workspaceId,
+        actorId: '44444444-4444-4444-8444-444444444444',
+      },
+      async selectRehydrationCandidates(request: unknown) {
+        requests.push(request);
+        return {
+          candidates: [item('a', 'Use Postgres as the only store', vector(0))],
+          mandatory: [],
+          superseded: [],
+        };
+      },
+      async searchContextItems() {
+        throw new Error('the batched read should replace searchContextItems');
+      },
+      async listContextItems() {
+        throw new Error('the batched read should replace listContextItems');
+      },
+    } as unknown as ScopedStore;
+
+    await assembleSlice({
+      store,
+      project: PROJECT,
+      task: 'which database did we pick',
+      tokenBudget: 4000,
+      now: NOW,
+      taskEmbedding: vector(0),
+      embeddingModel: 'openai:text-embedding-3-small',
+    });
+
+    expect(requests).toEqual([
+      expect.objectContaining({
+        projectId: PROJECT.id,
+        embeddingModel: 'openai:text-embedding-3-small',
+      }),
+    ]);
+  });
+
   it('does not ask the store for vectors when there is no task embedding', async () => {
     const recorded: Recorded = { searches: [] };
     const store = storeWith([item('a', 'Use Postgres as the only store', null)], recorded);

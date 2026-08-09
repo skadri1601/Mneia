@@ -42,6 +42,22 @@ export interface ContextItemSearch extends ContextItemFilter {
   readonly text?: string;
 }
 
+export interface RehydrationCandidateRequest {
+  readonly projectId: Uuid;
+  readonly asOf: Date;
+  readonly candidateLimit: number;
+  readonly mandatoryLimit: number;
+  readonly supersededLimit: number;
+  readonly embedding?: Embedding;
+  readonly embeddingModel?: string;
+}
+
+export interface RehydrationCandidateGroups {
+  readonly candidates: readonly ContextItem[];
+  readonly mandatory: readonly ContextItem[];
+  readonly superseded: readonly ContextItem[];
+}
+
 export interface NewContextItem {
   readonly id?: Uuid;
   readonly projectId: Uuid;
@@ -195,6 +211,9 @@ export interface ScopedStore {
   getContextItem(id: Uuid): Promise<ContextItem | null>;
   listContextItems(filter: ContextItemFilter): Promise<readonly ContextItem[]>;
   searchContextItems(search: ContextItemSearch): Promise<readonly ContextItem[]>;
+  selectRehydrationCandidates?(
+    request: RehydrationCandidateRequest,
+  ): Promise<RehydrationCandidateGroups>;
   insertContextItem(item: NewContextItem): Promise<ContextItem>;
   supersedeContextItem(previousId: Uuid, replacement: NewContextItem): Promise<ContextItem>;
   confirmContextItem(input: ConfirmContextItemInput): Promise<ContextItem>;

@@ -60,6 +60,8 @@ import type {
   NewProject,
   PendingReviewFilter,
   PendingReviewItem,
+  RehydrationCandidateGroups,
+  RehydrationCandidateRequest,
   ReviewCapableStore,
   ReviewPendingItemsInput,
   ReviewPendingItemsResult,
@@ -522,6 +524,138 @@ class PostgresScopedStore implements ReviewCapableStore {
 
   async searchContextItems(search: ContextItemSearch): Promise<readonly ContextItem[]> {
     return this.selectContextItems(search);
+  }
+
+  async selectRehydrationCandidates(
+    request: RehydrationCandidateRequest,
+  ): Promise<RehydrationCandidateGroups> {
+    assertUuid(request.projectId, 'request.projectId');
+
+    const params = new SqlParams();
+    const workspace = params.add(this.scope.workspaceId);
+    const project = params.add(request.projectId);
+    const actor = params.add(this.scope.actorId);
+    const asOf = params.add(request.asOf);
+    const candidateLimit = params.add(resolveLimit(request.candidateLimit, 'candidateLimit'));
+    const mandatoryLimit = params.add(resolveLimit(request.mandatoryLimit, 'mandatoryLimit'));
+    const supersededLimit = params.add(resolveLimit(request.supersededLimit, 'supersededLimit'));
+
+    const visibility = `(context_item.asserted_by = ${actor}
+             OR context_item.access_scope = 'workspace'
+             OR (context_item.access_scope = 'project' AND viewer.can_read_project)
+             OR (context_item.access_scope = 'team' AND viewer.can_read_team))`;
+
+    let candidateFrom = 'context_item';
+    let candidateColumns = `${CONTEXT_ITEM_COLUMNS},
+       NULL::text AS embedding_model, NULL::text AS embedding`;
+    let candidateOrder = 'context_item.asserted_at DESC, context_item.id DESC';
+
+    if (request.embedding !== undefined) {
+      assertEmbedding(request.embedding, 'request.embedding');
+      const model = request.embeddingModel ?? null;
+      if (model === null || model.trim() === '') {
+        throw new StoreError(
+          'invalid_argument',
+          'expected request.embeddingModel to name the model that produced request.embedding; received none',
+        );
+      }
+      candidateFrom = `context_item
+         JOIN context_item_embedding
+           ON context_item_embedding.workspace_id = context_item.workspace_id
+          AND context_item_embedding.item_id = context_item.id
+          AND context_item_embedding.model = ${params.add(model)}`;
+      candidateColumns = CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING;
+      candidateOrder = `context_item_embedding.embedding <=> ${params.add(
+        embeddingLiteral(request.embedding),
+      )}::vector`;
+    }
+
+    const rows = await this.rows(
+      `WITH viewer AS (
+         SELECT project.id,
+                project.team_id IS NULL OR EXISTS (
+                  SELECT 1
+                    FROM team_member
+                   WHERE team_member.workspace_id = ${workspace}
+                     AND team_member.actor_id = ${actor}
+                     AND team_member.team_id = project.team_id
+                ) AS can_read_project,
+                project.team_id IS NOT NULL AND EXISTS (
+                  SELECT 1
+                    FROM team_member
+                   WHERE team_member.workspace_id = ${workspace}
+                     AND team_member.actor_id = ${actor}
+                     AND team_member.team_id = project.team_id
+                ) AS can_read_team
+           FROM project
+          WHERE project.workspace_id = ${workspace} AND project.id = ${project}
+       ), candidate_rows AS (
+         SELECT 'candidate'::text AS candidate_group, ${candidateColumns}
+           FROM ${candidateFrom}
+          CROSS JOIN viewer
+          WHERE context_item.workspace_id = ${workspace}
+            AND context_item.project_id = ${project}
+            AND context_item.status = 'active'
+            AND context_item.valid_from <= ${asOf}
+            AND (context_item.valid_to IS NULL OR context_item.valid_to > ${asOf})
+            AND ${visibility}
+          ORDER BY ${candidateOrder}
+          LIMIT ${candidateLimit}
+       ), mandatory_rows AS (
+         SELECT 'mandatory'::text AS candidate_group, ${CONTEXT_ITEM_COLUMNS},
+                NULL::text AS embedding_model, NULL::text AS embedding
+           FROM context_item
+          CROSS JOIN viewer
+          WHERE context_item.workspace_id = ${workspace}
+            AND context_item.project_id = ${project}
+            AND context_item.kind = 'constraint'
+            AND context_item.status = 'active'
+            AND context_item.load_bearing = true
+            AND context_item.valid_from <= ${asOf}
+            AND (context_item.valid_to IS NULL OR context_item.valid_to > ${asOf})
+            AND ${visibility}
+          ORDER BY context_item.asserted_at DESC, context_item.id DESC
+          LIMIT ${mandatoryLimit}
+       ), superseded_rows AS (
+         SELECT 'superseded'::text AS candidate_group, ${CONTEXT_ITEM_COLUMNS},
+                NULL::text AS embedding_model, NULL::text AS embedding
+           FROM context_item
+          CROSS JOIN viewer
+          WHERE context_item.workspace_id = ${workspace}
+            AND context_item.project_id = ${project}
+            AND context_item.kind IN ('decision', 'constraint')
+            AND context_item.status = 'superseded'
+            AND ${visibility}
+          ORDER BY context_item.asserted_at DESC, context_item.id DESC
+          LIMIT ${supersededLimit}
+       )
+       SELECT * FROM candidate_rows
+       UNION ALL
+       SELECT * FROM mandatory_rows
+       UNION ALL
+       SELECT * FROM superseded_rows`,
+      params.list(),
+    );
+
+    const candidates: ContextItem[] = [];
+    const mandatory: ContextItem[] = [];
+    const superseded: ContextItem[] = [];
+
+    for (const row of rows) {
+      const group = toText(row, 'candidate_group');
+      const contextItem = toContextItem(row);
+      if (group === 'candidate') candidates.push(contextItem);
+      else if (group === 'mandatory') mandatory.push(contextItem);
+      else if (group === 'superseded') superseded.push(contextItem);
+      else {
+        throw new StoreError(
+          'invalid_argument',
+          `expected candidate_group to be candidate, mandatory or superseded; received ${JSON.stringify(group)}`,
+        );
+      }
+    }
+
+    return { candidates, mandatory, superseded };
   }
 
   private async selectContextItems(search: ContextItemSearch): Promise<readonly ContextItem[]> {

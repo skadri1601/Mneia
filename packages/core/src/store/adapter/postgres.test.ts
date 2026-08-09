@@ -415,6 +415,27 @@ describe('PostgresStoreAdapter scoped membership lookup', () => {
 
     expect(session.calls.filter((sql) => sql.includes('FROM team_member'))).toHaveLength(1);
   });
+
+  it('selects all rehydration candidate groups in one context item query', async () => {
+    const session = new FakeSession();
+    const adapter = new PostgresStoreAdapter(new FakeSource(session));
+
+    const groups = await adapter.withScope(SCOPE, async (store) => {
+      if (store.selectRehydrationCandidates === undefined) {
+        return null;
+      }
+      return store.selectRehydrationCandidates({
+        projectId: PROJECT,
+        asOf: TIMESTAMP,
+        candidateLimit: 160,
+        mandatoryLimit: 1000,
+        supersededLimit: 5,
+      });
+    });
+
+    expect(groups).toEqual({ candidates: [], mandatory: [], superseded: [] });
+    expect(session.calls.filter((sql) => sql.includes('FROM context_item'))).toHaveLength(1);
+  });
 });
 
 describe('PostgresStoreAdapter row-level security guard', () => {
