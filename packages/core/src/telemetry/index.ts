@@ -24,6 +24,14 @@ export {
 } from './sinks/jsonl.js';
 export type { MemorySinkOptions, MemoryTelemetrySink, TelemetryEventOf } from './sinks/memory.js';
 export { createMemorySink } from './sinks/memory.js';
+export type { PostgresSinkOptions, PostgresTelemetrySink } from './sinks/postgres.js';
+export {
+  createPostgresSink,
+  DEFAULT_STORE_FLUSH_INTERVAL_MS,
+  DEFAULT_STORE_MAX_BUFFERED_EVENTS,
+  TELEMETRY_EVENT_TABLE,
+  TelemetryPersistError,
+} from './sinks/postgres.js';
 export * from './sinks/remote.js';
 export type {
   ConflictDetectedEvent,

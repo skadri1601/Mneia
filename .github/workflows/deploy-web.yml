@@ -11,6 +11,14 @@ on:
       - '.dockerignore'
       - '.github/workflows/deploy-web.yml'
   workflow_dispatch:
+    inputs:
+      allow_unverified_schema:
+        description: >-
+          Ship even though the running build does not report schemaVersion. Only for the one
+          bootstrap deploy that introduces the field. Confirm production's schema version by hand
+          first — this waives the gate that exists to stop MNE-254 happening again.
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-web
@@ -68,6 +76,55 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
+      - name: Refuse to ship a build the production database cannot satisfy
+        env:
+          HEALTH_URL: https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health
+          ALLOW_UNVERIFIED_SCHEMA: ${{ inputs.allow_unverified_schema }}
+        run: |
+          expected=$(ls packages/core/src/store/migrations/[0-9]*.ts \
+            | grep -v '\.test\.ts$' \
+            | xargs grep -hoP '^\s*version:\s*\K[0-9]+' \
+            | sort -n | tail -1)
+
+          if ! [[ "${expected}" =~ ^[0-9]+$ ]] || [ "${expected}" -lt 1 ]; then
+            echo "::error::could not read the schema version this build expects from packages/core/src/store/migrations; refusing to deploy blind"
+            exit 1
+          fi
+          echo "this build expects schema version ${expected}"
+
+          if ! health=$(curl -sS --max-time 15 "${HEALTH_URL}"); then
+            echo "::warning::${HEALTH_URL} did not answer, so the running schema version could not be read. Shipping anyway — blocking here would stop a deploy that is recovering an outage. The post-deploy verification below still checks schema agreement."
+            exit 0
+          fi
+
+          set +e
+          applied=$(node "${GITHUB_WORKSPACE}/scripts/read-health-field.mjs" schemaVersion.applied <<< "${health}")
+          read_status=$?
+          set -e
+
+          case "${read_status}" in
+            0) ;;
+            3)
+              if [ "${ALLOW_UNVERIFIED_SCHEMA}" = "true" ]; then
+                echo "::warning::the running build does not report schemaVersion and allow_unverified_schema was set, so the gate is waived for this run. Every deploy after this one is gated."
+                exit 0
+              fi
+              echo "::error::the running build does not report schemaVersion, so this gate cannot tell whether production is migrated. Refusing to ship: on the one rollout that introduces the field, waving it through is exactly the MNE-254 outage. Confirm production's schema version by hand, then re-run this workflow from the Actions tab with allow_unverified_schema=true."
+              exit 1
+              ;;
+            *)
+              echo "::error::${HEALTH_URL} answered with something this gate could not read (${applied}). Refusing to ship: a gate that cannot read the schema version must fail closed, not wave the deploy through."
+              exit 1
+              ;;
+          esac
+
+          echo "the production database is at schema version ${applied}"
+
+          if [ "${applied}" -lt "${expected}" ]; then
+            echo "::error::production is at schema version ${applied} but this build expects ${expected}. Shipping it would serve code the database cannot satisfy, which is exactly MNE-254. Run 'pnpm db:migrate' against the production DATABASE_URL first, then re-run this workflow."
+            exit 1
+          fi
+
       - name: Copy the compose and proxy definitions
         run: |
           scp -i ~/.ssh/id_ed25519 deploy/Caddyfile deploy/docker-compose.yml \
@@ -89,25 +146,55 @@ jobs:
              && docker compose up -d --remove-orphans \
              && docker image prune -f"
 
-      - name: Wait for the health endpoint
+      - name: Wait for the deployed app to answer
+        env:
+          HEALTH_URL: https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health
         run: |
           for attempt in $(seq 1 30); do
-            if curl -fsS "https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health" > /dev/null; then
-              echo "healthy after ${attempt} attempt(s)"
+            if curl -sS --max-time 10 -o /tmp/health.json "${HEALTH_URL}"; then
+              echo "answered after ${attempt} attempt(s)"
+              cat /tmp/health.json
               exit 0
             fi
             sleep 5
           done
-          echo "the deploy never became healthy; the previous container may still be serving"
+          echo "::error::the deploy never answered; the previous container may still be serving"
           exit 1
 
-      - name: Confirm the deployed app can reach the models
+      - name: Verify the deployed app rather than assuming it
         run: |
-          health=$(curl -fsS "https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health")
-          echo "$health"
+          cat /tmp/health.json
+          echo
+          reader="${GITHUB_WORKSPACE}/scripts/read-health-field.mjs"
+          failed=0
+
+          read_field() {
+            node "${reader}" "$1" < /tmp/health.json 2>/dev/null || echo "absent"
+          }
+
+          schema=$(read_field schema)
+          if [ "${schema}" != "current" ]; then
+            echo "::error::schema is \"${schema}\" — this build expects version $(read_field schemaVersion.expected) and the database is at $(read_field schemaVersion.applied). Run 'pnpm db:migrate' against production."
+            failed=1
+          fi
+
+          telemetry=$(read_field telemetry)
+          if [ "${telemetry}" != "persisted" ]; then
+            echo "::error::telemetry is \"${telemetry}\", so §17 events are not reaching telemetry_event. That loses the arbitration dataset docs/BUSINESS.md calls the moat (MNE-268)."
+            failed=1
+          fi
+
+          rls=$(read_field rls)
+          if [ "${rls}" != "enforced" ] && [ "${rls}" != "bypassed_by_escape_hatch" ]; then
+            echo "::error::rls is \"${rls}\", so workspace isolation is not doing what vision.md §11.3 says it does"
+            failed=1
+          fi
+
           for field in extraction extractionFallback embeddings; do
-            if ! echo "$health" | grep -q "\"${field}\":\"configured\""; then
+            if [ "$(read_field "${field}")" != "configured" ]; then
               echo "::error::${field} is not configured, so this deploy degrades silently rather than failing"
-              exit 1
+              failed=1
             fi
           done
+
+          exit "${failed}"
