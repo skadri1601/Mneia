@@ -60,12 +60,13 @@ const parseArgs = (argv) => {
   return options;
 };
 
-const run = (command, args, cwd, env) =>
+const run = (command, args, cwd, env, shell = false) =>
   new Promise((resolve) => {
     const started = performance.now();
     const child = spawn(command, args, {
       cwd,
       env: { ...process.env, ...env },
+      shell,
     });
     let stdout = '';
     let stderr = '';
@@ -105,27 +106,43 @@ const main = async () => {
     MNEIA_AUTH_URL: options.endpoint,
   };
 
-  const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-  const invoke =
-    options.source === 'local'
-      ? (args) =>
-          run(
-            process.execPath,
-            [join(process.cwd(), 'packages/cli/dist/bin.js'), ...args],
-            repo,
-            env,
-          )
-      : (args) => run(npx, ['-y', `@mneia/cli@${options.version}`, ...args], repo, env);
-
-  const label =
-    options.source === 'local'
-      ? 'packages/cli/dist/bin.js (workspace build)'
-      : `@mneia/cli@${options.version} from the registry`;
-
-  process.stdout.write(`Verifying ${label}\n`);
+  process.stdout.write(
+    `Verifying ${
+      options.source === 'local'
+        ? 'packages/cli/dist/bin.js (workspace build)'
+        : `@mneia/cli@${options.version} installed from the registry`
+    }\n`,
+  );
   process.stdout.write(`  endpoint  ${options.endpoint}\n`);
   process.stdout.write(`  home      ${home}\n`);
-  process.stdout.write(`  repo      ${repo}\n\n`);
+  process.stdout.write(`  repo      ${repo}\n`);
+
+  let binary = join(process.cwd(), 'packages/cli/dist/bin.js');
+
+  if (options.source === 'published') {
+    const install = await mkdtemp(join(tmpdir(), 'mneia-verify-install-'));
+    await writeFile(join(install, 'package.json'), '{"name":"mneia-verify","private":true}\n');
+    const added = await run(
+      'npm',
+      ['install', '--no-audit', '--no-fund', '--silent', `@mneia/cli@${options.version}`],
+      install,
+      {},
+      true,
+    );
+    if (added.code !== 0) {
+      process.stdout.write(
+        `FAIL  installing @mneia/cli@${options.version} from the registry\n${added.stderr || added.stdout}\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    binary = join(install, 'node_modules', '@mneia', 'cli', 'dist', 'bin.js');
+    process.stdout.write(`  installed into ${install}\n\n`);
+  }
+
+  const invoke = (args) => run(process.execPath, [binary, ...args], repo, env);
+
+  process.stdout.write('\n');
 
   if (options.in === null) {
     await mkdir(join(repo, '.git'), { recursive: true });
