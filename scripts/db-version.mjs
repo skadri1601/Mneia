@@ -3,10 +3,11 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
+import { readBookkeepingTable, readMigrationSources } from './schema-version.mjs';
+
 const require = createRequire(import.meta.url);
 const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const envFile = new URL('../.env', import.meta.url);
-const coreDist = new URL('../packages/core/dist/index.js', import.meta.url);
 
 if (existsSync(envFile)) {
   process.loadEnvFile(fileURLToPath(envFile));
@@ -23,14 +24,6 @@ if (!connectionString) {
   process.exit(1);
 }
 
-if (!existsSync(coreDist)) {
-  process.stderr.write(
-    'db:version: expected packages/core/dist to be built; found none. Run pnpm build first.\n',
-  );
-  process.exit(1);
-}
-
-const { BOOKKEEPING_TABLE, MIGRATIONS } = await import(coreDist.href);
 const { Client } = require('pg');
 
 const describe = (url) => {
@@ -42,7 +35,17 @@ const describe = (url) => {
   }
 };
 
-const expected = MIGRATIONS.reduce(
+let migrations;
+let BOOKKEEPING_TABLE;
+try {
+  migrations = readMigrationSources(repoRoot);
+  BOOKKEEPING_TABLE = readBookkeepingTable(repoRoot);
+} catch (error) {
+  process.stderr.write(`db:version: ${error instanceof Error ? error.message : String(error)}\n`);
+  process.exit(1);
+}
+
+const expected = migrations.reduce(
   (highest, migration) => (migration.version > highest ? migration.version : highest),
   0,
 );
@@ -79,7 +82,8 @@ try {
     process.stdout.write('db:version: BEHIND — nothing has been migrated here\n');
     process.exitCode = 2;
   } else if (applied < expected) {
-    const pending = MIGRATIONS.filter((migration) => migration.version > applied)
+    const pending = migrations
+      .filter((migration) => migration.version > applied)
       .map((migration) => `${migration.version} ${migration.name}`)
       .join(', ');
     process.stdout.write(`db:version: BEHIND — pending: ${pending}\n`);
