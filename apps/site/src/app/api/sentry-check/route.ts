@@ -37,6 +37,23 @@ export async function POST(request: Request): Promise<Response> {
   const marker = new URL(request.url).searchParams.get('marker') ?? 'unmarked';
   const error = new SentryProbeError(marker);
 
+  const dsn = Sentry.getClient()?.getOptions().dsn;
+  const dsnConfigured = typeof dsn === 'string' && dsn.length > 0;
+
+  if (!dsnConfigured) {
+    return json(
+      {
+        dsnConfigured: false,
+        delivered: false,
+        environment: RUNTIME_ENVIRONMENT,
+        marker,
+        detail:
+          'SENTRY_DSN is not set on this deployment, so Sentry.init built a no-op client: captureException returns an id and flush() resolves true while nothing is transmitted. Every error here is being discarded silently. Set SENTRY_DSN and run this again.',
+      },
+      503,
+    );
+  }
+
   if (new URL(request.url).searchParams.get('mode') === 'throw') {
     throw error;
   }
@@ -47,10 +64,14 @@ export async function POST(request: Request): Promise<Response> {
   return json(
     {
       eventId,
+      dsnConfigured: true,
       delivered,
       environment: RUNTIME_ENVIRONMENT,
       marker,
+      detail: delivered
+        ? 'flush() completed. This reports that the transport drained, not that Sentry accepted the event — confirm the event id appears in the project.'
+        : 'flush() timed out, so the event may not have left the Worker.',
     },
-    200,
+    delivered ? 200 : 503,
   );
 }
