@@ -43,3 +43,4 @@ logs/
 
 # superpowers session scratch — plans and specs live in docs/superpowers/
 .superpowers/
+.pnpm-store/
