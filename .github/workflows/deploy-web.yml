@@ -68,6 +68,40 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
 
+      - name: Refuse to ship a build the production database cannot satisfy
+        env:
+          HEALTH_URL: https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health
+        run: |
+          expected=$(ls packages/core/src/store/migrations/[0-9]*.ts \
+            | grep -v '\.test\.ts$' \
+            | xargs grep -hoP '^\s*version:\s*\K[0-9]+' \
+            | sort -n | tail -1)
+
+          if ! [[ "${expected}" =~ ^[0-9]+$ ]] || [ "${expected}" -lt 1 ]; then
+            echo "::error::could not read the schema version this build expects from packages/core/src/store/migrations; refusing to deploy blind"
+            exit 1
+          fi
+          echo "this build expects schema version ${expected}"
+
+          if ! health=$(curl -sS --max-time 15 "${HEALTH_URL}"); then
+            echo "::warning::${HEALTH_URL} did not answer, so the running schema version could not be read. Shipping anyway — blocking here would stop a deploy that is recovering an outage. The post-deploy verification below still checks schema agreement."
+            exit 0
+          fi
+
+          applied=$(echo "${health}" | jq -r '.schemaVersion.applied // empty')
+
+          if [ -z "${applied}" ]; then
+            echo "::warning::the running build does not report schemaVersion, so it predates MNE-254. Shipping anyway; every deploy after this one is gated."
+            exit 0
+          fi
+
+          echo "the production database is at schema version ${applied}"
+
+          if [ "${applied}" -lt "${expected}" ]; then
+            echo "::error::production is at schema version ${applied} but this build expects ${expected}. Shipping it would serve code the database cannot satisfy, which is exactly MNE-254. Run 'pnpm db:migrate' against the production DATABASE_URL first, then re-run this workflow."
+            exit 1
+          fi
+
       - name: Copy the compose and proxy definitions
         run: |
           scp -i ~/.ssh/id_ed25519 deploy/Caddyfile deploy/docker-compose.yml \
@@ -89,25 +123,52 @@ jobs:
              && docker compose up -d --remove-orphans \
              && docker image prune -f"
 
-      - name: Wait for the health endpoint
+      - name: Wait for the deployed app to answer
+        env:
+          HEALTH_URL: https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health
         run: |
           for attempt in $(seq 1 30); do
-            if curl -fsS "https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health" > /dev/null; then
-              echo "healthy after ${attempt} attempt(s)"
+            if curl -sS --max-time 10 -o /tmp/health.json "${HEALTH_URL}"; then
+              echo "answered after ${attempt} attempt(s)"
+              cat /tmp/health.json
               exit 0
             fi
             sleep 5
           done
-          echo "the deploy never became healthy; the previous container may still be serving"
+          echo "::error::the deploy never answered; the previous container may still be serving"
           exit 1
 
-      - name: Confirm the deployed app can reach the models
+      - name: Verify the deployed app rather than assuming it
         run: |
-          health=$(curl -fsS "https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health")
-          echo "$health"
+          health=$(cat /tmp/health.json)
+          echo "$health" | jq .
+          failed=0
+
+          schema=$(echo "$health" | jq -r '.schema // "absent"')
+          if [ "${schema}" != "current" ]; then
+            expected=$(echo "$health" | jq -r '.schemaVersion.expected // "unknown"')
+            applied=$(echo "$health" | jq -r '.schemaVersion.applied // "unknown"')
+            echo "::error::schema is \"${schema}\" — this build expects version ${expected} and the database is at ${applied}. Run 'pnpm db:migrate' against production."
+            failed=1
+          fi
+
+          telemetry=$(echo "$health" | jq -r '.telemetry // "absent"')
+          if [ "${telemetry}" != "persisted" ]; then
+            echo "::error::telemetry is \"${telemetry}\", so §17 events are not reaching telemetry_event. That loses the arbitration dataset docs/BUSINESS.md calls the moat (MNE-268)."
+            failed=1
+          fi
+
+          rls=$(echo "$health" | jq -r '.rls // "absent"')
+          if [ "${rls}" != "enforced" ] && [ "${rls}" != "bypassed_by_escape_hatch" ]; then
+            echo "::error::rls is \"${rls}\", so workspace isolation is not doing what vision.md §11.3 says it does"
+            failed=1
+          fi
+
           for field in extraction extractionFallback embeddings; do
-            if ! echo "$health" | grep -q "\"${field}\":\"configured\""; then
+            if [ "$(echo "$health" | jq -r ".${field} // \"absent\"")" != "configured" ]; then
               echo "::error::${field} is not configured, so this deploy degrades silently rather than failing"
-              exit 1
+              failed=1
             fi
           done
+
+          exit "${failed}"

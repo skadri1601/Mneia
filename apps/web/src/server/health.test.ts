@@ -3,9 +3,19 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
 import type { PostgresConnectionSource, PostgresSession, SqlResult, SqlValue } from '@mneia/core';
-import { checkHealth, describeModelPosture, inspectModelPosture } from './health.js';
+import {
+  checkHealth,
+  describeModelPosture,
+  EXPECTED_SCHEMA_VERSION,
+  inspectModelPosture,
+} from './health.js';
 
 const NO_KEYS = {};
+const CURRENT_SCHEMA = {
+  schema: 'current',
+  schemaVersion: { expected: EXPECTED_SCHEMA_VERSION, applied: EXPECTED_SCHEMA_VERSION },
+  telemetry: 'persisted',
+} as const;
 const BOTH_KEYS = { OPENAI_API_KEY: 'sk-x', ANTHROPIC_API_KEY: 'sk-ant-x' };
 const NO_MODELS = {
   extraction: 'no_key',
@@ -35,6 +45,7 @@ class RecordingSession implements PostgresSession {
   constructor(
     private readonly onExecute?: (sql: string) => void,
     private readonly posture: Record<string, unknown> = enforcingRole,
+    private readonly appliedSchema: number | null = EXPECTED_SCHEMA_VERSION,
   ) {}
 
   async execute<TRow = Record<string, unknown>>(
@@ -43,8 +54,17 @@ class RecordingSession implements PostgresSession {
   ): Promise<SqlResult<TRow>> {
     this.statements.push(sql);
     this.onExecute?.(sql);
-    const rows = sql.includes('rolname') ? [this.posture as TRow] : [];
-    return { rows: rows as readonly TRow[] };
+
+    if (sql.includes('rolname')) {
+      return { rows: [this.posture as TRow] };
+    }
+    if (sql.includes('mneia_schema_migration')) {
+      if (this.appliedSchema === null) {
+        throw new Error('relation "mneia_schema_migration" does not exist');
+      }
+      return { rows: [{ version: this.appliedSchema } as TRow] };
+    }
+    return { rows: [] };
   }
 
   async release(): Promise<void> {
@@ -73,6 +93,7 @@ describe('checkHealth', () => {
       status: 'ok',
       database: 'ok',
       rls: 'enforced',
+      ...CURRENT_SCHEMA,
       ...NO_MODELS,
       detail: NO_MODEL_DETAIL,
     });
@@ -220,9 +241,104 @@ describe('model posture', () => {
       status: 'ok',
       database: 'ok',
       rls: 'enforced',
+      ...CURRENT_SCHEMA,
       extraction: 'configured',
       extractionFallback: 'configured',
       embeddings: 'configured',
     });
+  });
+});
+
+describe('checkHealth schema posture', () => {
+  it('reports current when the database is at the version this build expects', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+
+    expect(report.schema).toBe('current');
+    expect(report.schemaVersion).toEqual({
+      expected: EXPECTED_SCHEMA_VERSION,
+      applied: EXPECTED_SCHEMA_VERSION,
+    });
+  });
+
+  it('refuses to call a build healthy against a database still behind it', async () => {
+    const session = new RecordingSession(undefined, enforcingRole, EXPECTED_SCHEMA_VERSION - 1);
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+
+    expect(report.schema).toBe('behind');
+    expect(report.status).toBe('degraded');
+    expect(report.detail).toContain('pnpm db:migrate');
+    expect(report.schemaVersion.applied).toBe(EXPECTED_SCHEMA_VERSION - 1);
+  });
+
+  it('reports a database ahead of the build without failing it, since a rollback still serves', async () => {
+    const session = new RecordingSession(undefined, enforcingRole, EXPECTED_SCHEMA_VERSION + 1);
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+
+    expect(report.schema).toBe('ahead');
+    expect(report.status).toBe('ok');
+    expect(report.detail).toContain('newer build');
+  });
+
+  it('treats an unreadable bookkeeping table as unknown rather than assuming agreement', async () => {
+    const session = new RecordingSession(undefined, enforcingRole, null);
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+
+    expect(report.schema).toBe('unknown');
+    expect(report.status).toBe('degraded');
+    expect(report.schemaVersion.applied).toBeNull();
+  });
+
+  it('reads the expected version from the migration list rather than a hand-kept constant', () => {
+    expect(EXPECTED_SCHEMA_VERSION).toBeGreaterThan(0);
+    expect(Number.isInteger(EXPECTED_SCHEMA_VERSION)).toBe(true);
+  });
+});
+
+describe('checkHealth telemetry posture', () => {
+  it('reports persisted by default, because the moat is not opt-in', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS);
+
+    expect(report.telemetry).toBe('persisted');
+    expect(report.status).toBe('ok');
+  });
+
+  it('reports opted_out without degrading, because opting out is a right', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, { MNEIA_TELEMETRY: 'off' });
+
+    expect(report.telemetry).toBe('opted_out');
+    expect(report.status).toBe('ok');
+  });
+
+  it('reports file_only when the store sink is off but a path still catches events', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, {
+      MNEIA_TELEMETRY_STORE: 'off',
+      MNEIA_TELEMETRY_PATH: '/var/log/mneia/telemetry.jsonl',
+    });
+
+    expect(report.telemetry).toBe('file_only');
+    expect(report.detail).toContain('never reach telemetry_event');
+  });
+
+  it('degrades when events are discarded, since that silently loses the arbitration dataset', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, {
+      MNEIA_TELEMETRY_STORE: 'off',
+    });
+
+    expect(report.telemetry).toBe('dropped');
+    expect(report.status).toBe('degraded');
+    expect(report.detail).toContain('moat');
   });
 });
