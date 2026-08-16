@@ -100,9 +100,12 @@ every web route reads live Postgres with no mock data anywhere. The single-playe
 **The five places it breaks are the whole of this document:**
 
 1. **Handoff does not exist above the database.** → Lane A
-2. **A person can belong to only one workspace.** → Lane B
-3. **Signup needs manual admin approval.** → Lane B
-4. **Nobody can pay you** — no checkout, no portal, no enforcement, no quota. → Lane C
+2. ~~A person can belong to only one workspace.~~ **Fixed, PR #117.** The real defect was narrower
+   than this line said — see §4 B1. → Lane B
+3. ~~Signup needs manual admin approval.~~ **False.** Clerk's sign-up mode is `public` with no
+   allowlist; self-serve has been open all along — see §4 B2. → Lane B
+4. **Nobody can pay you** — no checkout, no portal, no enforcement, no quota. → Lane C.
+   **Now the most urgent item on this page**, because #3 means the free door is already open.
 5. **A partial extraction is invisible to §17.** → Lane C
 
 ---
@@ -188,10 +191,35 @@ identity-less seed-harness humans stay legal.
 ⚠️ **Deploy order: apply 0030 only after the app from PR #117 is live.** Against the currently
 deployed code the constraint rejects every new signup.
 
-### B2 — No self-serve signup
-Waitlist → a super-admin approves at `/admin` → `admission.ts` mints a Clerk invitation. **A team
-cannot get in without a human in the loop.** Fine for three design partners; it is a hard ceiling on
-"5 external people use it for a week without hand-holding" (MNE-108, the M2 gate).
+### B2 — WRONG PREMISE. Self-serve signup is already open, and has been.
+
+> **Checked 2026-08-16 against the live instance**, not against the code's intent:
+>
+> ```
+> curl -s "https://clerk.mneia.dev/v1/environment?__clerk_api_version=2025-04-10&_clerk_js_version=5.0.0"
+> ```
+>
+> `user_settings.sign_up.mode` is **`public`**. `restrictions.allowlist.enabled` is **false**.
+> `restrictions.blocklist.enabled` is **false**.
+
+There is no human in the loop and no ceiling on MNE-108. Every link in the chain is already open:
+
+- `middleware.ts` lists `/sign-up(.*)` as a **public route**
+- `sign-up/[[...sign-up]]/page.tsx` renders Clerk's stock `<SignUp />`
+- `resolveCurrentAccount` goes straight to `bootstrapSoloAccount` — **there is no waitlist check
+  anywhere in the account path**, and no Clerk webhook exists to add one
+- every marketing page already says **"Start free"** and links to `app.mneia.dev`
+
+The waitlist and `/admin` are a **proactive invite path**, not a gate: `admission.ts` mints a Clerk
+invitation and emails it so you can reach out to someone. Nothing stops a stranger signing up
+without one. The only friction is Clerk's captcha, required legal consent, and the MNE-250 verified-
+email requirement — which is friction, not admission control.
+
+**So the exposure in §5 C1 is live now, not a future risk.** Anyone can sign up today and burn
+inference we pay for, and `workspace.checkpoint_allowance` is written `null` and read by nothing.
+The founder was asked on 2026-08-16 whether to open self-serve ahead of quota and said open it and
+accept the exposure — that ruling stands, but it describes the *existing* state rather than a change.
+**Lane C's quota is the only thing between us and unbounded spend.**
 
 ### B3 — No API token management
 Device flow is the only issuance path. **No page lists or revokes a token.** For an enterprise
