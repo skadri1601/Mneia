@@ -332,16 +332,19 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
         );
       }
 
-      await admin.query(`UPDATE actor SET external_ref = $1 WHERE id = $2`, [SUBJECT_A, ACTOR_B]);
+      await admin.query(
+        `UPDATE actor SET external_ref = $1, created_at = now() + interval '1 hour' WHERE id = $2`,
+        [SUBJECT_A, ACTOR_B],
+      );
 
       const store = await accountStore(source);
 
       const chosen = await store.bootstrapSoloAccount({
         subject: SUBJECT_A,
         displayName: 'Human A',
-        preferredWorkspaceId: WORKSPACE_B,
+        preferredWorkspaceId: WORKSPACE_A,
       });
-      expect(chosen.workspace.id).toBe(WORKSPACE_B);
+      expect(chosen.workspace.id).toBe(WORKSPACE_A);
       expect([...chosen.workspaces].map((choice) => choice.id).sort()).toEqual(
         [WORKSPACE_A, WORKSPACE_B].sort(),
       );
@@ -351,7 +354,44 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
         displayName: 'Human A',
         preferredWorkspaceId: '99999999-9999-4999-8999-999999999999',
       });
-      expect(stale.workspace.id).toBe(WORKSPACE_A);
+      expect(stale.workspace.id).toBe(WORKSPACE_B);
+    });
+  });
+
+  it('falls back to the workspace you joined most recently, not the one you signed up in', async () => {
+    await withAccountSchema(async ({ admin, source }) => {
+      await seedIdentityRows(admin);
+
+      for (const [workspaceId, teamId, actorId] of [
+        [WORKSPACE_A, TEAM_A, ACTOR_A],
+        [WORKSPACE_B, TEAM_B, ACTOR_B],
+      ] as const) {
+        await admin.query('SELECT set_config($1, $2, false)', [WORKSPACE_SETTING, workspaceId]);
+        await admin.query(
+          `INSERT INTO team (id, workspace_id, slug, display_name, function)
+           VALUES ($1, $2, 'default', 'Default', 'engineering')`,
+          [teamId, workspaceId],
+        );
+        await admin.query(
+          `INSERT INTO team_member (workspace_id, team_id, actor_id, role)
+           VALUES ($1, $2, $3, 'lead')`,
+          [workspaceId, teamId, actorId],
+        );
+      }
+
+      await admin.query(
+        `UPDATE actor SET external_ref = $1, created_at = now() + interval '1 hour' WHERE id = $2`,
+        [SUBJECT_A, ACTOR_B],
+      );
+
+      const store = await accountStore(source);
+      const landed = await store.bootstrapSoloAccount({
+        subject: SUBJECT_A,
+        displayName: 'Human A',
+      });
+
+      expect(landed.workspace.id).toBe(WORKSPACE_B);
+      expect(landed.workspaces).toHaveLength(2);
     });
   });
 

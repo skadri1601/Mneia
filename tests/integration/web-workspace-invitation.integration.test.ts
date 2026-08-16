@@ -235,6 +235,96 @@ describe.skipIf(connectionString === undefined)('workspace invitations against P
     await admin.end();
   });
 
+  it('lets someone who already signed up solo accept a team invitation and stay there', async () => {
+    await withSchema(async ({ admin, source }) => {
+      const store = await accountStore(source);
+
+      const evaluator = await store.bootstrapSoloAccount({
+        subject: INVITEE,
+        displayName: 'Grace Hopper',
+      });
+      const inviter = await store.bootstrapSoloAccount({
+        subject: INVITER,
+        displayName: 'Ada Lovelace',
+      });
+
+      const owners = await admin.query(
+        `SELECT wm.workspace_id, wm.role, i.subject
+           FROM workspace_member wm JOIN identity i ON i.id = wm.identity_id`,
+      );
+      expect(
+        owners.rows.map((row) => ({ workspace: row.workspace_id, role: row.role })).sort(),
+      ).toEqual(
+        [
+          { workspace: evaluator.workspace.id, role: 'owner' },
+          { workspace: inviter.workspace.id, role: 'owner' },
+        ].sort(),
+      );
+
+      await store.inviteToWorkspace({
+        workspaceId: inviter.workspace.id,
+        teamId: inviter.team.id,
+        invitedByActorId: inviter.actor.id,
+        invitedEmail: INVITEE_EMAIL,
+        role: 'member',
+        tokenHash: hash('join-token'),
+        expiresAt: inSevenDays(),
+      });
+
+      const joined = await store.redeemInvitation({
+        subject: INVITEE,
+        verifiedEmail: INVITEE_EMAIL,
+        displayName: 'Grace Hopper',
+        tokenHash: hash('join-token'),
+      });
+
+      expect(joined?.workspace.id).toBe(inviter.workspace.id);
+      expect(joined?.membership.role).toBe('member');
+      expect([...(joined?.workspaces ?? [])].map((choice) => choice.id).sort()).toEqual(
+        [evaluator.workspace.id, inviter.workspace.id].sort(),
+      );
+
+      const nextRequest = await store.bootstrapSoloAccount({
+        subject: INVITEE,
+        displayName: 'Grace Hopper',
+      });
+      expect(nextRequest.workspace.id).toBe(inviter.workspace.id);
+      expect([...nextRequest.workspaces].map((choice) => choice.id).sort()).toEqual(
+        [evaluator.workspace.id, inviter.workspace.id].sort(),
+      );
+
+      const stillTheirs = await store.bootstrapSoloAccount({
+        subject: INVITEE,
+        displayName: 'Grace Hopper',
+        preferredWorkspaceId: evaluator.workspace.id,
+      });
+      expect(stillTheirs.workspace.id).toBe(evaluator.workspace.id);
+    });
+  });
+
+  it('gives every human actor an identity and its workspace a membership row', async () => {
+    await withSchema(async ({ admin, source }) => {
+      const store = await accountStore(source);
+      const solo = await store.bootstrapSoloAccount({
+        subject: INVITER,
+        displayName: 'Ada Lovelace',
+      });
+
+      const actors = await admin.query(
+        `SELECT identity_id FROM actor WHERE kind = 'human' AND external_ref = $1`,
+        [INVITER],
+      );
+      expect(actors.rows).toHaveLength(1);
+      expect(actors.rows[0]?.identity_id).not.toBeNull();
+
+      const members = await admin.query(
+        'SELECT role FROM workspace_member WHERE workspace_id = $1 AND identity_id = $2',
+        [solo.workspace.id, actors.rows[0]?.identity_id],
+      );
+      expect(members.rows.map((row) => row.role)).toEqual(['owner']);
+    });
+  });
+
   it('lands an invited teammate in the inviting workspace, and nobody else sees it', async () => {
     await withSchema(async ({ source }) => {
       const store = await accountStore(source);

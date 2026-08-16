@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { redeemInvitation } from '../../../server/account.js';
+import { enterWorkspaceAction } from '../../workspace-actions.js';
 import {
   currentAccountDependencies,
   getCurrentAccount,
@@ -49,9 +50,12 @@ export default async function JoinPage({ params }: JoinPageProps) {
             rehydrate.
           </p>
         </header>
-        <Link className={styles.primaryLink} href="/projects">
-          Open the workspace
-        </Link>
+        <form action={enterWorkspaceAction}>
+          <input name="workspaceId" type="hidden" value={joined.workspace.id} />
+          <button className={styles.primaryLink} type="submit">
+            Open the workspace
+          </button>
+        </form>
       </main>
     );
   }
@@ -66,7 +70,7 @@ export default async function JoinPage({ params }: JoinPageProps) {
         <p>
           {verifiedEmail === null
             ? 'Verify your email address with Clerk first — an invitation is only ever accepted by the verified address it was sent to.'
-            : `It was not sent to ${verifiedEmail}, it has expired, it was revoked, or it was already used. It may also be that you already belong to ${account.workspace.displayName}, and a person can be in one workspace at a time.`}
+            : `It was not sent to ${verifiedEmail}, it has expired, it was revoked, it was already used, or you already belong to that workspace.`}
         </p>
         <p>Ask whoever invited you to issue a new invitation to the address you signed in with.</p>
       </header>

@@ -264,6 +264,23 @@ export class PostgresAccountStore implements AccountStore {
     });
   }
 
+  private async resolveIdentity(session: PostgresSession, subject: string): Promise<string> {
+    const existingIdentity = await session.execute<SqlRow>(
+      'SELECT id FROM identity WHERE subject = $1',
+      [subject],
+    );
+    const identityRows =
+      existingIdentity.rows.length > 0
+        ? existingIdentity
+        : await session.execute<SqlRow>(
+            `INSERT INTO identity (id, subject)
+             VALUES (gen_random_uuid(), $1)
+             RETURNING id`,
+            [subject],
+          );
+    return mapExactlyOne(identityRows.rows, 'identity', (row) => String(row.id));
+  }
+
   private async acceptInTransaction(
     session: PostgresSession,
     invitation: WorkspaceInvitation,
@@ -275,20 +292,7 @@ export class PostgresAccountStore implements AccountStore {
       [IDENTITY_SUBJECT_SETTING]: input.subject,
     });
 
-    const existingIdentity = await session.execute<SqlRow>(
-      'SELECT id FROM identity WHERE subject = $1',
-      [input.subject],
-    );
-    const identityRows =
-      existingIdentity.rows.length > 0
-        ? existingIdentity
-        : await session.execute<SqlRow>(
-            `INSERT INTO identity (id, subject)
-             VALUES (gen_random_uuid(), $1)
-             RETURNING id`,
-            [input.subject],
-          );
-    const identityId = mapExactlyOne(identityRows.rows, 'identity', (row) => String(row.id));
+    const identityId = await this.resolveIdentity(session, input.subject);
 
     await session.execute(
       `INSERT INTO workspace_member (workspace_id, identity_id, role)
@@ -337,14 +341,31 @@ export class PostgresAccountStore implements AccountStore {
     );
 
     const workspace = mapExactlyOne(workspaceRows.rows, 'inviting workspace', toWorkspace);
+    const actor = mapExactlyOne(actorRows.rows, 'invited human actor', toActor);
+    const team = mapExactlyOne(teamRows.rows, 'invited team', toTeam);
+    const membership = mapExactlyOne(membershipRows.rows, 'invited team membership', toTeamMember);
 
-    return {
-      workspace,
-      actor: mapExactlyOne(actorRows.rows, 'invited human actor', toActor),
-      team: mapExactlyOne(teamRows.rows, 'invited team', toTeam),
-      membership: mapExactlyOne(membershipRows.rows, 'invited team membership', toTeamMember),
-      workspaces: [{ id: workspace.id, slug: workspace.slug, displayName: workspace.displayName }],
-    };
+    const workspaces = await this.readSubjectWorkspaces(session, input.subject);
+
+    return { workspace, actor, team, membership, workspaces };
+  }
+
+  private async readSubjectWorkspaces(
+    session: PostgresSession,
+    subject: string,
+  ): Promise<readonly WorkspaceChoice[]> {
+    await setScope(session, { [IDENTITY_SUBJECT_SETTING]: subject });
+
+    const rows = await session.execute<SqlRow>(
+      `SELECT workspace_id FROM actor WHERE kind = 'human' AND external_ref = $1
+        ORDER BY created_at DESC, id DESC`,
+      [subject],
+    );
+
+    return readWorkspaceChoices(
+      session,
+      rows.rows.map((row) => readString(row, 'workspace_id')),
+    );
   }
 
   private async bootstrapInTransaction(
@@ -356,7 +377,7 @@ export class PostgresAccountStore implements AccountStore {
 
     const actorRows = await session.execute<SqlRow>(
       `SELECT ${ACTOR_COLUMNS} FROM actor WHERE kind = 'human' AND external_ref = $1
-        ORDER BY created_at ASC, id ASC`,
+        ORDER BY created_at DESC, id DESC`,
       [input.subject],
     );
     await session.execute("SELECT set_config($1, '', true)", [IDENTITY_SUBJECT_SETTING]);
@@ -433,7 +454,12 @@ export class PostgresAccountStore implements AccountStore {
     const actorId = this.idFactory();
     const teamId = this.idFactory();
 
-    await session.execute('SELECT set_config($1, $2, true)', [WORKSPACE_SETTING, workspaceId]);
+    await setScope(session, {
+      [WORKSPACE_SETTING]: workspaceId,
+      [IDENTITY_SUBJECT_SETTING]: input.subject,
+    });
+
+    const identityId = await this.resolveIdentity(session, input.subject);
 
     const workspaceRows = await session.execute<SqlRow>(
       `INSERT INTO workspace (id, slug, display_name, plan)
@@ -441,11 +467,17 @@ export class PostgresAccountStore implements AccountStore {
        RETURNING ${WORKSPACE_COLUMNS}`,
       [workspaceId, `workspace-${workspaceId}`, input.displayName],
     );
+    await session.execute(
+      `INSERT INTO workspace_member (workspace_id, identity_id, role)
+       VALUES ($1, $2, 'owner'::workspace_role)
+       ON CONFLICT (workspace_id, identity_id) DO NOTHING`,
+      [workspaceId, identityId],
+    );
     const actorRows = await session.execute<SqlRow>(
-      `INSERT INTO actor (id, workspace_id, kind, display_name, external_ref)
-       VALUES ($1, $2, 'human', $3, $4)
+      `INSERT INTO actor (id, workspace_id, identity_id, kind, display_name, external_ref)
+       VALUES ($1, $2, $3, 'human', $4, $5)
        RETURNING ${ACTOR_COLUMNS}`,
-      [actorId, workspaceId, input.displayName, input.subject],
+      [actorId, workspaceId, identityId, input.displayName, input.subject],
     );
     const teamRows = await session.execute<SqlRow>(
       `INSERT INTO team (id, workspace_id, slug, display_name, function)
