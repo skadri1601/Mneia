@@ -221,9 +221,25 @@ The founder was asked on 2026-08-16 whether to open self-serve ahead of quota an
 accept the exposure — that ruling stands, but it describes the *existing* state rather than a change.
 **Lane C's quota is the only thing between us and unbounded spend.**
 
-### B3 — No API token management
-Device flow is the only issuance path. **No page lists or revokes a token.** For an enterprise
-conversation that is table stakes, and it is the first thing asked after "how do you isolate tenants."
+### B3 — DONE, PR #117 — API token management
+
+`api_token` had exactly one toucher: `PostgresDeviceStore`, which inserted on redeem and stamped
+`last_used_at` on identify. No read path, no revoke path, no surface — **a token, once issued, was
+permanent and invisible.**
+
+`/tokens` now lists every live token with holder, created, last used, expiry and scopes, and revokes
+one in place. You may revoke your own always, anyone's if you are a lead; the check runs before the
+store is reached. Two GUARDs: a revoked token stops identifying its caller, and a second workspace
+can neither revoke nor **see** the row.
+
+**No §17 event, and that was a ruling, not an oversight.** The spine names no administrative event
+and §6 below forbids adding one. This is control-plane — exactly like `createProject`, which MNE-51's
+coverage test already exempts for that reason. That test governs `ScopedStore`; this store is not
+part of it.
+
+**`audit_event` still has zero writers** — it landed in migration `0028` and nothing has ever written
+to it. "Who revoked this token, and when" deserves an answer and that table exists for it. Left out
+deliberately rather than answered halfway; worth picking up.
 
 > B1 likely needs a schema change. **Stop and use plan mode + the `db-migration` skill** — and see
 > §6: a migration serialises all three lanes.
