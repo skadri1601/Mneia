@@ -4,9 +4,11 @@
 
 This lane completes the remaining MNE-141 checkout plumbing, the enforceable part of MNE-178, the MNE-268 partial-extraction follow-up, and the stale `AGENTS.md:77-88` correction. It does not add pricing claims, overage invoices, a new telemetry event name, or a new usage table.
 
-Lane C creates `apps/web/src/app/billing/**` and changes only its assigned billing, Stripe API, and hosted checkpoint-handler files. It may read Lane B's account context but does not edit `app/team`, `app/join`, or `server/current-account.ts`. The billing journey depends on Lane B's multi-workspace invitation fix landing first.
+Lane C creates `apps/web/src/app/billing/**` and changes its assigned billing, Stripe API, and hosted checkpoint-handler files. It may read Lane B's account context but does not edit `app/team`, `app/join`, or `server/current-account.ts`. A single `/billing` destination is added to the shared `AppHeader`; no active lane owns that file. The billing journey depends on Lane B's multi-workspace invitation fix landing first.
 
-The telemetry payload contract requires a small shared-core schema change and client echo. Lane C will announce that interface before touching shared telemetry code and will not edit Lane A's CLI files. Until Lane A echoes the optional coverage object, older clients remain compatible and emit zero/default coverage.
+The telemetry payload contract requires a small shared-core schema change and client echo. Lane C will announce that interface before touching shared telemetry code and will not edit Lane A's CLI files. Until Lane A echoes the optional coverage object, older clients remain compatible but MNE-268's production symptom remains unresolved: partial extraction is still invisible in §17.
+
+Failed-attempt metering requires `apps/web/src/server/extraction/select.ts`, which no lane currently owns. Lane C declares that exception before editing it. The runner throws a typed error carrying sanitized attempt measurements so `propose.ts` can record calls that failed before producing a result; provider error text remains only in the HTTP diagnostic path.
 
 ## Checkout and portal
 
@@ -16,9 +18,9 @@ Only a workspace lead may start checkout, and checkout is refused until the work
 
 The server action creates a Stripe-hosted Checkout Session in subscription mode. Its quantity equals the accepted member count. Checkout and subscription metadata carry `workspace_id`, preserving the webhook's metadata-only, RLS-safe workspace resolution. The existing Stripe customer is reused when present; otherwise Checkout creates one. A per-render checkout-attempt token becomes Stripe's idempotency key so repeated submission of one form returns one session.
 
-The existing cancellation ordering guard is narrowed: a new `customer.subscription.created` event may revive a canceled workspace for the same customer, while a delayed `customer.subscription.updated` event still may not. This permits resubscription without orphaning the customer.
+The existing cancellation ordering guard remains unchanged. The workspace does not persist a subscription id, so it cannot distinguish a genuinely newer subscription from a late event for the canceled one. Self-serve resubscription after cancellation remains blocked until a later migration stores that identity; checkout does not create an orphaned second Stripe customer to route around the guard.
 
-The Billing Portal is available whenever `billing_customer_ref` exists, including `past_due`, so a customer can update payment details or cancel. Stripe controls the dunning window: `past_due` retains Team entitlement and seats; `unpaid` and `canceled` remove them. No application-defined grace-period clock is added.
+The Billing Portal is available whenever `billing_customer_ref` exists, including `past_due`, so a customer can update payment details or cancel. Stripe controls the dunning window. `seats.ts` changes so `past_due` retains the Team plan and purchased seats, while `unpaid`, `incomplete`, and `canceled` map to canceled billing with no Team entitlement. No application-defined grace-period clock is added.
 
 Stripe-hosted checkout is preferred over direct subscription creation because Stripe owns payment collection and authentication. Payment Links are rejected because they cannot enforce workspace authorization, membership, idempotency, or metadata binding at session creation.
 
@@ -26,9 +28,9 @@ Stripe-hosted checkout is preferred over direct subscription creation because St
 
 Checkpoint proposal is the dominant inference boundary. Checkpoint write and rehydrate also incur smaller embedding costs, but this ticket follows §14.1 and meters extraction only; the existing daily rate limiter continues to bound all checkpoint requests.
 
-The existing `checkpoint_usage` table is the only durable record written at proposal time. It records successful, failed, and fallback model attempts even when the client never commits a checkpoint. Reading it closes the abandoned-proposal and zero-candidate gaps that make `checkpoint.item_extracted` unsuitable as a pre-inference quota gate. No new counter or ledger is created.
+The existing `checkpoint_usage` table is the only durable record written at proposal time. Today it records successful and successful-fallback runs but loses attempts when the runner throws. The typed extraction error closes that gap by returning the accumulated attempt measurements to `propose.ts`, which records them even when both providers fail. Reading this table closes the abandoned-proposal and zero-candidate gaps that make `checkpoint.item_extracted` unsuitable as a pre-inference quota gate. No new counter or ledger is created.
 
-One RLS-scoped query returns the workspace plan, billing status, purchased seats, configured checkpoint allowance, accepted member count, and current calendar-month proposal usage. Attempts written by one `recordUsage` transaction share PostgreSQL's transaction-stable `created_at`; usage therefore counts distinct `created_at` values, so a primary/fallback sequence consumes one proposal while a failed proposal still consumes one.
+One RLS-scoped query returns the workspace plan, billing status, purchased seats, configured checkpoint allowance, accepted member count, and current calendar-month proposal usage. Attempts written by one `recordUsage` transaction share PostgreSQL's transaction-stable `created_at`; usage therefore counts distinct `created_at` values, so a primary/fallback sequence consumes one proposal while a failed proposal still consumes one. A multi-chunk checkpoint also consumes one allowance unit even though it makes several provider calls; the separately retained token rows preserve its higher cost for MNE-180's pricing work.
 
 The gate applies these rules before invoking the extraction provider:
 
@@ -50,7 +52,7 @@ No event names are added. The strict telemetry schema and privacy invariant cove
 
 ## Error handling
 
-Checkout rejects non-leads, one-person workspaces, active duplicate subscriptions, missing Stripe configuration, malformed Stripe responses, and invalid attempt tokens without changing billing state. Quota failures occur before extraction. Stripe webhook events remain the authority for changing plan and billing status.
+Checkout rejects non-leads, one-person workspaces, active duplicate subscriptions, canceled workspaces that cannot be safely resubscribed without a stored subscription id, missing Stripe configuration, malformed Stripe responses, and invalid attempt tokens without changing billing state. Quota failures occur before extraction. Stripe webhook events remain the authority for changing plan and billing status.
 
 ## Documentation and legal verification
 
@@ -58,6 +60,10 @@ Checkout rejects non-leads, one-person workspaces, active duplicate subscription
 
 ## Verification and done-when evidence
 
-Tests cover Checkout and Portal request encoding, metadata, customer reuse, idempotency, authorization, duplicate-subscription prevention, canceled-workspace resubscription, dunning status mapping, quota query grouping, every entitlement denial rule, proof that denied proposals never invoke extraction, coverage propagation, sanitized telemetry validation, and the no-content privacy invariant.
+Tests cover Checkout and Portal request encoding, metadata, customer reuse, idempotency, authorization, duplicate-subscription prevention, cancellation ordering, dunning status mapping, failed-attempt preservation, quota query grouping, every entitlement denial rule, proof that denied proposals never invoke extraction, coverage propagation, sanitized telemetry validation, and the no-content privacy invariant.
 
-MNE-141 is complete only after a two-member workspace can move from no subscription through Stripe Checkout to an active Team state, open the Billing Portal, cancel, and resubscribe. Unit tests establish the code contract; a preview journey establishes routing and authorization; a live Stripe test-mode journey establishes webhook state transitions. Production deployment and production Stripe changes still require explicit approval.
+MNE-141 is complete only after a two-member workspace can navigate to `/billing`, move from no subscription through Stripe Checkout to an active Team state, open the Billing Portal, and have cancellation reflected without a stale event reviving it. Unit tests establish the code contract; a preview journey establishes routing and authorization; a live Stripe test-mode journey establishes webhook state transitions. Production deployment and production Stripe changes still require explicit approval.
+
+MNE-178's code path is complete when a workspace fixture with a non-null allowance has successful, fallback, failed, abandoned, and zero-candidate proposals counted once each, and the next proposal is denied before any provider call. Because every production allowance is null, enforcement reaches no current workspace until MNE-180 chooses and backfills a value; MNE-178 must remain open and this PR is only `Part of MNE-178`.
+
+MNE-268's server contract is complete when an echoed partial-coverage object appears as sanitized counts and a code on `checkpoint.item_extracted`, with the privacy invariant passing. The production symptom remains until Lane A echoes that object from proposal to write and a production event is verified; MNE-268 must remain open and this PR is only `Part of MNE-268`.
