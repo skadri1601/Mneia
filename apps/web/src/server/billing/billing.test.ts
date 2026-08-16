@@ -75,6 +75,18 @@ const storeStub = (overrides: Partial<type.BillingStore> = {}): type.BillingStor
   return Object.assign(base, { applied });
 };
 
+const statefulStoreStub = (initial: type.BillingSnapshot): type.BillingStore => {
+  let snapshot = initial;
+  const base: type.BillingStore = {
+    snapshot: async () => snapshot,
+    applyBillingState: async ({ workspaceId, state }) => {
+      snapshot = { workspaceId, ...state, memberCount: snapshot.memberCount };
+      return snapshot;
+    },
+  };
+  return base;
+};
+
 describe('seatsRequiredFor', () => {
   it('never bills fewer than one seat, even for an empty workspace', () => {
     expect(seatsRequiredFor(0)).toEqual({ members: 0, seats: 1 });
@@ -120,8 +132,8 @@ describe('billingStatusFor', () => {
     ['active', 'active'],
     ['trialing', 'trialing'],
     ['past_due', 'past_due'],
-    ['unpaid', 'canceled'],
-    ['incomplete', 'canceled'],
+    ['unpaid', 'past_due'],
+    ['incomplete', 'past_due'],
     ['canceled', 'canceled'],
     ['paused', 'canceled'],
   ])('maps Stripe %s to %s', (stripeStatus, expected) => {
@@ -135,12 +147,14 @@ describe('billingStatusFor', () => {
 
 describe('hasTeamEntitlement', () => {
   it.each([
-    ['active', true],
-    ['trialing', true],
-    ['past_due', true],
-    ['canceled', false],
-  ] as const)('has Team entitlement for local status %s: %s', (billingStatus, expected) => {
-    expect(hasTeamEntitlement(billingStatus)).toBe(expected);
+    [{ plan: 'team', billingStatus: 'active', seatsPurchased: 4 }, true],
+    [{ plan: 'team', billingStatus: 'trialing', seatsPurchased: 4 }, true],
+    [{ plan: 'team', billingStatus: 'past_due', seatsPurchased: 4 }, true],
+    [{ plan: 'solo', billingStatus: 'past_due', seatsPurchased: null }, false],
+    [{ plan: 'team', billingStatus: 'canceled', seatsPurchased: 4 }, false],
+    [{ plan: 'team', billingStatus: 'past_due', seatsPurchased: null }, false],
+  ] as const)('has Team entitlement for billing state %o: %s', (state, expected) => {
+    expect(hasTeamEntitlement({ ...state, billingCustomerRef: 'cus_1' })).toBe(expected);
   });
 });
 
@@ -182,20 +196,21 @@ describe('stateAfterSubscription', () => {
   });
 
   it.each(['unpaid', 'incomplete'])(
-    'cancels a failed-payment Stripe status without Team entitlement',
+    'records a retryable failed-payment Stripe status without Team entitlement',
     (subscriptionStatus) => {
-      expect(
-        stateAfterSubscription({
-          current: { ...current, plan: 'team', seatsPurchased: 4 },
-          subscriptionStatus,
-          seats: 4,
-          customerRef: 'cus_1',
-        }),
-      ).toMatchObject({
+      const next = stateAfterSubscription({
+        current: { ...current, plan: 'team', seatsPurchased: 4 },
+        subscriptionStatus,
+        seats: 4,
+        customerRef: 'cus_1',
+      });
+
+      expect(next).toMatchObject({
         plan: 'solo',
-        billingStatus: 'canceled',
+        billingStatus: 'past_due',
         seatsPurchased: null,
       });
+      expect(hasTeamEntitlement(next)).toBe(false);
     },
   );
 
@@ -499,6 +514,82 @@ describe('handleStripeWebhook', () => {
     expect(outcome.applied).toBe(true);
     const applied = (store as unknown as { applied: { plan: string }[] }).applied;
     expect(applied[0]?.plan).toBe('solo');
+  });
+
+  it('allows a same-customer active update to recover from incomplete', async () => {
+    const store = statefulStoreStub({
+      workspaceId: WORKSPACE,
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 4,
+      billingCustomerRef: 'cus_1',
+      memberCount: 3,
+    });
+    const incomplete = subscriptionEvent({ status: 'incomplete' });
+
+    await expect(
+      handleStripeWebhook({
+        payload: incomplete,
+        signatureHeader: signed(incomplete),
+        configuration: CONFIG,
+        store,
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ applied: true });
+    await expect(store.snapshot(WORKSPACE)).resolves.toMatchObject({
+      plan: 'solo',
+      billingStatus: 'past_due',
+      seatsPurchased: null,
+    });
+
+    const recovery = subscriptionEvent({ status: 'active' });
+    await expect(
+      handleStripeWebhook({
+        payload: recovery,
+        signatureHeader: signed(recovery),
+        configuration: CONFIG,
+        store,
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ applied: true });
+    await expect(store.snapshot(WORKSPACE)).resolves.toMatchObject({
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 4,
+    });
+  });
+
+  it('does not revive a same-customer subscription after a deletion', async () => {
+    const store = statefulStoreStub({
+      workspaceId: WORKSPACE,
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 4,
+      billingCustomerRef: 'cus_1',
+      memberCount: 3,
+    });
+    const deletion = subscriptionEvent({}, 'customer.subscription.deleted');
+
+    await expect(
+      handleStripeWebhook({
+        payload: deletion,
+        signatureHeader: signed(deletion),
+        configuration: CONFIG,
+        store,
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ applied: true });
+
+    const lateUpdate = subscriptionEvent({ status: 'active' });
+    await expect(
+      handleStripeWebhook({
+        payload: lateUpdate,
+        signatureHeader: signed(lateUpdate),
+        configuration: CONFIG,
+        store,
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ applied: false });
   });
 
   const cancelled = (customerRef: string) =>

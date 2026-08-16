@@ -58,8 +58,8 @@ export const STRIPE_STATUS_TO_BILLING: Readonly<Record<string, BillingStatus>> =
   active: 'active',
   trialing: 'trialing',
   past_due: 'past_due',
-  unpaid: 'canceled',
-  incomplete: 'canceled',
+  unpaid: 'past_due',
+  incomplete: 'past_due',
   incomplete_expired: 'canceled',
   canceled: 'canceled',
   paused: 'canceled',
@@ -78,7 +78,14 @@ export const billingStatusFor = (stripeStatus: string): BillingStatus => {
   return mapped;
 };
 
-export const hasTeamEntitlement = (status: BillingStatus): boolean =>
+export const hasTeamEntitlement = (state: BillingState): boolean =>
+  state.plan === 'team' &&
+  state.seatsPurchased !== null &&
+  (state.billingStatus === 'active' ||
+    state.billingStatus === 'trialing' ||
+    state.billingStatus === 'past_due');
+
+const stripeStatusHasTeamEntitlement = (status: string): boolean =>
   status === 'active' || status === 'trialing' || status === 'past_due';
 
 export interface UpgradeRequest {
@@ -90,11 +97,15 @@ export interface UpgradeRequest {
 
 export const stateAfterSubscription = (request: UpgradeRequest): BillingState => {
   const status = billingStatusFor(request.subscriptionStatus);
-  const teamEntitled = hasTeamEntitlement(status);
+  const teamEntitled = stripeStatusHasTeamEntitlement(request.subscriptionStatus);
 
   return {
     plan:
-      request.current.plan === 'enterprise' ? 'enterprise' : teamEntitled ? 'team' : 'solo',
+      teamEntitled && request.current.plan === 'enterprise'
+        ? 'enterprise'
+        : teamEntitled
+          ? 'team'
+          : 'solo',
     billingStatus: status,
     seatsPurchased: teamEntitled ? request.seats : null,
     billingCustomerRef: request.customerRef,
