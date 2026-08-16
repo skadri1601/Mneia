@@ -96,6 +96,9 @@ interface HarnessOptions {
   readonly version?: string | undefined;
   readonly shutdownTimeoutMs?: number | undefined;
   readonly onWarn?: ((message: string) => void) | undefined;
+  readonly onClientInfo?:
+    | ((client: { readonly name: string; readonly version: string }) => void)
+    | undefined;
 }
 
 function serverWith(
@@ -114,6 +117,7 @@ function serverWith(
       warn: options.onWarn ?? (() => undefined),
       error: () => undefined,
     },
+    onClientInfo: options.onClientInfo,
   });
 }
 
@@ -144,6 +148,17 @@ function firstText(result: unknown): string {
 }
 
 describe('createMneiaServer tool advertisement', () => {
+  it('captures client identity from the initialization handshake', async () => {
+    const clients: { readonly name: string; readonly version: string }[] = [];
+    const mneia = serverWith([stubTool('mneia_rehydrate')], {
+      onClientInfo: (client) => clients.push(client),
+    });
+    const client = await connectClient(mneia);
+
+    expect(clients).toEqual([{ name: 'mneia-test-client', version: '0.0.0' }]);
+
+    await client.close();
+  });
   it('advertises exactly the registry surface, with title, description, and schema', async () => {
     const mneia = serverWith([stubTool('mneia_rehydrate'), stubTool('mneia_assert')]);
     const client = await connectClient(mneia);

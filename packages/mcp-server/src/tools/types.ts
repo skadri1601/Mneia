@@ -1,6 +1,8 @@
 import type { ScopedStore, TelemetryEmitter, Uuid } from '@mneia/core';
 import type { ReviewQueue } from '../review-queue.js';
+import type { ResolvedWriteSession } from '../session-provenance.js';
 import type { SliceLog } from '../slices.js';
+import type { SourceSession } from '../source-session.js';
 
 export interface ToolContext {
   readonly store: ScopedStore;
@@ -9,6 +11,11 @@ export interface ToolContext {
   readonly slices: SliceLog;
   readonly reviewQueue: ReviewQueue;
   readonly sessionIdFor: (projectId: Uuid) => Uuid | null;
+  readonly resolveWriteSession: (
+    projectId: Uuid,
+    sourceSession: SourceSession | undefined,
+    legacySessionId: Uuid | null,
+  ) => Promise<ResolvedWriteSession>;
   readonly defaultProject?: string | null;
 }
 

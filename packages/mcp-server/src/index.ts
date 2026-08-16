@@ -71,8 +71,16 @@ export {
   toAdvertisedTool,
   toCallToolResult,
 } from './server.js';
+export type {
+  McpClientInfo,
+  ResolvedWriteSession,
+  WriteSessionResolver,
+  WriteSessionResolverOptions,
+} from './session-provenance.js';
+export { createWriteSessionResolver } from './session-provenance.js';
 export type { RecordedSlice, SliceLog } from './slices.js';
 export { createSliceLog, DEFAULT_SLICE_LOG_CAPACITY } from './slices.js';
+export type { SourceSession } from './source-session.js';
 export type {
   PoolClientLike,
   PoolConnectionSourceOptions,

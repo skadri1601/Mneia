@@ -20,6 +20,7 @@ import {
 } from '@mneia/core';
 import { z } from 'zod';
 import type { ReviewQueueEntry } from '../review-queue.js';
+import { SourceSessionSchema } from '../source-session.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const KIND_ERROR = `kind must be one of: ${ITEM_KINDS.join(', ')}`;
@@ -103,6 +104,9 @@ const CheckpointInputSchema = z.object({
     .uuid()
     .optional()
     .describe('Id of the session these candidates came from, when the caller is tracking one.'),
+  sourceSession: SourceSessionSchema.optional().describe(
+    'Conversation metadata supplied by the MCP harness. Pass its stable ref, display name, and absolute http/https URL when available.',
+  ),
   summary: z
     .string()
     .max(2000)
@@ -713,7 +717,6 @@ function toolResult(input: CheckpointInput, outcome: CheckpointOutcome): ToolRes
 async function run(input: CheckpointInput, context: ToolContext): Promise<ToolResult> {
   const { store, now } = context;
   const occurredAt = now();
-  const sessionId = input.sessionId ?? context.sessionIdFor(input.projectId);
   const sawSlice = context.slices.size > 0;
 
   try {
@@ -725,6 +728,12 @@ async function run(input: CheckpointInput, context: ToolContext): Promise<ToolRe
         { actorId: store.scope.actorId, workspaceId: store.scope.workspaceId },
       );
     }
+    const resolvedSession = await context.resolveWriteSession(
+      input.projectId,
+      input.sourceSession,
+      input.sessionId ?? null,
+    );
+    const sessionId = resolvedSession.sessionId;
 
     const { writes, pending } = await triage(input, actor, store, sessionId);
     const queue = await queuePending(context, input, actor, pending, occurredAt, sessionId);
@@ -749,6 +758,12 @@ async function run(input: CheckpointInput, context: ToolContext): Promise<ToolRe
         actorId: actor.id,
         trigger: input.trigger,
         summary: input.summary ?? null,
+        ...(resolvedSession.checkpointSource === null
+          ? {}
+          : { source: resolvedSession.checkpointSource }),
+        ...(resolvedSession.sourceSessionRef === null
+          ? {}
+          : { sourceSessionRef: resolvedSession.sourceSessionRef }),
       },
       items: writes.map((candidate) => ({ action: 'created' as const, item: candidate.item })),
     });
@@ -807,6 +822,7 @@ export const checkpointTool: ToolDefinition<CheckpointInput> = {
   name: 'mneia_checkpoint',
   title: 'Checkpoint the session into project memory',
   description:
+    'Pass sourceSession metadata supplied by your harness so the write remains attributable to this conversation. ' +
     'Record a batch of already-extracted items in project memory at a task or day boundary, as one atomic checkpoint. Hand it the candidate decisions, constraints, open questions, facts, and artifact refs you extracted from the session — this tool does not read the transcript itself. Candidates that are load-bearing or that supersede an existing item are never written automatically: they come back in a pending queue you must surface to a human verbatim, because auto-confirming them would erase the disagreement the human needs to settle. If this session started with mneia_rehydrate, pass that sliceId and the referencedItemIds you actually used, so the slice can be judged on whether it helped. Use mneia_assert instead for a single item settled mid-session, and mneia_rehydrate at the start of the next session to read back what was written.',
   inputSchema: INPUT_JSON_SCHEMA,
   parse: parseCheckpointInput,
