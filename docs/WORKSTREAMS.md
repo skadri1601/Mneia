@@ -5,8 +5,7 @@ This file is the split. Read your lane, then read §6 Collision rules before tou
 
 ## 0. Where you work — one worktree per lane, already created
 
-**Do not work in `C:/Users/kadri/stealth-startup` itself.** It is on `fix/mne-271-verify-install`
-with uncommitted work, and `main` is checked out in a third place. Go to your lane's worktree:
+**There are exactly four worktrees, and creating a fifth is blocked.** Go to your lane's:
 
 | Lane | Worktree | Branch |
 |---|---|---|
@@ -14,13 +13,25 @@ with uncommitted work, and `main` is checked out in a third place. Go to your la
 | **B** | `.claude/worktrees/lane-b-account` | `feat/mne-181-multi-workspace` |
 | **C** | `.claude/worktrees/lane-c-billing` | `feat/mne-141-checkout-and-quota` |
 
-All three branch from `7961b91` on `origin/main`, have `node_modules` installed, and are gitignored
-(`.gitignore:27`). **Their upstream is deliberately unset**, so your first push has to be explicit
-and cannot land on `main` by accident:
+The fourth is the primary checkout at the repo root, which **stays on `main`** — do not take it for a
+lane and do not commit code there, only docs.
+
+All three are synced to `origin/main`, have `node_modules` installed, and are gitignored
+(`.gitignore:27`). **Their upstream is deliberately unset**, so your first push must be explicit and
+cannot land on `main` by accident:
 
 ```
 git push -u origin <your-branch>
 ```
+
+### Do not create another one
+
+Twenty stale worktrees were removed on 2026-08-16 — several holding uncommitted work nobody was ever
+going to finish, and every one of them a full `pnpm install` on disk. `.claude/hooks/worktree-guard.mjs`
+now refuses `git worktree add` and the `EnterWorktree` tool, and names these three in the refusal.
+
+If your work genuinely does not fit a lane, **say so and let the founder decide** rather than
+creating one. Real exception: prefix `MNEIA_WORKTREE_GUARD=off` and justify it.
 
 Each lane's work spans several tickets. Branch names carry the first; put the rest in the commit
 subject (`MNE-89, MNE-94: …`) and the PR body (`Closes MNE-89`, `Part of MNE-181`).
