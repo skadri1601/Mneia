@@ -3,6 +3,31 @@
 Three agents work this repo in parallel: **Claude session A**, **Claude session B**, **Codex**.
 This file is the split. Read your lane, then read §6 Collision rules before touching a file.
 
+## 0. Where you work — one worktree per lane, already created
+
+**Do not work in `C:/Users/kadri/stealth-startup` itself.** It is on `fix/mne-271-verify-install`
+with uncommitted work, and `main` is checked out in a third place. Go to your lane's worktree:
+
+| Lane | Worktree | Branch |
+|---|---|---|
+| **A** | `.claude/worktrees/lane-a-handoff` | `feat/mne-89-handoff-artifact` |
+| **B** | `.claude/worktrees/lane-b-account` | `feat/mne-181-multi-workspace` |
+| **C** | `.claude/worktrees/lane-c-billing` | `feat/mne-141-checkout-and-quota` |
+
+All three branch from `7961b91` on `origin/main`, have `node_modules` installed, and are gitignored
+(`.gitignore:27`). **Their upstream is deliberately unset**, so your first push has to be explicit
+and cannot land on `main` by accident:
+
+```
+git push -u origin <your-branch>
+```
+
+Each lane's work spans several tickets. Branch names carry the first; put the rest in the commit
+subject (`MNE-89, MNE-94: …`) and the PR body (`Closes MNE-89`, `Part of MNE-181`).
+
+A worktree does **not** share `node_modules`, `.env`, or `.mneia/` with the others. Copy `.env` in
+yourself — it is gitignored and it is what `pnpm test` and `pnpm db:migrate` read.
+
 ---
 
 ## 1. The frame — what makes this a company
@@ -87,15 +112,20 @@ every web route reads live Postgres with no mock data anywhere. The single-playe
 - **`apps/site/src/app/handoff/page.tsx` markets it anyway.** That is a live inaccuracy on a
   published page, and it is the sharpest gap between what we promise and what runs.
 
-### A1 — The renderer
+### A1 — MNE-89 · The renderer — the eight sections
 The `rendered` column is required and non-empty with nothing to populate it. There is no
 `packages/core/src/handoff/` directory. This is the actual product: a **receivable artifact** — what
-was decided, what is still open, what constrains the receiver. Standing rule 8 says do not publish
-the spec until we own the reference implementation; we do not yet own it.
+was decided, what is still open, what constrains the receiver. **MNE-89 already specifies the eight
+sections — build to that ticket, not to your own taste.** MNE-97 (format spec v0) is the written
+form, and standing rule 8 says it stays **internal**: do not publish the spec until we own the
+reference implementation and the early adopters. We do not yet own either.
 
-### A2 — The surfaces
-Route, `mneia handoff` / `mneia pickup` (refused today at `router.ts:18-23`), and the two MCP tools
-refused at `registry.ts:14`. Replace the refusals — do not leave them beside a working path.
+### A2 — MNE-94, MNE-93 · The surfaces
+The API route, `mneia handoff` / `mneia pickup` (refused today at `router.ts:18-23`), and
+`mneia_handoff_create` / `mneia_handoff_receive` (refused at `registry.ts:14`). Replace the refusals
+— do not leave a refusal beside a working path. `MNE-96` instruments
+`handoff.time_to_first_action`; the event is already declared in `telemetry/types.ts:15-17`, so this
+is wiring, not a new event name.
 
 ### A3 — MNE-265 · the client-side residual
 `packages/cli/src/http-api.ts:251` still calls `reduceTrajectory(trajectory)` with **no options**, so
@@ -154,7 +184,7 @@ conversation that is table stakes, and it is the first thing asked after "how do
 **Owns:** `apps/web/src/server/billing/**` · `apps/web/src/app/api/stripe/**` ·
 `apps/web/src/app/billing/**` (new) · `apps/web/src/server/api/{handlers,review,propose}.ts`
 
-### C1 — There is no way to give us money
+### C1 — MNE-141, MNE-178 · There is no way to give us money
 ~1,245 lines of real Stripe plumbing exist and are correct: webhook signature verification,
 `SEAT_PRICE_USD_CENTS = 2400`, seat math, plan mapping, and the out-of-order-event guard that stops a
 cancelled workspace being revived. **The half that takes money is missing entirely:**
@@ -169,6 +199,12 @@ cancelled workspace being revived. **The half that takes money is missing entire
 
 A team can use it indefinitely, free, and there is no button to pay. `docs/BUSINESS.md` says *"we pay
 for inference"* — so unmetered free use is a **direct margin leak**, not just absent revenue.
+
+**MNE-178 is the quota half, and it names where quota belongs: on the §17 event spine.**
+`docs/BUSINESS.md` is explicit — *"exactly one thing is worth metering: the checkpoint"*, because the
+LLM extraction call is the entire marginal cost; and *"the §17 event spine is the metering spine …
+one system, two purposes — **do not build a second.**"* `checkpoint.item_extracted` already fires per
+checkpoint. Meter off that, not off a new counter.
 
 **Two constraints that are not yours to relax:**
 - **Standing rule 7 — do not charge for the individual tier.** Checkout is for the team tier only.
@@ -208,9 +244,12 @@ first**: `.claude/rules/` does **not** auto-load for you.
 - **Nobody adds a §17 event name.** Emit through the existing emitter or raise it in this file.
 - **A migration serialises everyone.** B1 probably needs one. Announce it before writing it, use plan
   mode and the `db-migration` skill, run `pnpm db:snapshot`, and commit `db/structure.sql` in the
-  same commit. The other two lanes rebase after it lands.
-- **One git worktree per lane.** There are already ~20 stale ones — use `using-git-worktrees` and
-  clean up when your PR merges.
+  same commit. **The other two lanes rebase on `main` after it lands** — do not carry a stale schema
+  into a PR, because `pnpm db:snapshot --check` will fail it in CI.
+- **Stay in your worktree** (§0). Do not `git checkout` another lane's branch — it is checked out
+  elsewhere and git will refuse, which is the guardrail working. Rebase on `origin/main` rather than
+  merging between lane branches.
+- **Clean up when your PR merges**: `git worktree remove .claude/worktrees/<yours>`.
 - `apps/site/src/content/legal.ts` is **published legal copy**. Lane C's checkout touches Stripe,
   already disclosed as a subprocessor — verify rather than assume, and flag it loudly in the PR.
 
