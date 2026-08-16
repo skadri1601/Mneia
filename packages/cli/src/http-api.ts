@@ -248,7 +248,7 @@ export const httpCheckpointApi: CheckpointApi = {
         ? await selectTrajectory(request.cwd ?? process.cwd())
         : await readTrajectoryFile(request.fromFile);
 
-    const reduced = reduceTrajectory(trajectory);
+    const reduced = reduceTrajectory(trajectory, { maxChars: Number.MAX_SAFE_INTEGER });
 
     const { proposal } = await transport.request('/api/v1/checkpoints/propose', ProposalEnvelope, {
       project: request.config.project,

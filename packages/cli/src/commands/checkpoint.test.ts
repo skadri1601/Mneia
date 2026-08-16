@@ -483,7 +483,7 @@ describe('mneia checkpoint', () => {
     expect(payload.droppedBeforeUpload).toBe(0);
   });
 
-  it('says plainly that turns dropped before upload will not come back on a retry', async () => {
+  it('reports a turn dropped before upload as a defect, because the client no longer caps', async () => {
     const api = new FakeApi({
       ...proposalOf([candidate({ index: 0 })]),
       droppedBeforeUpload: 428,
@@ -499,8 +499,10 @@ describe('mneia checkpoint', () => {
     await command.run({ args: [], flags: {}, json: false, io: sink.io });
 
     const errors = sink.err.join('');
-    expect(errors).toContain('428 turns');
-    expect(errors).toContain('Running again will not pick them up');
+    expect(errors).toContain('expected 0');
+    expect(errors).toContain('428 were');
+    expect(errors).toContain('defect in mneia');
+    expect(errors).not.toContain('undefined');
   });
 
   it('stays quiet about pending turns when the whole session was read', async () => {

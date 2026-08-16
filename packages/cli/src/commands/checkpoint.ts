@@ -546,7 +546,7 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
         }
         if (proposal.droppedBeforeUpload > 0) {
           invocation.io.stderr(
-            `${proposal.droppedBeforeUpload} turns of this session were too large to upload and were left out of the checkpoint entirely. Running again will not pick them up — this is MNE-265's remaining client-side gap, not a transient failure.\n`,
+            `expected 0 turns to be dropped before upload; ${proposal.droppedBeforeUpload} were. The whole transcript is meant to be sent and chunked by the server, so this is a defect in mneia rather than a limit you reached — please report it.\n`,
           );
         }
       }
