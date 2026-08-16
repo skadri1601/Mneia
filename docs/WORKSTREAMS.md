@@ -160,21 +160,33 @@ only asserts the warning renders, which pins the loss rather than fixing it.
 Invites, roles, RLS scoping and redemption are all built and hardened. **Two constraints make the
 team story undemonstrable anyway**, and one of them will break the first evaluator who tries.
 
-### B1 — A person can belong to only one workspace
-The join page states it outright. So an evaluator who signs up solo — auto-provisioned their own
-workspace via `bootstrapSoloAccount` — **cannot then accept an invitation to the team's workspace.**
-Their invite fails.
+### B1 — DONE, PR #117 — a person could not stay in a second workspace
 
-That is the exact path a co-founder, a YC partner, or a design-partner team takes: try it alone
-first, then bring the team. **Today that path dead-ends.** It is the single most likely place a
-first-time team breaks, and it makes multiplayer undemoable.
+> **Corrected 2026-08-16, against a `pgvector/pgvector:pg18` container.** The paragraph that stood
+> here said the invite *fails*. **It does not.** Redemption succeeded at the store layer all along.
+> What failed was the request *after* it: `bootstrapSoloAccount` ordered candidate actors
+> `created_at ASC` and took the first, which for a solo-first evaluator is the empty workspace they
+> signed up in — so they were returned there on the next page load. Nothing wrote the selection
+> cookie on acceptance, and `acceptInTransaction` returned only the joined workspace, so
+> `WorkspaceSwitcher` hid itself (`< 2`) on exactly the render where it was needed. The user-visible
+> symptom matched the description; the mechanism did not. The `/join` page's claim that "a person can
+> be in one workspace at a time" was stale copy, not an enforced constraint, and is gone.
 
-Related, from MNE-274's write-up and still unticketed: `bootstrapSoloAccount`
-(`postgres-account-store.ts:425-470`) creates `workspace`, `actor`, `team`, `team_member` but **no
-`identity` and no `workspace_member` row**. Migration 0017 backfilled only workspaces existing at the
-time, so every self-serve account since has an owner with no `workspace_member`. Anything keyed on
-that table locks out the people who own the workspace. **Resolve this deliberately** — it is the
-substrate B1 sits on.
+The substrate defect was real and is fixed: `bootstrapSoloAccount` created `workspace`, `actor`,
+`team`, `team_member` and **no `identity`, no `workspace_member`**, leaving `actor.identity_id` NULL.
+Measured after two solo signups: 0 identity rows, 0 membership rows. Migration 0017 backfilled only
+the workspaces that existed when it ran.
+
+**Two commits on PR #117.** The first fixes the writer and the landing behaviour — no schema change.
+The second is **migration 0030**: it backfills `identity`, `actor.identity_id` and `workspace_member`
+for every account created between 0017 and now, deriving the role rather than guessing it (earliest
+human in a workspace is `owner`, another `lead` is `admin`, everyone else `member`, and
+`ON CONFLICT DO NOTHING` preserves whatever an invitation granted). It then adds a CHECK so a human
+actor carrying an `external_ref` must carry an identity — narrow on purpose, so agent actors and
+identity-less seed-harness humans stay legal.
+
+⚠️ **Deploy order: apply 0030 only after the app from PR #117 is live.** Against the currently
+deployed code the constraint rejects every new signup.
 
 ### B2 — No self-serve signup
 Waitlist → a super-admin approves at `/admin` → `admission.ts` mints a Clerk invitation. **A team
@@ -257,6 +269,12 @@ first**: `.claude/rules/` does **not** auto-load for you.
   mode and the `db-migration` skill, run `pnpm db:snapshot`, and commit `db/structure.sql` in the
   same commit. **The other two lanes rebase on `main` after it lands** — do not carry a stale schema
   into a PR, because `pnpm db:snapshot --check` will fail it in CI.
+
+  > 🔴 **This has happened. Migration `0030` is on PR #117** (schema version 29 → 30). **A and C:
+  > rebase on `main` once it merges** — a PR carrying version 29 fails `db:snapshot --check`.
+  > **The next free migration version is `0031`.** PR #117 also writes under
+  > `packages/core/src/store/migrations/`, outside Lane B's boundary below; a migration has nowhere
+  > else to live.
 - **Stay in your worktree** (§0). Do not `git checkout` another lane's branch — it is checked out
   elsewhere and git will refuse, which is the guardrail working. Rebase on `origin/main` rather than
   merging between lane branches.
