@@ -131,6 +131,9 @@ export default async function TeamPage({ searchParams }: TeamPageProps) {
         )}
       </section>
 
+      <Link className={styles.backLink} href="/tokens">
+        API tokens
+      </Link>
       <Link className={styles.backLink} href="/projects">
         Back to projects
       </Link>

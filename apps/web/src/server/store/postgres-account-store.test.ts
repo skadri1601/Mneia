@@ -16,6 +16,7 @@ import { PostgresAccountStore } from './postgres-account-store.js';
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const ACTOR_ID = '22222222-2222-4222-8222-222222222222';
 const TEAM_ID = '33333333-3333-4333-8333-333333333333';
+const IDENTITY_ID = '0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a';
 const SUBJECT = 'user_123';
 const DISPLAY_NAME = 'Ada Lovelace';
 const CREATED_AT = new Date('2026-08-01T00:00:00.000Z');
@@ -158,12 +159,14 @@ const aggregateErrors = (value: unknown): readonly unknown[] => {
 
 const blanks = (count: number): Step[] => Array.from({ length: count }, () => []);
 
-const PREAMBLE = 10;
-const TEAM_INSERT_STEP = 12;
+const PREAMBLE = 14;
+const TEAM_INSERT_STEP = 18;
 
 const createSteps = (): Step[] => [
   ...blanks(PREAMBLE),
+  [{ id: IDENTITY_ID }],
   [workspaceRow()],
+  [],
   [actorRow()],
   [teamRow()],
   [membershipRow()],
@@ -245,11 +248,17 @@ describe('PostgresAccountStore', () => {
       'SELECT set_config($1, $2, true)',
       'SELECT set_config($1, $2, true)',
       'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-      "SELECT id, workspace_id, kind, display_name, external_ref, created_at FROM actor WHERE kind = 'human' AND external_ref = $1 ORDER BY created_at ASC, id ASC",
+      "SELECT id, workspace_id, kind, display_name, external_ref, created_at FROM actor WHERE kind = 'human' AND external_ref = $1 ORDER BY created_at DESC, id DESC",
       "SELECT set_config($1, '', true)",
       'SELECT set_config($1, $2, true)',
+      'SELECT set_config($1, $2, true)',
+      'SELECT set_config($1, $2, true)',
+      'SELECT set_config($1, $2, true)',
+      'SELECT id FROM identity WHERE subject = $1',
+      'INSERT INTO identity (id, subject) VALUES (gen_random_uuid(), $1) RETURNING id',
       "INSERT INTO workspace (id, slug, display_name, plan) VALUES ($1, $2, $3, 'solo') RETURNING id, slug, display_name, plan, billing_status, billing_customer_ref, seats_purchased, checkpoint_allowance, trial_ends_at, created_at",
-      "INSERT INTO actor (id, workspace_id, kind, display_name, external_ref) VALUES ($1, $2, 'human', $3, $4) RETURNING id, workspace_id, kind, display_name, external_ref, created_at",
+      "INSERT INTO workspace_member (workspace_id, identity_id, role) VALUES ($1, $2, 'owner'::workspace_role) ON CONFLICT (workspace_id, identity_id) DO NOTHING",
+      "INSERT INTO actor (id, workspace_id, identity_id, kind, display_name, external_ref) VALUES ($1, $2, $3, 'human', $4, $5) RETURNING id, workspace_id, kind, display_name, external_ref, created_at",
       "INSERT INTO team (id, workspace_id, slug, display_name, function) VALUES ($1, $2, 'default', 'Default', 'engineering') RETURNING id, workspace_id, slug, display_name, function, created_at",
       "INSERT INTO team_member (workspace_id, team_id, actor_id, role) VALUES ($1, $2, $3, 'lead') RETURNING workspace_id, team_id, actor_id, role, added_at",
       'COMMIT',
@@ -265,8 +274,14 @@ describe('PostgresAccountStore', () => {
       [SUBJECT],
       ['mneia.identity_subject'],
       ['mneia.workspace_id', WORKSPACE_ID],
+      ['mneia.identity_subject', SUBJECT],
+      ['mneia.invitation_email', ''],
+      ['mneia.invitation_token_hash', ''],
+      [SUBJECT],
+      [SUBJECT],
       [WORKSPACE_ID, `workspace-${WORKSPACE_ID}`, DISPLAY_NAME],
-      [ACTOR_ID, WORKSPACE_ID, DISPLAY_NAME, SUBJECT],
+      [WORKSPACE_ID, IDENTITY_ID],
+      [ACTOR_ID, WORKSPACE_ID, IDENTITY_ID, DISPLAY_NAME, SUBJECT],
       [TEAM_ID, WORKSPACE_ID],
       [WORKSPACE_ID, TEAM_ID, ACTOR_ID],
       [],
@@ -299,7 +314,7 @@ describe('PostgresAccountStore', () => {
         'SELECT set_config($1, $2, true)',
         'SELECT set_config($1, $2, true)',
         'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
-        "SELECT id, workspace_id, kind, display_name, external_ref, created_at FROM actor WHERE kind = 'human' AND external_ref = $1 ORDER BY created_at ASC, id ASC",
+        "SELECT id, workspace_id, kind, display_name, external_ref, created_at FROM actor WHERE kind = 'human' AND external_ref = $1 ORDER BY created_at DESC, id DESC",
         "SELECT set_config($1, '', true)",
         'SELECT set_config($1, $2, true)',
         'SELECT id, slug, display_name FROM workspace WHERE id = $1',
@@ -458,7 +473,6 @@ describe('PostgresAccountStore', () => {
 
 const INVITATION_ID = '44444444-4444-4444-8444-444444444444';
 const OTHER_WORKSPACE_ID = '9b9b9b9b-9b9b-4b9b-8b9b-9b9b9b9b9b9b';
-const IDENTITY_ID = '0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a';
 const INVITED_ACTOR_ID = '55555555-5555-4555-8555-555555555555';
 const INVITED_EMAIL = 'grace@example.com';
 const TOKEN_HASH = 'a'.repeat(64);
@@ -553,6 +567,10 @@ describe('PostgresAccountStore invitations', () => {
       [invitationRow({ accepted_at: CREATED_AT })],
       [workspaceRow()],
       [teamRow()],
+      ...blanks(4),
+      [{ workspace_id: WORKSPACE_ID }],
+      [],
+      [{ id: WORKSPACE_ID, slug: `workspace-${WORKSPACE_ID}`, display_name: DISPLAY_NAME }],
       [],
     ]);
     const store = new PostgresAccountStore(
@@ -623,6 +641,12 @@ describe('PostgresAccountStore invitations', () => {
       [invitationRow({ accepted_at: CREATED_AT })],
       [workspaceRow()],
       [teamRow()],
+      ...blanks(4),
+      [{ workspace_id: WORKSPACE_ID }, { workspace_id: OTHER_WORKSPACE_ID }],
+      [],
+      [{ id: WORKSPACE_ID, slug: `workspace-${WORKSPACE_ID}`, display_name: DISPLAY_NAME }],
+      [],
+      [{ id: OTHER_WORKSPACE_ID, slug: 'other', display_name: 'Other' }],
       [],
     ]);
     const store = new PostgresAccountStore(

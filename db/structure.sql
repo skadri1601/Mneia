@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 29
+-- schema version: 30
 
 -- extensions
 
@@ -40,6 +40,7 @@ CREATE TABLE actor (
 ALTER TABLE actor ADD CONSTRAINT actor_created_at_not_null NOT NULL created_at;
 ALTER TABLE actor ADD CONSTRAINT actor_display_name_not_null NOT NULL display_name;
 ALTER TABLE actor ADD CONSTRAINT actor_id_not_null NOT NULL id;
+ALTER TABLE actor ADD CONSTRAINT actor_identified_human_carries_an_identity CHECK (((kind <> 'human'::actor_kind) OR (external_ref IS NULL) OR (external_ref = ''::text) OR (identity_id IS NOT NULL)));
 ALTER TABLE actor ADD CONSTRAINT actor_identity_belongs_to_humans CHECK (((kind = 'human'::actor_kind) OR (identity_id IS NULL)));
 ALTER TABLE actor ADD CONSTRAINT actor_identity_id_fkey FOREIGN KEY (identity_id) REFERENCES identity(id);
 ALTER TABLE actor ADD CONSTRAINT actor_kind_not_null NOT NULL kind;

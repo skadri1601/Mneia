@@ -129,8 +129,20 @@ async function seedTenants(admin: Client): Promise<void> {
       slug,
     ]);
     await admin.query(
-      "INSERT INTO actor (id, workspace_id, kind, display_name, external_ref) VALUES ($1, $2, 'human', $3, $4)",
+      `INSERT INTO identity (id, subject) VALUES (gen_random_uuid(), $1)
+       ON CONFLICT (subject) DO NOTHING`,
+      [`subject_${slug}`],
+    );
+    await admin.query(
+      `INSERT INTO actor (id, workspace_id, identity_id, kind, display_name, external_ref)
+       VALUES ($1, $2, (SELECT id FROM identity WHERE subject = $4), 'human', $3, $4)`,
       [actorId, workspaceId, actorName, `subject_${slug}`],
+    );
+    await admin.query(
+      `INSERT INTO workspace_member (workspace_id, identity_id, role)
+       VALUES ($1, (SELECT id FROM identity WHERE subject = $2), 'owner')
+       ON CONFLICT (workspace_id, identity_id) DO NOTHING`,
+      [workspaceId, `subject_${slug}`],
     );
     await admin.query(
       "INSERT INTO team (id, workspace_id, slug, display_name) VALUES ($1, $2, 'default', 'Default')",
