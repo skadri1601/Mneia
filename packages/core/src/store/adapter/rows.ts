@@ -4,6 +4,7 @@ import type {
   CheckpointItem,
   Conflict,
   ContextItem,
+  ContextItemProvenance,
   Embedding,
   Handoff,
   IntervalMs,
@@ -14,6 +15,7 @@ import type {
   Uuid,
   Workspace,
 } from '../../domain/types.js';
+import { CONTEXT_ITEM_PROVENANCE_FIELDS } from '../../domain/types.js';
 import {
   ACCESS_SCOPES,
   ACTOR_KINDS,
@@ -492,9 +494,36 @@ export const toSession = (row: SqlRow): Session => ({
   projectId: toUuid(row, 'project_id'),
   actorId: toUuid(row, 'actor_id'),
   tool: toNullableText(row, 'tool'),
+  clientName: toNullableText(row, 'client_name'),
+  clientVersion: toNullableText(row, 'client_version'),
+  clientSessionRef: toNullableText(row, 'client_session_ref'),
+  clientSessionName: toNullableText(row, 'client_session_name'),
+  clientSessionUrl: toNullableText(row, 'client_session_url'),
   startedAt: toDate(row, 'started_at'),
   endedAt: toNullableDate(row, 'ended_at'),
 });
+
+const toContextItemProvenance = (row: SqlRow): ContextItemProvenance => {
+  const values = {
+    sourceSessionId: toNullableUuid(row, 'provenance_source_session_id'),
+    sessionTool: toNullableText(row, 'provenance_session_tool'),
+    clientName: toNullableText(row, 'provenance_client_name'),
+    clientVersion: toNullableText(row, 'provenance_client_version'),
+    clientSessionRef: toNullableText(row, 'provenance_client_session_ref'),
+    clientSessionName: toNullableText(row, 'provenance_client_session_name'),
+    clientSessionUrl: toNullableText(row, 'provenance_client_session_url'),
+  };
+  const missingFields = CONTEXT_ITEM_PROVENANCE_FIELDS.filter((field) => values[field] === null);
+
+  return {
+    actorId: toUuid(row, 'provenance_actor_id'),
+    actorKind: toEnum(row, 'provenance_actor_kind', ACTOR_KINDS),
+    actorDisplayName: toText(row, 'provenance_actor_display_name'),
+    ...values,
+    status: missingFields.length === 0 ? 'complete' : 'partial',
+    missingFields,
+  };
+};
 
 export const toContextItem = (row: SqlRow): ContextItem => ({
   id: toUuid(row, 'id'),
@@ -521,6 +550,7 @@ export const toContextItem = (row: SqlRow): ContextItem => ({
   embedding: toOptionalEmbedding(row, 'embedding'),
   embeddingModel: 'embedding_model' in row ? toNullableText(row, 'embedding_model') : null,
   supersedeReason: toNullableText(row, 'supersede_reason'),
+  ...('provenance_actor_id' in row ? { provenance: toContextItemProvenance(row) } : {}),
 });
 
 export const toCheckpoint = (row: SqlRow): Checkpoint => ({

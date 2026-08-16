@@ -61,6 +61,16 @@ const contextItemRow = (): Record<string, unknown> => ({
   access_scope: 'workspace',
   embedding: '[0.25,-0.5,1]',
   embedding_model: 'openai:text-embedding-3-small',
+  provenance_actor_id: ACTOR,
+  provenance_actor_kind: 'agent',
+  provenance_actor_display_name: 'Codex',
+  provenance_source_session_id: SESSION,
+  provenance_session_tool: 'mcp',
+  provenance_client_name: 'codex',
+  provenance_client_version: '1.2.3',
+  provenance_client_session_ref: '019c-session',
+  provenance_client_session_name: 'MNE-86 dogfood',
+  provenance_client_session_url: 'https://example.invalid/sessions/019c-session',
 });
 
 describe('isUuid', () => {
@@ -100,6 +110,20 @@ describe('toContextItem', () => {
       accessScope: 'workspace',
       embedding: [0.25, -0.5, 1],
       embeddingModel: 'openai:text-embedding-3-small',
+      provenance: {
+        actorId: ACTOR,
+        actorKind: 'agent',
+        actorDisplayName: 'Codex',
+        sourceSessionId: SESSION,
+        sessionTool: 'mcp',
+        clientName: 'codex',
+        clientVersion: '1.2.3',
+        clientSessionRef: '019c-session',
+        clientSessionName: 'MNE-86 dogfood',
+        clientSessionUrl: 'https://example.invalid/sessions/019c-session',
+        status: 'complete',
+        missingFields: [],
+      },
     });
   });
 
@@ -129,6 +153,43 @@ describe('toContextItem', () => {
     expect(item.supersededById).toBeNull();
     expect(item.embedding).toBeNull();
     expect(item.embeddingModel).toBeNull();
+  });
+
+  it('marks legacy rows without a source session as partial and names every missing field', () => {
+    const item = toContextItem({
+      ...contextItemRow(),
+      source_session_id: null,
+      provenance_source_session_id: null,
+      provenance_session_tool: null,
+      provenance_client_name: null,
+      provenance_client_version: null,
+      provenance_client_session_ref: null,
+      provenance_client_session_name: null,
+      provenance_client_session_url: null,
+    });
+
+    expect(item.provenance).toEqual({
+      actorId: ACTOR,
+      actorKind: 'agent',
+      actorDisplayName: 'Codex',
+      sourceSessionId: null,
+      sessionTool: null,
+      clientName: null,
+      clientVersion: null,
+      clientSessionRef: null,
+      clientSessionName: null,
+      clientSessionUrl: null,
+      status: 'partial',
+      missingFields: [
+        'sourceSessionId',
+        'sessionTool',
+        'clientName',
+        'clientVersion',
+        'clientSessionRef',
+        'clientSessionName',
+        'clientSessionUrl',
+      ],
+    });
   });
 
   it('names the missing column when a select forgets one', () => {
@@ -212,6 +273,11 @@ describe('toActor, toProject and toSession', () => {
         project_id: PROJECT,
         actor_id: ACTOR,
         tool: 'claude-code',
+        client_name: 'claude-code',
+        client_version: '1.0.90',
+        client_session_ref: 'session-ref',
+        client_session_name: 'MNE-86 dogfood',
+        client_session_url: 'https://claude.ai/code/session-ref',
         started_at: CREATED_AT,
         ended_at: null,
       }),
@@ -221,6 +287,11 @@ describe('toActor, toProject and toSession', () => {
       projectId: PROJECT,
       actorId: ACTOR,
       tool: 'claude-code',
+      clientName: 'claude-code',
+      clientVersion: '1.0.90',
+      clientSessionRef: 'session-ref',
+      clientSessionName: 'MNE-86 dogfood',
+      clientSessionUrl: 'https://claude.ai/code/session-ref',
       startedAt: CREATED_AT,
       endedAt: null,
     });

@@ -40,6 +40,46 @@ const stub = (respond: (call: Call) => { status: number; body: unknown }) => {
 };
 
 describe('remote store transport', () => {
+  it('sends optional client provenance when it opens a session', async () => {
+    const sessionId = '55555555-5555-4555-8555-555555555555';
+    const projectId = '33333333-3333-4333-8333-333333333333';
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        session: {
+          id: sessionId,
+          workspaceId: SCOPE.workspaceId,
+          projectId,
+          actorId: SCOPE.actorId,
+          tool: 'mcp',
+          clientName: 'codex',
+          clientVersion: '1.2.3',
+          clientSessionRef: '019c-session',
+          clientSessionName: 'MNE-86 dogfood',
+          clientSessionUrl: null,
+          startedAt: '2026-08-16T10:00:00.000Z',
+          endedAt: null,
+        },
+      },
+    }));
+
+    await store.createSession(projectId, 'mcp', {
+      clientName: 'codex',
+      clientVersion: '1.2.3',
+      clientSessionRef: '019c-session',
+      clientSessionName: 'MNE-86 dogfood',
+    });
+
+    expect(calls.at(0)?.body).toEqual({
+      projectId,
+      tool: 'mcp',
+      clientName: 'codex',
+      clientVersion: '1.2.3',
+      clientSessionRef: '019c-session',
+      clientSessionName: 'MNE-86 dogfood',
+    });
+  });
+
   it('sends the bearer token and trims the duplicate slash from the endpoint', async () => {
     const { calls, store } = stub(() => ({ status: 200, body: { actor: null } }));
 

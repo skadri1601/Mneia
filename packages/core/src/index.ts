@@ -8,6 +8,8 @@ export type {
   CheckpointItem,
   Conflict,
   ContextItem,
+  ContextItemProvenance,
+  ContextItemProvenanceField,
   Embedding,
   Handoff,
   IntervalMs,
@@ -18,6 +20,7 @@ export type {
   Uuid,
   Workspace,
 } from './domain/types.js';
+export { CONTEXT_ITEM_PROVENANCE_FIELDS } from './domain/types.js';
 export type { EmbeddingErrorCode, EmbeddingProvider } from './embed/types.js';
 export { assertEmbeddingDimensions, EmbeddingError, embeddableText } from './embed/types.js';
 export type { ChunkedTurns, ChunkOptions, TrajectoryChunk } from './extract/chunk.js';
@@ -163,6 +166,7 @@ export type {
   ReviewPendingItemsInput,
   ReviewPendingItemsResult,
   ScopedStore,
+  SessionClientProvenance,
   StoreAdapter,
   WorkspaceScope,
 } from './store/adapter/types.js';
@@ -264,14 +268,6 @@ export {
   telemetryEnabledIn,
 } from './telemetry/index.js';
 export type {
-  TelemetryContext,
-  TelemetryEmitter,
-  TelemetryEvent,
-  TelemetryEventName,
-  TelemetrySink,
-} from './telemetry/types.js';
-export { TELEMETRY_EVENT_NAMES } from './telemetry/types.js';
-export type {
   CheckpointQuality,
   ExtractorQualitySummary,
   QualityCounts,
@@ -279,6 +275,14 @@ export type {
   ReviewOutcome,
 } from './telemetry/quality.js';
 export { summarizeExtractorQuality } from './telemetry/quality.js';
+export type {
+  TelemetryContext,
+  TelemetryEmitter,
+  TelemetryEvent,
+  TelemetryEventName,
+  TelemetrySink,
+} from './telemetry/types.js';
+export { TELEMETRY_EVENT_NAMES } from './telemetry/types.js';
 export {
   createClaudeCodeReader,
   parseClaudeCodeJsonl,

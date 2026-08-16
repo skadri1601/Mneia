@@ -853,9 +853,43 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
         const project = await store.getProjectBySlug('acme-platform');
         expect(project?.id).toBe(PROJECT_A);
 
-        const session = await store.createSession(PROJECT_A, 'claude-code');
+        const session = await store.createSession(PROJECT_A, 'mcp', {
+          clientName: 'claude-code',
+          clientVersion: '1.0.90',
+          clientSessionRef: 'session-ref',
+          clientSessionName: 'MNE-86 dogfood',
+          clientSessionUrl: 'https://example.invalid/sessions/session-ref',
+        });
         expect(session.actorId).toBe(ACTOR_A);
+        expect(session).toMatchObject({
+          tool: 'mcp',
+          clientName: 'claude-code',
+          clientVersion: '1.0.90',
+          clientSessionRef: 'session-ref',
+          clientSessionName: 'MNE-86 dogfood',
+          clientSessionUrl: 'https://example.invalid/sessions/session-ref',
+        });
         expect(session.endedAt).toBeNull();
+
+        const sourced = await store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'session provenance round trip'),
+          sourceSessionId: session.id,
+        });
+        const reread = await store.getContextItem(sourced.id);
+        expect(reread?.provenance).toEqual({
+          actorId: ACTOR_A,
+          actorKind: 'human',
+          actorDisplayName: 'acme lead',
+          sourceSessionId: session.id,
+          sessionTool: 'mcp',
+          clientName: 'claude-code',
+          clientVersion: '1.0.90',
+          clientSessionRef: 'session-ref',
+          clientSessionName: 'MNE-86 dogfood',
+          clientSessionUrl: 'https://example.invalid/sessions/session-ref',
+          status: 'complete',
+          missingFields: [],
+        });
 
         const ended = await store.endSession(session.id);
         expect(ended.endedAt).not.toBeNull();

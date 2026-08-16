@@ -296,6 +296,11 @@ CREATE TABLE session (
   project_id    UUID NOT NULL REFERENCES project(id),
   actor_id      UUID NOT NULL REFERENCES actor(id),
   tool          TEXT,          -- 'claude-code' | 'cursor' | 'codex' | 'cli'
+  client_name   TEXT,          -- client that owns the external session
+  client_version TEXT,
+  client_session_ref TEXT,     -- stable client-side session id
+  client_session_name TEXT,    -- human-readable label, when exposed
+  client_session_url TEXT,     -- deep link, when exposed
   started_at    TIMESTAMPTZ NOT NULL,
   ended_at      TIMESTAMPTZ
 );
@@ -533,6 +538,7 @@ ALTER TABLE context_item  ADD COLUMN purge_after    TIMESTAMPTZ;
 - **HNSW, not ivfflat.** ivfflat trains its centroids when the index is built; built against an empty table it learns nothing and recall stays poor until somebody remembers to reindex. HNSW needs no training data and handles incremental inserts, which is the shape of every write we make.
 - **`identity` is separate from `actor`, and it is the person.** An actor is a person *within one workspace*, so `asserted_by` stays workspace-local and every provenance FK keeps working. Collapsing the two — one global row per human — silently caps a person at one workspace, and unwinding that after real items exist means rewriting the provenance column §8.1 calls the difference between a record and a cache (MNE-253, ruled 2026-08-07).
 - **`restricted` gets a grant table or it is a lie.** Shipping the enum value without `context_item_grant` means the schema advertises a visibility mode the query layer silently denies. Enum values are cheap; grant semantics retrofitted onto live multi-team data are the same migration as widening the hierarchy, which is the thing this section already refuses to defer.
+- **Session provenance keeps Mneia's row separate from the client's session identity.** `tool` names the Mneia integration surface; `client_name` and `client_version` identify the client that produced the trajectory, while `client_session_ref`, `client_session_name`, and `client_session_url` retain the client's own identity and deep link. Every field is nullable because older sessions and clients that expose only part of this shape remain valid. Context reads report that absence as partial provenance rather than inventing a backfill (MNE-86, ruled 2026-08-16).
 - **`conflict.rationale` is not optional metadata.** §17 says the collectible nobody else has is *which side a human chose **and why***. The resolution without the reason is the half we could have derived anyway.
 - **Deliberately not modelled: a separate subject axis.** An item is *about* its project and *visible* per `access_scope`; those two carry the load. A distinct "what is this concerned with" dimension is speculative until a real case demands it.
 - **Deliberately not modelled: a rate-limit counter.** §14.1 makes the checkpoint the only metered marginal cost, so the margin guard is `workspace_usage_period` incremented inside the checkpoint transaction — it cannot drift from the thing it counts. Burst limiting for cheap read paths stays in process while we run one instance. A second datastore for this would buy coordination we do not yet need (MNE-253, ruled 2026-08-07).

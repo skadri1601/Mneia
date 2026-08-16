@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { ContextItem } from '../domain/types.js';
+import type { ContextItem, Session } from '../domain/types.js';
 import {
   CheckpointProposalWireSchema,
   CheckpointWriteWireSchema,
   ContextItemWireSchema,
   decodeContextItem,
+  decodeSession,
   encodeContextItem,
+  encodeSession,
   ExtractionCoverageWireSchema,
   NewContextItemWireSchema,
 } from './wire.js';
@@ -62,6 +64,27 @@ describe('context item wire format', () => {
     expect(encoded).not.toHaveProperty('embeddingModel');
     expect(decoded.embeddingModel).toBeNull();
     expect(decoded.embedding === null).toBe(decoded.embeddingModel === null);
+  });
+});
+
+describe('session wire format', () => {
+  it('round-trips optional client provenance without breaking legacy nulls', () => {
+    const session: Session = {
+      id: '55555555-5555-4555-8555-555555555555',
+      workspaceId: item.workspaceId,
+      projectId: item.projectId,
+      actorId: item.assertedBy,
+      tool: 'mcp',
+      clientName: 'codex',
+      clientVersion: '1.2.3',
+      clientSessionRef: '019c-session',
+      clientSessionName: 'MNE-86 dogfood',
+      clientSessionUrl: 'https://example.invalid/sessions/019c-session',
+      startedAt: new Date('2026-08-16T10:00:00.000Z'),
+      endedAt: null,
+    };
+
+    expect(decodeSession(encodeSession(session))).toEqual(session);
   });
 });
 

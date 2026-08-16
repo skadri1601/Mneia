@@ -65,7 +65,7 @@ import type {
   ReviewCapableStore,
   ReviewPendingItemsInput,
   ReviewPendingItemsResult,
-  ScopedStore,
+  SessionClientProvenance,
   StoreAdapter,
   WorkspaceScope,
 } from './types.js';
@@ -107,7 +107,8 @@ const DEFAULT_ACCESS_SCOPE = 'project';
 
 const ACTOR_COLUMNS = 'id, workspace_id, kind, display_name, external_ref, created_at';
 const PROJECT_COLUMNS = 'id, workspace_id, team_id, slug, repo_url, created_at';
-const SESSION_COLUMNS = 'id, workspace_id, project_id, actor_id, tool, started_at, ended_at';
+const SESSION_COLUMNS =
+  'id, workspace_id, project_id, actor_id, tool, client_name, client_version, client_session_ref, client_session_name, client_session_url, started_at, ended_at';
 const CHECKPOINT_COLUMNS =
   'id, workspace_id, project_id, session_id, actor_id, "trigger", created_at, summary';
 const CHECKPOINT_ITEM_COLUMNS = 'workspace_id, checkpoint_id, item_id, action';
@@ -124,6 +125,24 @@ const CONTEXT_ITEM_COLUMNS = `context_item.id, context_item.workspace_id, contex
        context_item.valid_from, context_item.valid_to, context_item.supersedes_id,
        context_item.superseded_by_id, context_item.supersede_reason, context_item.access_scope`;
 
+const CONTEXT_ITEM_PROVENANCE_COLUMNS = `provenance_actor.id AS provenance_actor_id,
+       provenance_actor.kind AS provenance_actor_kind,
+       provenance_actor.display_name AS provenance_actor_display_name,
+       provenance_session.id AS provenance_source_session_id,
+       provenance_session.tool AS provenance_session_tool,
+       provenance_session.client_name AS provenance_client_name,
+       provenance_session.client_version AS provenance_client_version,
+       provenance_session.client_session_ref AS provenance_client_session_ref,
+       provenance_session.client_session_name AS provenance_client_session_name,
+       provenance_session.client_session_url AS provenance_client_session_url`;
+
+const CONTEXT_ITEM_PROVENANCE_JOINS = `JOIN actor AS provenance_actor
+           ON provenance_actor.workspace_id = context_item.workspace_id
+          AND provenance_actor.id = context_item.asserted_by
+         LEFT JOIN session AS provenance_session
+           ON provenance_session.workspace_id = context_item.workspace_id
+          AND provenance_session.id = context_item.source_session_id`;
+
 const CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING = `${CONTEXT_ITEM_COLUMNS},
        context_item_embedding.model AS embedding_model,
        context_item_embedding.embedding::text AS embedding`;
@@ -137,11 +156,14 @@ const EMBEDDING_JOIN = `LEFT JOIN LATERAL (
               LIMIT 1
            ) AS context_item_embedding ON TRUE`;
 
-const contextItemColumns = (withEmbedding: boolean | undefined): string =>
-  withEmbedding === true ? CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING : CONTEXT_ITEM_COLUMNS;
+const contextItemReadColumns = (withEmbedding: boolean | undefined): string =>
+  `${withEmbedding === true ? CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING : CONTEXT_ITEM_COLUMNS},
+       ${CONTEXT_ITEM_PROVENANCE_COLUMNS}`;
 
 const contextItemFrom = (withEmbedding: boolean | undefined): string =>
-  withEmbedding === true ? `context_item\n         ${EMBEDDING_JOIN}` : 'context_item';
+  withEmbedding === true
+    ? `context_item\n         ${EMBEDDING_JOIN}\n         ${CONTEXT_ITEM_PROVENANCE_JOINS}`
+    : `context_item\n         ${CONTEXT_ITEM_PROVENANCE_JOINS}`;
 
 const PENDING_REVIEW_COLUMNS = `item.id, item.project_id, item.kind, item.title, item.body,
        item.confidence, item.load_bearing, item.access_scope,
@@ -459,13 +481,50 @@ class PostgresScopedStore implements ReviewCapableStore {
     return row === undefined ? null : toProject(row);
   }
 
-  async createSession(projectId: Uuid, tool: string | null): Promise<Session> {
+  async createSession(
+    projectId: Uuid,
+    tool: string | null,
+    provenance: SessionClientProvenance = {},
+  ): Promise<Session> {
     assertUuid(projectId, 'projectId');
+    const clientName =
+      provenance.clientName == null
+        ? null
+        : assertNonEmpty(provenance.clientName, 'provenance.clientName');
+    const clientVersion =
+      provenance.clientVersion == null
+        ? null
+        : assertNonEmpty(provenance.clientVersion, 'provenance.clientVersion');
+    const clientSessionRef =
+      provenance.clientSessionRef == null
+        ? null
+        : assertNonEmpty(provenance.clientSessionRef, 'provenance.clientSessionRef');
+    const clientSessionName =
+      provenance.clientSessionName == null
+        ? null
+        : assertNonEmpty(provenance.clientSessionName, 'provenance.clientSessionName');
+    const clientSessionUrl =
+      provenance.clientSessionUrl == null
+        ? null
+        : assertNonEmpty(provenance.clientSessionUrl, 'provenance.clientSessionUrl');
     const rows = await this.rows(
-      `INSERT INTO session (id, workspace_id, project_id, actor_id, tool, started_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, now())
+      `INSERT INTO session (
+         id, workspace_id, project_id, actor_id, tool,
+         client_name, client_version, client_session_ref, client_session_name, client_session_url,
+         started_at)
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now())
        RETURNING ${SESSION_COLUMNS}`,
-      [this.scope.workspaceId, projectId, this.scope.actorId, tool],
+      [
+        this.scope.workspaceId,
+        projectId,
+        this.scope.actorId,
+        tool,
+        clientName,
+        clientVersion,
+        clientSessionRef,
+        clientSessionName,
+        clientSessionUrl,
+      ],
     );
     return toSession(expectOne(rows, `opening a session on project ${projectId}`));
   }
@@ -505,13 +564,16 @@ class PostgresScopedStore implements ReviewCapableStore {
       actorTeamIds: await this.actorTeamIds(),
       projectId: toUuid(first, 'project_id'),
       paramOffset: params.length,
+      itemAlias: 'context_item',
     });
     params.addAll(visibility.params);
 
     const rows = await this.rows(
-      `SELECT ${CONTEXT_ITEM_COLUMNS}
-         FROM context_item
-        WHERE workspace_id = ${workspace} AND id = ${item} AND (${visibility.sql})`,
+      `SELECT ${contextItemReadColumns(false)}
+         FROM ${contextItemFrom(false)}
+        WHERE context_item.workspace_id = ${workspace}
+          AND context_item.id = ${item}
+          AND (${visibility.sql})`,
       params.list(),
     );
     const row = rows[0];
@@ -545,8 +607,10 @@ class PostgresScopedStore implements ReviewCapableStore {
              OR (context_item.access_scope = 'project' AND viewer.can_read_project)
              OR (context_item.access_scope = 'team' AND viewer.can_read_team))`;
 
-    let candidateFrom = 'context_item';
+    let candidateFrom = `context_item
+         ${CONTEXT_ITEM_PROVENANCE_JOINS}`;
     let candidateColumns = `${CONTEXT_ITEM_COLUMNS},
+       ${CONTEXT_ITEM_PROVENANCE_COLUMNS},
        NULL::text AS embedding_model, NULL::text AS embedding`;
     let candidateOrder = 'context_item.asserted_at DESC, context_item.id DESC';
 
@@ -563,8 +627,12 @@ class PostgresScopedStore implements ReviewCapableStore {
          JOIN context_item_embedding
            ON context_item_embedding.workspace_id = context_item.workspace_id
           AND context_item_embedding.item_id = context_item.id
-          AND context_item_embedding.model = ${params.add(model)}`;
-      candidateColumns = CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING;
+          AND context_item_embedding.model = ${params.add(model)}
+         ${CONTEXT_ITEM_PROVENANCE_JOINS}`;
+      candidateColumns = `${CONTEXT_ITEM_COLUMNS},
+       ${CONTEXT_ITEM_PROVENANCE_COLUMNS},
+       context_item_embedding.model AS embedding_model,
+       context_item_embedding.embedding::text AS embedding`;
       candidateOrder = `context_item_embedding.embedding <=> ${params.add(
         embeddingLiteral(request.embedding),
       )}::vector`;
@@ -603,8 +671,10 @@ class PostgresScopedStore implements ReviewCapableStore {
           LIMIT ${candidateLimit}
        ), mandatory_rows AS (
          SELECT 'mandatory'::text AS candidate_group, ${CONTEXT_ITEM_COLUMNS},
+                ${CONTEXT_ITEM_PROVENANCE_COLUMNS},
                 NULL::text AS embedding_model, NULL::text AS embedding
            FROM context_item
+          ${CONTEXT_ITEM_PROVENANCE_JOINS}
           CROSS JOIN viewer
           WHERE context_item.workspace_id = ${workspace}
             AND context_item.project_id = ${project}
@@ -618,8 +688,10 @@ class PostgresScopedStore implements ReviewCapableStore {
           LIMIT ${mandatoryLimit}
        ), superseded_rows AS (
          SELECT 'superseded'::text AS candidate_group, ${CONTEXT_ITEM_COLUMNS},
+                ${CONTEXT_ITEM_PROVENANCE_COLUMNS},
                 NULL::text AS embedding_model, NULL::text AS embedding
            FROM context_item
+          ${CONTEXT_ITEM_PROVENANCE_JOINS}
           CROSS JOIN viewer
           WHERE context_item.workspace_id = ${workspace}
             AND context_item.project_id = ${project}
@@ -664,7 +736,7 @@ class PostgresScopedStore implements ReviewCapableStore {
     const params = new SqlParams();
     const conditions = [
       `context_item.workspace_id = ${params.add(this.scope.workspaceId)}`,
-      `project_id = ${params.add(search.projectId)}`,
+      `context_item.project_id = ${params.add(search.projectId)}`,
     ];
 
     const visibility = visibilityPredicate({
@@ -672,6 +744,7 @@ class PostgresScopedStore implements ReviewCapableStore {
       actorTeamIds: await this.actorTeamIds(),
       projectId: search.projectId,
       paramOffset: params.length,
+      itemAlias: 'context_item',
     });
     params.addAll(visibility.params);
     conditions.push(`(${visibility.sql})`);
@@ -683,7 +756,9 @@ class PostgresScopedStore implements ReviewCapableStore {
           'expected filter.kinds to name at least one item kind; received an empty array — omit the field to accept every kind',
         );
       }
-      conditions.push(`kind IN (${search.kinds.map((kind) => params.add(kind)).join(', ')})`);
+      conditions.push(
+        `context_item.kind IN (${search.kinds.map((kind) => params.add(kind)).join(', ')})`,
+      );
     }
 
     if (search.statuses !== undefined) {
@@ -694,23 +769,25 @@ class PostgresScopedStore implements ReviewCapableStore {
         );
       }
       conditions.push(
-        `status IN (${search.statuses.map((status) => params.add(status)).join(', ')})`,
+        `context_item.status IN (${search.statuses.map((status) => params.add(status)).join(', ')})`,
       );
     }
 
     if (search.loadBearing !== undefined) {
-      conditions.push(`load_bearing = ${params.add(search.loadBearing)}`);
+      conditions.push(`context_item.load_bearing = ${params.add(search.loadBearing)}`);
     }
 
     if (search.asOf !== undefined) {
       const asOf = params.add(search.asOf);
-      conditions.push(`valid_from <= ${asOf}`);
-      conditions.push(`(valid_to IS NULL OR valid_to > ${asOf})`);
+      conditions.push(`context_item.valid_from <= ${asOf}`);
+      conditions.push(`(context_item.valid_to IS NULL OR context_item.valid_to > ${asOf})`);
     }
 
     if (search.text !== undefined && search.text.trim() !== '') {
       const pattern = params.add(`%${escapeLike(search.text.trim())}%`);
-      conditions.push(`(title ILIKE ${pattern} ESCAPE '\\' OR body ILIKE ${pattern} ESCAPE '\\')`);
+      conditions.push(
+        `(context_item.title ILIKE ${pattern} ESCAPE '\\' OR context_item.body ILIKE ${pattern} ESCAPE '\\')`,
+      );
     }
 
     let ordering = 'context_item.asserted_at DESC, context_item.id DESC';
@@ -732,14 +809,15 @@ class PostgresScopedStore implements ReviewCapableStore {
          JOIN context_item_embedding
            ON context_item_embedding.workspace_id = context_item.workspace_id
           AND context_item_embedding.item_id = context_item.id
-          AND context_item_embedding.model = ${modelParam}`;
+          AND context_item_embedding.model = ${modelParam}
+         ${CONTEXT_ITEM_PROVENANCE_JOINS}`;
       ordering = `context_item_embedding.embedding <=> ${params.add(embeddingLiteral(search.embedding))}::vector`;
     }
 
     const limit = params.add(resolveLimit(search.limit, 'filter.limit'));
 
     const rows = await this.rows(
-      `SELECT ${contextItemColumns(search.withEmbedding)}
+      `SELECT ${contextItemReadColumns(search.withEmbedding)}
          FROM ${from}
         WHERE ${conditions.join('\n          AND ')}
         ORDER BY ${ordering}
@@ -912,6 +990,7 @@ class PostgresScopedStore implements ReviewCapableStore {
       actorTeamIds: await this.actorTeamIds(),
       projectId: filter.projectId,
       paramOffset: params.length,
+      itemAlias: 'item',
     });
     params.addAll(visibility.params);
 

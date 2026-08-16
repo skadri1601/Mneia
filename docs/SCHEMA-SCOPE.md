@@ -27,7 +27,7 @@ brief requires.
 
 ---
 
-## The seven rulings
+## The eight rulings
 
 ### 1. Embeddings move to `context_item_embedding`; HNSW replaces ivfflat
 
@@ -130,6 +130,15 @@ the deletion spends it.
 `workspace.region` lands in the same migration — §14 sells residency to Enterprise, and keying a
 region **after** multi-region data exists is a migration across regions, not a schema change.
 
+### 8. Session rows retain client provenance without rewriting legacy history
+
+MNE-86 exposed the difference between the Mneia integration surface and the client session it reads.
+`session.tool` continues to name the integration, while `client_name`, `client_version`,
+`client_session_ref`, `client_session_name`, and `client_session_url` retain the originating client's
+identity and deep link. The columns are nullable and have no backfill: older rows and clients that do
+not expose every field are valid, and context-item reads label them `partial` with the missing fields
+instead of fabricating provenance.
+
 ---
 
 ## Everything landing
@@ -154,6 +163,7 @@ Ordered by dependency; each is its own migration, all in one PR.
 | 0026 | `workspace_usage_period` | MNE-103, MNE-178 |
 | 0027 | `api_token.scopes` | MNE-146 |
 | 0028 | `audit_event` | MNE-145 |
+| 0030 | nullable client provenance on `session` | MNE-86, §9/§10 |
 
 **The invite reconciliation happens in 0017, not on the MNE-126 branch.** `workspace_invitation`
 shipped keyed on `team_id NOT NULL` and `team_role`, because `workspace_role` did not exist yet.
