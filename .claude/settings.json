@@ -55,6 +55,17 @@
             "statusMessage": "Checking git lane policy"
           }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell|EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/worktree-guard.mjs",
+            "timeout": 15,
+            "statusMessage": "Checking worktree policy"
+          }
+        ]
       }
     ]
   }
