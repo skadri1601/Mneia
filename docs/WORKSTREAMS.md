@@ -314,11 +314,33 @@ first**: `.claude/rules/` does **not** auto-load for you.
   same commit. **The other two lanes rebase on `main` after it lands** — do not carry a stale schema
   into a PR, because `pnpm db:snapshot --check` will fail it in CI.
 
-  > 🔴 **This has happened. Migration `0030` is on PR #117** (schema version 29 → 30). **A and C:
-  > rebase on `main` once it merges** — a PR carrying version 29 fails `db:snapshot --check`.
-  > **The next free migration version is `0031`.** PR #117 also writes under
-  > `packages/core/src/store/migrations/`, outside Lane B's boundary below; a migration has nowhere
-  > else to live.
+  > ✅ **Done. `0030` merged in `e7212ba`, applied to production, schema version 30/30.** A and C:
+  > rebase — a PR carrying version 29 fails `db:snapshot --check`. **Next free version is `0031`.**
+
+- 🔴 **Your migration must be safe to apply while the OLD code is still running.** This is rule 2 of
+  the `db-migration` skill and it is not advice — it is the only ordering the deploy pipeline permits.
+  `0030` broke it and deadlocked the deploy for half an hour. Read this before writing your first one.
+
+  `deploy-web.yml`'s **`ship` job refuses to deploy a build whose expected schema version is ahead of
+  production** (MNE-254). So the only legal order is **migrate → deploy**. If your migration adds
+  anything the currently deployed code violates, you have built a deadlock:
+
+  - migrate first → the running app starts erroring against the new schema
+  - deploy first → the gate refuses, and nothing ships for anyone
+
+  `0030` added `CHECK (kind <> 'human' OR external_ref IS NULL OR external_ref = '' OR identity_id IS
+  NOT NULL)`. The then-deployed `createAccount` wrote a human actor with an `external_ref` and no
+  `identity_id`, so **every new signup would have failed** between the migration and the deploy —
+  verified by replaying that exact `INSERT` against a container at version 30.
+
+  Resolved by taking the short window deliberately (founder call, 2026-08-16): migrate, then
+  immediately re-run the failed `ship` job. The image was already built and pushed, so only the gated
+  job re-ran and the window was ~4 minutes. **Production carried one account, so nothing was actually
+  interrupted** — do not read that as the pattern being safe.
+
+  **Write the additive half and the enforcing half as separate migrations**, and land the enforcing
+  half in a release that ships *after* the code which satisfies it. Backfill in `n`, constrain in
+  `n+1`.
 - **Stay in your worktree** (§0). Do not `git checkout` another lane's branch — it is checked out
   elsewhere and git will refuse, which is the guardrail working. Rebase on `origin/main` rather than
   merging between lane branches.
