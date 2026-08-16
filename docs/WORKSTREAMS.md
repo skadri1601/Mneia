@@ -1,0 +1,246 @@
+# Three lanes — 2026-08-16 → 2026-09-01
+
+Three agents work this repo in parallel: **Claude session A**, **Claude session B**, **Codex**.
+This file is the split. Read your lane, then read §6 Collision rules before touching a file.
+
+---
+
+## 1. The frame — what makes this a company
+
+`docs/BUSINESS.md` already says the uncomfortable part, and it is the thing to keep on the wall:
+
+> *"Any one of our five differentiating features can be built by a funded team in a quarter.
+> Features get the first thousand users. The moat is switching cost plus the arbitration dataset."*
+
+The feature-shaped version of Mneia — *"remember things across sessions"* — is already shipped by
+every harness as `CLAUDE.md`, Cursor rules, and vendor memory. **Single-player recall is not the
+product and must not be what we optimise.** Three things a competitor cannot copy by shipping the
+same features, and each lane owns one:
+
+| Moat | Why nobody else builds it | Lane |
+|---|---|---|
+| **Handoff** | It is the operation that only exists when work crosses *people*. Vendors optimise the single-user loop; a handoff artifact presumes a team and a receiver. | **A** |
+| **Switching cost** | Accrues only once we are the system of record for a *team's* decisions. Needs multiplayer that works, not a better ranker. | **B** |
+| **Arbitration data** | Presumes agents are wrong. No model vendor ships a product built on that premise, and it is not retrofittable. | **C** |
+
+---
+
+## 2. Ground truth — the board, the ROADMAP, and AGENTS.md are all stale
+
+**Read this before picking up any ticket.** Verified against `git log origin/main`, 2026-08-16.
+
+Linear shows these `In Progress` and `ROADMAP.md` shows them unchecked. **All merged:**
+
+| Ticket | Merged as |
+|---|---|
+| MNE-268 §17 telemetry has no writer | `8015cb1`, `1594cef` (#102) — `telemetry_event` has a Postgres sink |
+| MNE-274 any member can invite an owner | `9c75675` (#91) |
+| MNE-51 write-path emit coverage test | `b0bbf32` (#93) — fails CI now |
+| MNE-60, 61 dedupe + contradiction detection | `634ea14` (#100) |
+| MNE-66 extractor quality metric | `634ea14` — `pnpm dogfood:report` |
+| MNE-73 rehydrate p95 | `0947d0f` (#101) |
+| MNE-138, 139, 140 browser, review queue, timeline | `634ea14`, `4f55917` |
+| MNE-141, 142, 143 Stripe plumbing, seats, funnel | `634ea14` |
+| MNE-173 rate limiting | `634ea14` |
+| MNE-252 invitation email | `5b5d823` (#107) |
+
+**`AGENTS.md:77-88` is also wrong.** It says both MNE-265 defects are open. Both were closed by
+`915685c` (#96) on 2026-08-08: the server disables the reducer cap (`propose.ts:116`), chunks via
+`packages/core/src/extract/chunk.ts`, and advances the watermark only after a chunk parses
+(`propose.ts:175`). `contextTokens` **is** read — four sites in `extraction/select.ts`. Covered by
+`propose.test.ts:262-372` and `select.test.ts:160-182`. **Do not re-fix them.**
+
+`0.2.0` of all three clients is live on npm. Production: `rls: enforced`, `schemaVersion 29/29`,
+`telemetry: persisted`, all three model keys `configured`.
+
+**Never trust a Linear status or a ROADMAP checkbox.** Run `git log origin/main --grep=MNE-nnn`
+first. Finding a shipped ticket and closing it is real work, not overhead.
+
+### What actually runs
+
+Checkpoint and rehydrate are **shipped end-to-end** — 7 real CLI commands, 4 real MCP tools, and
+every web route reads live Postgres with no mock data anywhere. The single-player loop is done.
+
+**The five places it breaks are the whole of this document:**
+
+1. **Handoff does not exist above the database.** → Lane A
+2. **A person can belong to only one workspace.** → Lane B
+3. **Signup needs manual admin approval.** → Lane B
+4. **Nobody can pay you** — no checkout, no portal, no enforcement, no quota. → Lane C
+5. **A partial extraction is invisible to §17.** → Lane C
+
+---
+
+## 3. Lane A — Claude session A — *handoff, the operation that makes this multiplayer*
+
+**Owns:** `packages/core/src/handoff/**` (new) · `packages/core/src/api/remote-store.ts` ·
+`packages/cli/src/**` · `packages/mcp-server/src/**` · `apps/web/src/app/api/v1/handoff*`
+
+`vision.md` names three operations. Two ship. **The third exists only as a table.**
+
+- Table and adapter are real: `0006-checkpoint-handoff.ts`, `0024-handoff-item.ts`, and
+  `postgres.ts:1262/1287/1329` (`createHandoff`, `receiveHandoff`, `getHandoff`)
+- Telemetry events already declared: `packages/core/src/telemetry/types.ts:15-17`
+- **Everything above the database is absent.** `packages/core/src/api/remote-store.ts:210-217`
+  returns `unsupported('createHandoff', 'M2')` for all three — the only real stub in the repo. No
+  renderer, no API route, no CLI command, no MCP tool.
+- **`apps/site/src/app/handoff/page.tsx` markets it anyway.** That is a live inaccuracy on a
+  published page, and it is the sharpest gap between what we promise and what runs.
+
+### A1 — The renderer
+The `rendered` column is required and non-empty with nothing to populate it. There is no
+`packages/core/src/handoff/` directory. This is the actual product: a **receivable artifact** — what
+was decided, what is still open, what constrains the receiver. Standing rule 8 says do not publish
+the spec until we own the reference implementation; we do not yet own it.
+
+### A2 — The surfaces
+Route, `mneia handoff` / `mneia pickup` (refused today at `router.ts:18-23`), and the two MCP tools
+refused at `registry.ts:14`. Replace the refusals — do not leave them beside a working path.
+
+### A3 — MNE-265 · the client-side residual
+`packages/cli/src/http-api.ts:251` still calls `reduceTrajectory(trajectory)` with **no options**, so
+the 700,000-char cap is live before upload and those turns are lost permanently. The product says so
+itself at `checkpoint.ts:547-549`. **The server now takes the whole transcript, so the client cap
+buys nothing.** Match `propose.ts:116` and add a test that the turns arrive — `checkpoint.test.ts:489`
+only asserts the warning renders, which pins the loss rather than fixing it.
+
+> ⚠️ **A1 and A2 are M2 work pulled ahead of the M1 gate.** M1 closes on the founder using it daily
+> and MNE-88 is the go/no-go. Building handoff now jumps that queue. It is on this list because it is
+> the differentiator and because the site already sells it — **but confirm before starting A1/A2.**
+> A3 is unambiguously M1 and needs no ruling.
+
+---
+
+## 4. Lane B — Claude session B — *make the team motion actually work*
+
+**Owns:** `apps/web/src/server/{account,current-account,admission}.ts` ·
+`apps/web/src/app/{team,join,welcome,device,admin}/**`
+
+Invites, roles, RLS scoping and redemption are all built and hardened. **Two constraints make the
+team story undemonstrable anyway**, and one of them will break the first evaluator who tries.
+
+### B1 — A person can belong to only one workspace
+The join page states it outright. So an evaluator who signs up solo — auto-provisioned their own
+workspace via `bootstrapSoloAccount` — **cannot then accept an invitation to the team's workspace.**
+Their invite fails.
+
+That is the exact path a co-founder, a YC partner, or a design-partner team takes: try it alone
+first, then bring the team. **Today that path dead-ends.** It is the single most likely place a
+first-time team breaks, and it makes multiplayer undemoable.
+
+Related, from MNE-274's write-up and still unticketed: `bootstrapSoloAccount`
+(`postgres-account-store.ts:425-470`) creates `workspace`, `actor`, `team`, `team_member` but **no
+`identity` and no `workspace_member` row**. Migration 0017 backfilled only workspaces existing at the
+time, so every self-serve account since has an owner with no `workspace_member`. Anything keyed on
+that table locks out the people who own the workspace. **Resolve this deliberately** — it is the
+substrate B1 sits on.
+
+### B2 — No self-serve signup
+Waitlist → a super-admin approves at `/admin` → `admission.ts` mints a Clerk invitation. **A team
+cannot get in without a human in the loop.** Fine for three design partners; it is a hard ceiling on
+"5 external people use it for a week without hand-holding" (MNE-108, the M2 gate).
+
+### B3 — No API token management
+Device flow is the only issuance path. **No page lists or revokes a token.** For an enterprise
+conversation that is table stakes, and it is the first thing asked after "how do you isolate tenants."
+
+> B1 likely needs a schema change. **Stop and use plan mode + the `db-migration` skill** — and see
+> §6: a migration serialises all three lanes.
+
+---
+
+## 5. Lane C — Codex — *make it possible to pay, and see what the extractor dropped*
+
+**Owns:** `apps/web/src/server/billing/**` · `apps/web/src/app/api/stripe/**` ·
+`apps/web/src/app/billing/**` (new) · `apps/web/src/server/api/{handlers,review,propose}.ts`
+
+### C1 — There is no way to give us money
+~1,245 lines of real Stripe plumbing exist and are correct: webhook signature verification,
+`SEAT_PRICE_USD_CENTS = 2400`, seat math, plan mapping, and the out-of-order-event guard that stops a
+cancelled workspace being revived. **The half that takes money is missing entirely:**
+
+- **No checkout session anywhere.** `createCheckoutSession` / `checkout` has zero hits in
+  `apps/web/src` outside comments. The webhook can only receive events for a subscription created by
+  hand in the Stripe dashboard.
+- No billing portal link and no `/billing` page.
+- **No enforcement.** Nothing reads `plan`, `billingStatus` or `seatsPurchased` to gate anything.
+  `seatsRequiredFor` is defined and never called from a write path.
+- **No quota.** `workspace.checkpoint_allowance` is written `null` and read only in test fixtures.
+
+A team can use it indefinitely, free, and there is no button to pay. `docs/BUSINESS.md` says *"we pay
+for inference"* — so unmetered free use is a **direct margin leak**, not just absent revenue.
+
+**Two constraints that are not yours to relax:**
+- **Standing rule 7 — do not charge for the individual tier.** Checkout is for the team tier only.
+- **Do not advertise the Team tier's feature table before it is true.** Roles and team handoff are
+  Month 6. Billing plumbing existing is not the tier being sellable.
+
+### C2 — MNE-268 · a partial extraction is invisible
+`droppedTurns`, `splitTurns`, chunk count and `incompleteReason` are computed and **reach no §17
+event** — they appear only in the HTTP response body. A checkpoint that silently covered half a
+session is indistinguishable from a clean one in the stream the arbitration dataset is built from.
+
+The propose path emits no §17 event at all. Also check `emitQuietly` (`handlers.ts:44-48`,
+`review.ts:18-22`), which swallows sink failures — telemetry can be failing in production silently.
+
+**Do not add, rename, or remove an event name.** Carry this on the existing
+`checkpoint.item_extracted` payload. `634ea14` added no new names on purpose: MNE-51's coverage test
+is what makes standing rule 5 real, and a new name weakens it.
+
+### C3 — Correct the stale record
+`AGENTS.md:77-88` describes both MNE-265 defects as open and claims `contextTokens` is read by
+nothing. Both false — see §2. Docs lane, commit direct to `main`.
+
+**Why this lane is yours:** bounded, verifiable, and correctness-critical — the shape you did well on
+the MNE-271 harness, and you found the Stripe ordering bug in `634ea14`'s review. Read **`CODEX.md`
+first**: `.claude/rules/` does **not** auto-load for you.
+
+---
+
+## 6. Collision rules
+
+| Lane | May write | Must not touch |
+|---|---|---|
+| **A** | `packages/core/src/handoff/**`, `remote-store.ts`, `packages/cli/**`, `packages/mcp-server/**`, `api/v1/handoff*` | `apps/web/src/server/{billing,account,current-account,admission}`, `apps/web/src/app/**` |
+| **B** | `apps/web/src/server/{account,current-account,admission}.ts`, `app/{team,join,welcome,device,admin}/**` | `packages/**`, billing, `app/projects/**` |
+| **C** | `apps/web/src/server/billing/**`, `app/api/stripe/**`, `app/billing/**`, `server/api/{handlers,review,propose}.ts` | `packages/cli`, `packages/mcp-server`, `app/team`, `app/join` |
+
+- **Nobody adds a §17 event name.** Emit through the existing emitter or raise it in this file.
+- **A migration serialises everyone.** B1 probably needs one. Announce it before writing it, use plan
+  mode and the `db-migration` skill, run `pnpm db:snapshot`, and commit `db/structure.sql` in the
+  same commit. The other two lanes rebase after it lands.
+- **One git worktree per lane.** There are already ~20 stale ones — use `using-git-worktrees` and
+  clean up when your PR merges.
+- `apps/site/src/content/legal.ts` is **published legal copy**. Lane C's checkout touches Stripe,
+  already disclosed as a subprocessor — verify rather than assume, and flag it loudly in the PR.
+
+## 7. Shared constraints
+
+- **Linear cannot accept new issues** (free plan limit). Reuse the numbers above; new findings go in
+  a **comment** on the closest ticket plus a pointer here. The git-lane hook rejects any commit
+  message with no `MNE-nnn`.
+- **Ask before**: production deploy, migrating production, `push --force`, `reset --hard`, history
+  rewriting. Commit, push a branch, open a PR, deploy a preview — all pre-authorised.
+- **`pnpm build` typechecks zero app code.** Run `pnpm -r build`. The web build needs a Clerk key
+  locally — use a dummy so you can tell your bug from a missing env.
+- `pnpm test` needs a **direct** `DATABASE_URL`, not `-pooler`. Without it the integration suites
+  skip silently, which looks exactly like a pass.
+- **Do not restate revoked promises**: self-hostability, offline operation, "content never leaves
+  your machine." Hosted-only since 2026-07-28; privacy is enforced by controls, not locality.
+
+## 8. What no lane can do
+
+**MNE-86 — the 7-day dogfood — is founder work and cannot be delegated.** No agent satisfies *"the
+founder uses it daily on this repo and does not turn it off."* M1 does not close without it, and it
+closes on **2026-09-01**.
+
+**Two rulings are also founder-only, and both are blocking:**
+
+- **§12.1's 300ms budget is not met.** `docs/REHYDRATE-LATENCY.md` measures 146ms store + 187ms
+  network = **333ms p95** and names the choice — restate the budget, cache, or miss it — as a founder
+  call, because §12.1 is a published promise. Standing rule 4 is unmet until it is made. The
+  authenticated path has still never been measured; that number should come first.
+- **$24/seat is unvalidated.** `634ea14` measured the token spread and *deliberately refused* to
+  convert it to money, because no contracted per-token rate is in this repo and a guessed price is
+  worse than none. `docs/BUSINESS.md` still says *"treat the number as provisional."* Lane C's
+  checkout page will price something — that number needs to be real before it does.
