@@ -108,6 +108,19 @@ export interface ContextItemProvenance {
   readonly missingFields: readonly ContextItemProvenanceField[];
 }
 
+export type ContextItemProvenanceValues = Omit<ContextItemProvenance, 'status' | 'missingFields'>;
+
+export const deriveContextItemProvenance = (
+  values: ContextItemProvenanceValues,
+): ContextItemProvenance => {
+  const missingFields = CONTEXT_ITEM_PROVENANCE_FIELDS.filter((field) => values[field] === null);
+  return {
+    ...values,
+    status: missingFields.length === 0 ? 'complete' : 'partial',
+    missingFields,
+  };
+};
+
 export interface ContextItem {
   readonly id: Uuid;
   readonly workspaceId: Uuid;

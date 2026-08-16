@@ -1,21 +1,21 @@
-import type {
-  Actor,
-  Checkpoint,
-  CheckpointItem,
-  Conflict,
-  ContextItem,
-  ContextItemProvenance,
-  Embedding,
-  Handoff,
-  IntervalMs,
-  Project,
-  Session,
-  Team,
-  TeamMember,
-  Uuid,
-  Workspace,
+import {
+  type Actor,
+  type Checkpoint,
+  type CheckpointItem,
+  type Conflict,
+  type ContextItem,
+  type ContextItemProvenance,
+  deriveContextItemProvenance,
+  type Embedding,
+  type Handoff,
+  type IntervalMs,
+  type Project,
+  type Session,
+  type Team,
+  type TeamMember,
+  type Uuid,
+  type Workspace,
 } from '../../domain/types.js';
-import { CONTEXT_ITEM_PROVENANCE_FIELDS } from '../../domain/types.js';
 import {
   ACCESS_SCOPES,
   ACTOR_KINDS,
@@ -513,16 +513,12 @@ const toContextItemProvenance = (row: SqlRow): ContextItemProvenance => {
     clientSessionName: toNullableText(row, 'provenance_client_session_name'),
     clientSessionUrl: toNullableText(row, 'provenance_client_session_url'),
   };
-  const missingFields = CONTEXT_ITEM_PROVENANCE_FIELDS.filter((field) => values[field] === null);
-
-  return {
+  return deriveContextItemProvenance({
     actorId: toUuid(row, 'provenance_actor_id'),
     actorKind: toEnum(row, 'provenance_actor_kind', ACTOR_KINDS),
     actorDisplayName: toText(row, 'provenance_actor_display_name'),
     ...values,
-    status: missingFields.length === 0 ? 'complete' : 'partial',
-    missingFields,
-  };
+  });
 };
 
 export const toContextItem = (row: SqlRow): ContextItem => ({

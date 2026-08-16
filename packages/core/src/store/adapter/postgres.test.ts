@@ -442,6 +442,8 @@ describe('PostgresStoreAdapter scoped membership lookup', () => {
     expect(itemRead).toContain('JOIN actor AS provenance_actor');
     expect(itemRead).toContain('LEFT JOIN session AS provenance_session');
     expect(itemRead).toContain('provenance_session.workspace_id = context_item.workspace_id');
+    expect(itemRead).toContain('provenance_session.project_id = context_item.project_id');
+    expect(itemRead).toContain('provenance_session.actor_id = context_item.asserted_by');
   });
 });
 

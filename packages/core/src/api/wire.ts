@@ -1,15 +1,16 @@
 import { z } from 'zod';
 import { isStorableText, NULL_BYTE_ERROR } from '../domain/text.js';
-import type {
-  Actor,
-  Checkpoint,
-  CheckpointItem,
-  Conflict,
-  ContextItem,
-  Project,
-  Session,
+import {
+  type Actor,
+  type Checkpoint,
+  type CheckpointItem,
+  CONTEXT_ITEM_PROVENANCE_FIELDS,
+  type Conflict,
+  type ContextItem,
+  deriveContextItemProvenance,
+  type Project,
+  type Session,
 } from '../domain/types.js';
-import { CONTEXT_ITEM_PROVENANCE_FIELDS } from '../domain/types.js';
 import type { ScoredItem, Slice } from '../rehydrate/types.js';
 import type { CheckpointWriteResult } from '../store/adapter/types.js';
 import {
@@ -39,6 +40,23 @@ const toDate = (value: string): Date => new Date(value);
 const toNullableDate = (value: string | null): Date | null =>
   value === null ? null : new Date(value);
 
+const ContextItemProvenanceWireSchema = z
+  .object({
+    actorId: uuid,
+    actorKind: z.enum(ACTOR_KINDS),
+    actorDisplayName: z.string(),
+    sourceSessionId: uuid.nullable(),
+    sessionTool: z.string().nullable(),
+    clientName: z.string().nullable(),
+    clientVersion: z.string().nullable(),
+    clientSessionRef: z.string().nullable(),
+    clientSessionName: z.string().nullable(),
+    clientSessionUrl: z.string().nullable(),
+    status: z.enum(['complete', 'partial']),
+    missingFields: z.array(z.enum(CONTEXT_ITEM_PROVENANCE_FIELDS)).readonly(),
+  })
+  .transform(deriveContextItemProvenance);
+
 export const ContextItemWireSchema = z.object({
   id: uuid,
   workspaceId: uuid,
@@ -62,22 +80,7 @@ export const ContextItemWireSchema = z.object({
   supersededById: uuid.nullable(),
   supersedeReason: z.string().nullable().optional(),
   accessScope: z.enum(ACCESS_SCOPES),
-  provenance: z
-    .object({
-      actorId: uuid,
-      actorKind: z.enum(ACTOR_KINDS),
-      actorDisplayName: z.string(),
-      sourceSessionId: uuid.nullable(),
-      sessionTool: z.string().nullable(),
-      clientName: z.string().nullable(),
-      clientVersion: z.string().nullable(),
-      clientSessionRef: z.string().nullable(),
-      clientSessionName: z.string().nullable(),
-      clientSessionUrl: z.string().nullable(),
-      status: z.enum(['complete', 'partial']),
-      missingFields: z.array(z.enum(CONTEXT_ITEM_PROVENANCE_FIELDS)).readonly(),
-    })
-    .optional(),
+  provenance: ContextItemProvenanceWireSchema.optional(),
 });
 
 export type ContextItemWire = z.infer<typeof ContextItemWireSchema>;
@@ -105,7 +108,9 @@ export const encodeContextItem = (item: ContextItem): ContextItemWire => ({
   supersededById: item.supersededById,
   supersedeReason: item.supersedeReason,
   accessScope: item.accessScope,
-  ...(item.provenance === undefined ? {} : { provenance: item.provenance }),
+  ...(item.provenance === undefined
+    ? {}
+    : { provenance: deriveContextItemProvenance(item.provenance) }),
 });
 
 export const decodeContextItem = (wire: ContextItemWire): ContextItem => ({

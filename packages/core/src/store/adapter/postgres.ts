@@ -141,7 +141,9 @@ const CONTEXT_ITEM_PROVENANCE_JOINS = `JOIN actor AS provenance_actor
           AND provenance_actor.id = context_item.asserted_by
          LEFT JOIN session AS provenance_session
            ON provenance_session.workspace_id = context_item.workspace_id
-          AND provenance_session.id = context_item.source_session_id`;
+          AND provenance_session.id = context_item.source_session_id
+          AND provenance_session.project_id = context_item.project_id
+          AND provenance_session.actor_id = context_item.asserted_by`;
 
 const CONTEXT_ITEM_COLUMNS_WITH_EMBEDDING = `${CONTEXT_ITEM_COLUMNS},
        context_item_embedding.model AS embedding_model,

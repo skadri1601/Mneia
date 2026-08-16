@@ -10,6 +10,7 @@ export type {
   ContextItem,
   ContextItemProvenance,
   ContextItemProvenanceField,
+  ContextItemProvenanceValues,
   Embedding,
   Handoff,
   IntervalMs,
@@ -20,7 +21,10 @@ export type {
   Uuid,
   Workspace,
 } from './domain/types.js';
-export { CONTEXT_ITEM_PROVENANCE_FIELDS } from './domain/types.js';
+export {
+  CONTEXT_ITEM_PROVENANCE_FIELDS,
+  deriveContextItemProvenance,
+} from './domain/types.js';
 export type { EmbeddingErrorCode, EmbeddingProvider } from './embed/types.js';
 export { assertEmbeddingDimensions, EmbeddingError, embeddableText } from './embed/types.js';
 export type { ChunkedTurns, ChunkOptions, TrajectoryChunk } from './extract/chunk.js';

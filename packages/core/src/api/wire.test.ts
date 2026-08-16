@@ -65,6 +65,60 @@ describe('context item wire format', () => {
     expect(decoded.embeddingModel).toBeNull();
     expect(decoded.embedding === null).toBe(decoded.embeddingModel === null);
   });
+
+  it('normalizes contradictory partial provenance from the wire', () => {
+    const parsed = ContextItemWireSchema.parse({
+      ...encodeContextItem(item),
+      provenance: {
+        actorId: item.assertedBy,
+        actorKind: 'agent',
+        actorDisplayName: 'Codex',
+        sourceSessionId: null,
+        sessionTool: null,
+        clientName: null,
+        clientVersion: null,
+        clientSessionRef: null,
+        clientSessionName: null,
+        clientSessionUrl: null,
+        status: 'complete',
+        missingFields: [],
+      },
+    });
+
+    expect(parsed.provenance?.status).toBe('partial');
+    expect(parsed.provenance?.missingFields).toEqual([
+      'sourceSessionId',
+      'sessionTool',
+      'clientName',
+      'clientVersion',
+      'clientSessionRef',
+      'clientSessionName',
+      'clientSessionUrl',
+    ]);
+  });
+
+  it('normalizes contradictory complete provenance from the wire', () => {
+    const parsed = ContextItemWireSchema.parse({
+      ...encodeContextItem(item),
+      provenance: {
+        actorId: item.assertedBy,
+        actorKind: 'agent',
+        actorDisplayName: 'Codex',
+        sourceSessionId: '55555555-5555-4555-8555-555555555555',
+        sessionTool: 'mcp',
+        clientName: 'codex',
+        clientVersion: '1.2.3',
+        clientSessionRef: '019c-session',
+        clientSessionName: 'MNE-86 dogfood',
+        clientSessionUrl: 'https://example.invalid/sessions/019c-session',
+        status: 'partial',
+        missingFields: ['clientSessionUrl'],
+      },
+    });
+
+    expect(parsed.provenance?.status).toBe('complete');
+    expect(parsed.provenance?.missingFields).toEqual([]);
+  });
 });
 
 describe('session wire format', () => {

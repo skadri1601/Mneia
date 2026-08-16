@@ -897,6 +897,59 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
     });
   });
 
+  it('does not expose session metadata from another project and actor as item provenance', async () => {
+    const foreignProject = 'aaaaaaa1-0000-4000-8000-000000000009';
+    const foreignSession = 'aaaaaaa1-0000-4000-8000-000000000010';
+
+    await withAdapter(async (adapter, _source, setup) => {
+      await setup.query(
+        `INSERT INTO project (id, workspace_id, slug, display_name)
+         VALUES ($1, $2, 'foreign-session-project', 'Foreign session project')`,
+        [foreignProject, WS_A],
+      );
+      await setup.query(
+        `INSERT INTO session (
+           id, workspace_id, project_id, actor_id, tool,
+           client_name, client_version, client_session_ref, client_session_name, client_session_url,
+           started_at)
+         VALUES ($1, $2, $3, $4, 'mcp', 'codex', '1.2.3', 'foreign-ref',
+                 'Foreign session', 'https://example.invalid/sessions/foreign-ref', now())`,
+        [foreignSession, WS_A, foreignProject, AGENT_A],
+      );
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const written = await store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'foreign session metadata stays hidden'),
+          sourceSessionId: foreignSession,
+        });
+        const reread = await store.getContextItem(written.id);
+
+        expect(reread?.provenance).toEqual({
+          actorId: ACTOR_A,
+          actorKind: 'human',
+          actorDisplayName: 'acme lead',
+          sourceSessionId: null,
+          sessionTool: null,
+          clientName: null,
+          clientVersion: null,
+          clientSessionRef: null,
+          clientSessionName: null,
+          clientSessionUrl: null,
+          status: 'partial',
+          missingFields: [
+            'sourceSessionId',
+            'sessionTool',
+            'clientName',
+            'clientVersion',
+            'clientSessionRef',
+            'clientSessionName',
+            'clientSessionUrl',
+          ],
+        });
+      });
+    });
+  });
+
   it('writes decay_after instead of silently dropping it', async () => {
     await withAdapter(async (adapter) => {
       await adapter.withScope(SCOPE_A, async (store) => {
