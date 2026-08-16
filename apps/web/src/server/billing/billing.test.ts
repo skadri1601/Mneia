@@ -380,6 +380,88 @@ describe('decodeSubscription', () => {
 });
 
 describe('StripeClient', () => {
+  it('creates a subscription Checkout Session bound to the workspace', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ id: 'cs_1', url: 'https://checkout.stripe.test/session' }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+
+    const client = new StripeClient({ configuration: CONFIG, fetchImpl });
+    const session = await client.createCheckoutSession({
+      workspaceId: WORKSPACE,
+      customerId: 'cus_1',
+      seats: 3,
+      successUrl: 'https://app.mneia.dev/billing?checkout=success',
+      cancelUrl: 'https://app.mneia.dev/billing?checkout=canceled',
+      idempotencyKey: '11111111-1111-4111-8111-111111111111',
+    });
+
+    expect(session).toEqual({ id: 'cs_1', url: 'https://checkout.stripe.test/session' });
+    const [url, init] = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.stripe.com/v1/checkout/sessions');
+    expect(Object.fromEntries(new URLSearchParams(String(init.body)))).toEqual({
+      mode: 'subscription',
+      'line_items[0][price]': CONFIG.priceId,
+      'line_items[0][quantity]': '3',
+      'metadata[workspace_id]': WORKSPACE,
+      'subscription_data[metadata][workspace_id]': WORKSPACE,
+      customer: 'cus_1',
+      success_url: 'https://app.mneia.dev/billing?checkout=success',
+      cancel_url: 'https://app.mneia.dev/billing?checkout=canceled',
+    });
+    expect(init.headers).toMatchObject({
+      'Idempotency-Key': '11111111-1111-4111-8111-111111111111',
+    });
+  });
+
+  it('creates a Billing Portal Session with the customer and return URL', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ id: 'bps_1', url: 'https://billing.stripe.test/session' }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+
+    const client = new StripeClient({ configuration: CONFIG, fetchImpl });
+    const session = await client.createPortalSession({
+      customerId: 'cus_1',
+      returnUrl: 'https://app.mneia.dev/billing',
+    });
+
+    expect(session).toEqual({ id: 'bps_1', url: 'https://billing.stripe.test/session' });
+    const [url, init] = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.stripe.com/v1/billing_portal/sessions');
+    expect(Object.fromEntries(new URLSearchParams(String(init.body)))).toEqual({
+      customer: 'cus_1',
+      return_url: 'https://app.mneia.dev/billing',
+    });
+  });
+
+  it.each([
+    [{ url: 'https://checkout.stripe.test/session' }, /non-empty session id/],
+    [{ id: 'cs_1' }, /HTTPS session URL/],
+    [{ id: 'cs_1', url: 'http://checkout.stripe.test/session' }, /HTTPS session URL/],
+    [{ id: 'cs_1', url: 'not-a-url' }, /HTTPS session URL/],
+  ])('refuses an invalid Stripe hosted session response: %o', async (payload, message) => {
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify(payload), { status: 200 }),
+    ) as unknown as typeof fetch;
+    const client = new StripeClient({ configuration: CONFIG, fetchImpl });
+
+    await expect(
+      client.createCheckoutSession({
+        workspaceId: WORKSPACE,
+        seats: 3,
+        successUrl: 'https://app.mneia.dev/billing?checkout=success',
+        cancelUrl: 'https://app.mneia.dev/billing?checkout=canceled',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_payload', message: expect.stringMatching(message) });
+  });
+
   it('creates a customer carrying the workspace id in metadata', async () => {
     const fetchImpl = vi.fn(
       async () => new Response(JSON.stringify({ id: 'cus_9' }), { status: 200 }),

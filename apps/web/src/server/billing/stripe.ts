@@ -59,10 +59,47 @@ export interface StripeSubscription {
   readonly customerId: string | null;
 }
 
+export interface StripeHostedSession {
+  readonly id: string;
+  readonly url: string;
+}
+
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 
 const asString = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+
+const decodeHostedSession = (payload: unknown): StripeHostedSession => {
+  const record = asRecord(payload);
+  const id = asString(record.id);
+  if (id === null || id.trim() === '') {
+    throw new BillingError(
+      'invalid_payload',
+      'expected Stripe to return a non-empty session id; received a hosted-session payload without one',
+    );
+  }
+
+  const url = asString(record.url);
+  if (url === null) {
+    throw new BillingError(
+      'invalid_payload',
+      'expected Stripe to return an HTTPS session URL; received a hosted-session payload without one',
+    );
+  }
+
+  try {
+    if (new URL(url).protocol !== 'https:') {
+      throw new Error('not HTTPS');
+    }
+  } catch {
+    throw new BillingError(
+      'invalid_payload',
+      `expected Stripe to return an HTTPS session URL; received "${url.slice(0, 120)}"`,
+    );
+  }
+
+  return { id, url };
+};
 
 const firstItemQuantity = (payload: Record<string, unknown>): number | null => {
   const items = asRecord(payload.items).data;
@@ -103,7 +140,7 @@ export class StripeClient {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
-  private async post(path: string, body: string): Promise<unknown> {
+  private async post(path: string, body: string, idempotencyKey?: string): Promise<unknown> {
     let response: Response;
     try {
       response = await this.fetchImpl(`${STRIPE_API}${path}`, {
@@ -111,6 +148,7 @@ export class StripeClient {
         headers: {
           authorization: `Bearer ${this.configuration.secretKey}`,
           'content-type': 'application/x-www-form-urlencoded',
+          ...(idempotencyKey === undefined ? {} : { 'Idempotency-Key': idempotencyKey }),
         },
         body,
       });
@@ -156,6 +194,46 @@ export class StripeClient {
       );
     }
     return { id };
+  }
+
+  async createCheckoutSession(input: {
+    readonly workspaceId: string;
+    readonly customerId?: string;
+    readonly seats: number;
+    readonly successUrl: string;
+    readonly cancelUrl: string;
+    readonly idempotencyKey?: string;
+  }): Promise<StripeHostedSession> {
+    return decodeHostedSession(
+      await this.post(
+        '/checkout/sessions',
+        form({
+          mode: 'subscription',
+          'line_items[0][price]': this.configuration.priceId,
+          'line_items[0][quantity]': input.seats,
+          'metadata[workspace_id]': input.workspaceId,
+          'subscription_data[metadata][workspace_id]': input.workspaceId,
+          customer: input.customerId,
+          success_url: input.successUrl,
+          cancel_url: input.cancelUrl,
+        }),
+        input.idempotencyKey,
+      ),
+    );
+  }
+
+  async createPortalSession(input: {
+    readonly customerId: string;
+    readonly returnUrl: string;
+    readonly idempotencyKey?: string;
+  }): Promise<StripeHostedSession> {
+    return decodeHostedSession(
+      await this.post(
+        '/billing_portal/sessions',
+        form({ customer: input.customerId, return_url: input.returnUrl }),
+        input.idempotencyKey,
+      ),
+    );
   }
 
   async createSubscription(input: {
