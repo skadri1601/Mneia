@@ -1,0 +1,119 @@
+.page {
+  width: min(100% - (2 * var(--space-lg)), var(--width-text));
+  margin-inline: auto;
+  padding-block: var(--space-section);
+}
+
+.pageHeader {
+  display: grid;
+  gap: var(--space-sm);
+  margin-block-end: var(--space-xxl);
+}
+
+.pageHeader h1 {
+  font-family: var(--font-display);
+  font-size: var(--size-display-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-display-lg);
+  letter-spacing: var(--tracking-display-lg);
+}
+
+.pageHeader p,
+.card p {
+  color: var(--tile-muted);
+}
+
+.card {
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-lg);
+  background: var(--canvas);
+  padding: var(--space-lg);
+  margin-block-end: var(--space-lg);
+  display: grid;
+  gap: var(--space-md);
+}
+
+.card h2 {
+  font-family: var(--font-display);
+  font-size: var(--size-tagline);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tagline);
+}
+
+.tokenList {
+  list-style: none;
+  display: grid;
+  gap: var(--space-lg);
+  padding: 0;
+}
+
+.token {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.tokenLabel {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+  overflow-wrap: anywhere;
+}
+
+.tokenMeta {
+  color: var(--tile-faint);
+  font-size: var(--size-fine-print);
+}
+
+.scopes {
+  font-family: var(--font-mono);
+}
+
+.stale {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.revoke {
+  min-height: var(--target-min);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-pill);
+  background: var(--canvas);
+  color: var(--ink);
+  padding: var(--space-sm) var(--space-lg);
+  font: inherit;
+  cursor: pointer;
+}
+
+.revoke:active {
+  transform: scale(var(--press-scale));
+}
+
+.revoke:focus-visible,
+.backLink:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+
+.notice,
+.error {
+  border-radius: var(--rounded-sm);
+  padding: var(--space-md);
+  margin-block-end: var(--space-lg);
+}
+
+.notice {
+  background: var(--surface-pearl);
+}
+
+.error {
+  border: 1px solid var(--tile-hairline);
+}
+
+.backLink {
+  min-height: var(--target-min);
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  color: var(--tile-link);
+}

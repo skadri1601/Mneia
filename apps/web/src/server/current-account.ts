@@ -7,6 +7,7 @@ import { database } from './database.js';
 import { AccountError } from './store/account-store.js';
 import type { AccountContext, AccountStore } from './store/account-store.js';
 import { PostgresAccountStore } from './store/postgres-account-store.js';
+import { PostgresTokenStore } from './store/postgres-token-store.js';
 import { readSelectedWorkspace } from './workspace-selection.js';
 
 export interface ClerkAuthentication {
@@ -91,6 +92,7 @@ export const createCurrentAccountResolver = (
 ): CurrentAccountResolver => requestCache(() => resolveCurrentAccount(dependencies));
 
 const accountStore = new PostgresAccountStore(database);
+const tokenStore = new PostgresTokenStore(database);
 
 export const currentAccountDependencies: CurrentAccountDependencies = {
   authenticate: async () => {
@@ -117,4 +119,4 @@ export const currentAccountDependencies: CurrentAccountDependencies = {
 
 export const getCurrentAccount = createCurrentAccountResolver(currentAccountDependencies);
 
-export { accountStore };
+export { accountStore, tokenStore };
