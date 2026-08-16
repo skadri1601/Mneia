@@ -3,9 +3,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
-const { billingStatusFor, planSeatChange, seatsRequiredFor, stateAfterSubscription } = await import(
-  './seats.js'
-);
+const {
+  billingStatusFor,
+  hasTeamEntitlement,
+  planSeatChange,
+  seatsRequiredFor,
+  stateAfterSubscription,
+} = await import('./seats.js');
 const {
   BillingError,
   decodeSubscription,
@@ -116,8 +120,8 @@ describe('billingStatusFor', () => {
     ['active', 'active'],
     ['trialing', 'trialing'],
     ['past_due', 'past_due'],
-    ['unpaid', 'past_due'],
-    ['incomplete', 'past_due'],
+    ['unpaid', 'canceled'],
+    ['incomplete', 'canceled'],
     ['canceled', 'canceled'],
     ['paused', 'canceled'],
   ])('maps Stripe %s to %s', (stripeStatus, expected) => {
@@ -126,6 +130,17 @@ describe('billingStatusFor', () => {
 
   it('refuses an unmapped status rather than guessing what to bill', () => {
     expect(() => billingStatusFor('something_new')).toThrow(/refused rather than guessed/);
+  });
+});
+
+describe('hasTeamEntitlement', () => {
+  it.each([
+    ['active', true],
+    ['trialing', true],
+    ['past_due', true],
+    ['canceled', false],
+  ] as const)('has Team entitlement for local status %s: %s', (billingStatus, expected) => {
+    expect(hasTeamEntitlement(billingStatus)).toBe(expected);
   });
 });
 
@@ -164,6 +179,39 @@ describe('stateAfterSubscription', () => {
     expect(next.plan).toBe('solo');
     expect(next.seatsPurchased).toBeNull();
     expect(next.billingStatus).toBe('canceled');
+  });
+
+  it.each(['unpaid', 'incomplete'])(
+    'cancels a failed-payment Stripe status without Team entitlement',
+    (subscriptionStatus) => {
+      expect(
+        stateAfterSubscription({
+          current: { ...current, plan: 'team', seatsPurchased: 4 },
+          subscriptionStatus,
+          seats: 4,
+          customerRef: 'cus_1',
+        }),
+      ).toMatchObject({
+        plan: 'solo',
+        billingStatus: 'canceled',
+        seatsPurchased: null,
+      });
+    },
+  );
+
+  it('keeps a past-due subscription on Team entitlement and preserves its seats', () => {
+    expect(
+      stateAfterSubscription({
+        current,
+        subscriptionStatus: 'past_due',
+        seats: 4,
+        customerRef: 'cus_1',
+      }),
+    ).toMatchObject({
+      plan: 'team',
+      billingStatus: 'past_due',
+      seatsPurchased: 4,
+    });
   });
 
   it('leaves an enterprise workspace on enterprise when its subscription lapses', () => {
