@@ -2,12 +2,30 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
-const OVERRIDE = process.env.MNEIA_WORKTREE_GUARD === 'off';
+const ENV_OVERRIDE = process.env.MNEIA_WORKTREE_GUARD === 'off';
+
+function overrideInCommand(text) {
+  const sh = text.match(/^\s*((?:[A-Za-z_][A-Za-z0-9_]*=(?:"[^"]*"|'[^']*'|\S*)\s+)+)/);
+  if (sh && /\bMNEIA_WORKTREE_GUARD=(?:"off"|'off'|off)(?:\s|$)/.test(sh[1])) return true;
+  return /^\s*\$env:MNEIA_WORKTREE_GUARD\s*=\s*['"]?off['"]?\s*;/i.test(text);
+}
 
 const LANES = [
-  ['.claude/worktrees/lane-a-handoff', 'feat/mne-89-handoff-artifact', 'A — handoff and the clients'],
-  ['.claude/worktrees/lane-b-account', 'feat/mne-181-multi-workspace', 'B — account and team plane'],
-  ['.claude/worktrees/lane-c-billing', 'feat/mne-141-checkout-and-quota', 'C — billing and telemetry'],
+  [
+    '.claude/worktrees/lane-a-handoff',
+    'feat/mne-89-handoff-artifact',
+    'A — handoff and the clients',
+  ],
+  [
+    '.claude/worktrees/lane-b-account',
+    'feat/mne-181-multi-workspace',
+    'B — account and team plane',
+  ],
+  [
+    '.claude/worktrees/lane-c-billing',
+    'feat/mne-141-checkout-and-quota',
+    'C — billing and telemetry',
+  ],
 ];
 
 function deny(reason) {
@@ -52,7 +70,10 @@ const REASON =
   `The fourth is the primary checkout at the repo root, which stays on main.\n` +
   existing() +
   `\nIf your work genuinely does not belong to a lane, say so and let the founder decide rather\n` +
-  `than creating one. Real exception: re-run prefixed with MNEIA_WORKTREE_GUARD=off.`;
+  `than creating one.\n\n` +
+  `Real exception, and it has to go through a shell so the guard can see it:\n` +
+  `  MNEIA_WORKTREE_GUARD=off git worktree add <path> <branch>\n` +
+  `The EnterWorktree tool has no way to carry the override — use the command above instead.`;
 
 const raw = readFileSync(0, 'utf8');
 let payload;
@@ -62,7 +83,7 @@ try {
   pass();
 }
 
-if (OVERRIDE) pass();
+if (ENV_OVERRIDE) pass();
 
 const toolName = payload?.tool_name ?? '';
 
@@ -78,8 +99,9 @@ function stripData(text) {
     .replace(/-(?:m|F)\s+(['"])[\s\S]*?\1/g, ' ');
 }
 
+if (overrideInCommand(cmd)) pass();
+
 const code = stripData(cmd);
-if (!/\bgit\b/.test(code)) pass();
-if (!/\bgit\s+(?:-C\s+\S+\s+)?worktree\s+add\b/.test(code)) pass();
+if (!/\bworktree\s+add\b/.test(code)) pass();
 
 deny(REASON);
