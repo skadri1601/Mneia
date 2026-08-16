@@ -19,6 +19,7 @@ import {
   resolveProject,
   turnsSince,
 } from '@mneia/core';
+import { ExtractionRunError } from '../extraction/select.js';
 import { ApiRequestError } from './handlers.js';
 
 const EXISTING_ITEM_LIMIT = 200;
@@ -153,6 +154,9 @@ export const handleProposeCheckpoint = async (
         maxOutputTokens: MAX_OUTPUT_TOKENS,
       });
     } catch (error) {
+      if (error instanceof ExtractionRunError) {
+        attempts.push(...error.attempts);
+      }
       incompleteReason = `chunk ${index + 1} of ${chunks.length} did not complete, so the watermark stops before it and those turns are re-read on the next checkpoint: ${error instanceof Error ? error.message : String(error)}`;
       break;
     }

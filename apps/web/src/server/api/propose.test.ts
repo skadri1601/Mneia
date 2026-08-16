@@ -5,6 +5,7 @@ vi.mock('server-only', () => ({}));
 
 const { handleProposeCheckpoint } = await import('./propose.js');
 const { ApiRequestError } = await import('./handlers.js');
+const { ExtractionRunError } = await import('../extraction/select.js');
 
 const WORKSPACE = '22222222-2222-4222-8222-222222222222';
 const ACTOR = '44444444-4444-4444-8444-444444444444';
@@ -241,6 +242,29 @@ describe('handleProposeCheckpoint', () => {
     });
 
     await expect(handleProposeCheckpoint(storeStub(), input(['a']), deps)).rejects.toThrow();
+    expect(seen.usage).toHaveLength(1);
+    expect(deps.recordUsage).toHaveBeenCalledWith({ projectId: PROJECT.id, attempts });
+  });
+
+  it('records billable attempts when extraction fails', async () => {
+    const attempts = [
+      {
+        model: 'gpt-5.6-luna',
+        outcome: 'failed' as const,
+        inputTokens: 900,
+        outputTokens: 0,
+        durationMs: 12,
+      },
+    ];
+    const { deps, seen } = depsWith({
+      run: vi.fn(async () => {
+        throw new ExtractionRunError(new Error('the provider reset the connection'), attempts);
+      }),
+    });
+
+    await expect(handleProposeCheckpoint(storeStub(), input(['a']), deps)).rejects.toThrow(
+      /re-read on the next checkpoint/,
+    );
     expect(seen.usage).toHaveLength(1);
     expect(deps.recordUsage).toHaveBeenCalledWith({ projectId: PROJECT.id, attempts });
   });

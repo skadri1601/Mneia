@@ -30,6 +30,22 @@ export interface ExtractionRunResult {
   readonly attempts: readonly ExtractionAttempt[];
 }
 
+export class ExtractionRunError extends ExtractionProviderError {
+  readonly attempts: readonly ExtractionAttempt[];
+
+  constructor(error: unknown, attempts: readonly ExtractionAttempt[]) {
+    const providerError = error instanceof ExtractionProviderError ? error : null;
+    super(
+      error instanceof Error ? error.message : String(error),
+      providerError === null
+        ? { retryable: false, cause: error }
+        : { retryable: providerError.retryable, status: providerError.status, cause: error },
+    );
+    this.name = 'ExtractionRunError';
+    this.attempts = [...attempts];
+  }
+}
+
 export interface ExtractionRunner {
   readonly primary: string;
   readonly fallback: string | null;
@@ -126,13 +142,16 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
         });
 
         if (!retryable || fallback === null) {
-          throw error;
+          throw new ExtractionRunError(error, attempts);
         }
 
         if (!fits) {
-          throw new ExtractionProviderError(
-            `${primary.id} failed and ${fallback.id} was not tried: the prompt is about ${estimatePromptTokens(request).toLocaleString()} tokens against its ${fallback.contextTokens.toLocaleString()} token window. Nothing was written and the trajectory is unconsumed, so it is re-read on the next checkpoint. The primary failed with: ${error instanceof Error ? error.message : String(error)}`,
-            { retryable: false, cause: error },
+          throw new ExtractionRunError(
+            new ExtractionProviderError(
+              `${primary.id} failed and ${fallback.id} was not tried: the prompt is about ${estimatePromptTokens(request).toLocaleString()} tokens against its ${fallback.contextTokens.toLocaleString()} token window. Nothing was written and the trajectory is unconsumed, so it is re-read on the next checkpoint. The primary failed with: ${error instanceof Error ? error.message : String(error)}`,
+              { retryable: false, cause: error },
+            ),
+            attempts,
           );
         }
 
@@ -155,7 +174,7 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
             outputTokens: 0,
             durationMs: now() - fallbackStartedAt,
           });
-          throw fallbackError;
+          throw new ExtractionRunError(fallbackError, attempts);
         }
       }
     },
