@@ -6,6 +6,7 @@ import type {
   RemoteStore,
   ScopedStore,
   Trajectory,
+  TrajectoryTurn,
   Uuid,
 } from '@mneia/core';
 import {
@@ -239,6 +240,41 @@ const newItemFrom = (entry: CommitEntry, projectId: Uuid): NewContextItem => ({
 const actionFor = (entry: CommitEntry) =>
   entry.candidate.supersedes === null ? ('created' as const) : ('superseded' as const);
 
+export const MAX_UPLOAD_BYTES = 900_000;
+
+const wireTurn = (turn: TrajectoryTurn) => ({
+  ref: turn.ref,
+  role: turn.role,
+  kind: turn.kind,
+  text: turn.text,
+  toolName: turn.toolName,
+  at: turn.at === null ? null : turn.at.toISOString(),
+});
+
+export function uploadableFrom(
+  turns: readonly TrajectoryTurn[],
+  start: number,
+  budgetBytes: number = MAX_UPLOAD_BYTES,
+): readonly TrajectoryTurn[] {
+  const taken: TrajectoryTurn[] = [];
+  let used = 0;
+
+  for (let index = start; index < turns.length; index += 1) {
+    const turn = turns[index];
+    if (turn === undefined) {
+      break;
+    }
+    const cost = Buffer.byteLength(JSON.stringify(wireTurn(turn)), 'utf8') + 1;
+    if (taken.length > 0 && used + cost > budgetBytes) {
+      break;
+    }
+    taken.push(turn);
+    used += cost;
+  }
+
+  return taken;
+}
+
 export const httpCheckpointApi: CheckpointApi = {
   async propose(request: ProposeRequest): Promise<CheckpointProposal> {
     const { transport } = await connect(request.config);
@@ -249,21 +285,40 @@ export const httpCheckpointApi: CheckpointApi = {
         : await readTrajectoryFile(request.fromFile);
 
     const reduced = reduceTrajectory(trajectory, { maxChars: Number.MAX_SAFE_INTEGER });
+    const all = reduced.trajectory.turns;
 
-    const { proposal } = await transport.request('/api/v1/checkpoints/propose', ProposalEnvelope, {
-      project: request.config.project,
-      source: reduced.trajectory.source,
-      sessionRef: reduced.trajectory.sessionRef,
-      trigger: request.trigger,
-      turns: reduced.trajectory.turns.map((turn) => ({
-        ref: turn.ref,
-        role: turn.role,
-        kind: turn.kind,
-        text: turn.text,
-        toolName: turn.toolName,
-        at: turn.at === null ? null : turn.at.toISOString(),
-      })),
-    });
+    const send = async (turns: readonly TrajectoryTurn[]) => {
+      const { proposal } = await transport.request(
+        '/api/v1/checkpoints/propose',
+        ProposalEnvelope,
+        {
+          project: request.config.project,
+          source: reduced.trajectory.source,
+          sessionRef: reduced.trajectory.sessionRef,
+          trigger: request.trigger,
+          turns: turns.map(wireTurn),
+        },
+      );
+      return proposal;
+    };
+
+    const fitsWhole = uploadableFrom(all, 0).length === all.length;
+
+    let proposal = await send(fitsWhole ? all : []);
+    let heldBack = 0;
+
+    if (!fitsWhole) {
+      const at = proposal.watermark;
+      const marked = at === null ? -1 : all.findIndex((turn) => turn.ref === at);
+      const done = marked === all.length - 1;
+
+      if (!done) {
+        const start = marked < 0 ? 0 : marked;
+        const uploaded = uploadableFrom(all, start);
+        proposal = await send(uploaded);
+        heldBack = all.length - start - uploaded.length;
+      }
+    }
 
     return {
       workspaceId: proposal.workspaceId,
@@ -273,9 +328,9 @@ export const httpCheckpointApi: CheckpointApi = {
       source: reduced.trajectory.source,
       sourceSessionRef: reduced.trajectory.sessionRef,
       watermark: proposal.watermark,
-      pendingTurns: proposal.pendingTurns,
+      pendingTurns: proposal.pendingTurns + heldBack,
       incompleteReason: proposal.incompleteReason,
-      droppedBeforeUpload: trajectory.turns.length - reduced.trajectory.turns.length,
+      droppedBeforeUpload: trajectory.turns.length - all.length,
       candidates: proposal.candidates.map((candidate) => ({
         index: candidate.index,
         kind: candidate.kind,

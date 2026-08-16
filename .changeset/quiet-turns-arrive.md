@@ -2,11 +2,11 @@
 '@mneia/cli': patch
 ---
 
-`mneia checkpoint` now uploads the whole session transcript instead of capping it at 700,000
-characters first. Sessions above that cap previously had turns dropped on the client, and because
-the server sets the watermark from what it received, those turns were skipped permanently — running
-the command again did not pick them up.
+`mneia checkpoint` no longer discards turns from a large session before uploading it. Previously the
+client reduced the transcript to 700,000 characters and sent only what survived; because the server
+sets its watermark from what it received, the discarded turns were marked as covered and running the
+command again did not pick them up.
 
-The server has chunked oversized transcripts since 0.2.0, so the client cap was discarding work the
-API could already accept. Per-turn truncation of large tool output and secret redaction are
-unchanged; only the whole-transcript drop is gone.
+A session too large for one request is now uploaded across successive runs instead. The turns that do
+not fit are reported as pending — the state that already means "run again, nothing was skipped" —
+rather than dropped. Per-turn truncation of large tool output and secret redaction are unchanged.
