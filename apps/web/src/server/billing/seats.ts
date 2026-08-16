@@ -101,11 +101,7 @@ export const stateAfterSubscription = (request: UpgradeRequest): BillingState =>
 
   return {
     plan:
-      teamEntitled && request.current.plan === 'enterprise'
-        ? 'enterprise'
-        : teamEntitled
-          ? 'team'
-          : 'solo',
+      request.current.plan === 'enterprise' ? 'enterprise' : teamEntitled ? 'team' : 'solo',
     billingStatus: status,
     seatsPurchased: teamEntitled ? request.seats : null,
     billingCustomerRef: request.customerRef,

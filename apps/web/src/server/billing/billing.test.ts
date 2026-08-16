@@ -240,6 +240,21 @@ describe('stateAfterSubscription', () => {
     expect(next.plan).toBe('enterprise');
   });
 
+  it('leaves an enterprise workspace on enterprise when a subscription is canceled', () => {
+    const next = stateAfterSubscription({
+      current: { ...current, plan: 'enterprise', seatsPurchased: 9 },
+      subscriptionStatus: 'canceled',
+      seats: 9,
+      customerRef: 'cus_1',
+    });
+
+    expect(next).toMatchObject({
+      plan: 'enterprise',
+      billingStatus: 'canceled',
+      seatsPurchased: null,
+    });
+  });
+
   it('keeps a trialing workspace on the team plan', () => {
     expect(
       stateAfterSubscription({
