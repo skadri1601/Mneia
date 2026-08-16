@@ -145,12 +145,29 @@ async function seedIdentityRows(admin: Client): Promise<void> {
   }
 
   await admin.query(
-    `INSERT INTO actor (id, workspace_id, kind, display_name, external_ref)
-     VALUES ($1, $2, 'human', 'Human A', $3),
-            ($4, $5, 'human', 'Human B', $6),
-            ($7, $2, 'agent', 'Agent A', $3)`,
+    `INSERT INTO identity (id, subject) VALUES (gen_random_uuid(), $1), (gen_random_uuid(), $2)`,
+    [SUBJECT_A, SUBJECT_B],
+  );
+
+  await admin.query(
+    `INSERT INTO actor (id, workspace_id, identity_id, kind, display_name, external_ref)
+     VALUES ($1, $2, (SELECT id FROM identity WHERE subject = $3), 'human', 'Human A', $3),
+            ($4, $5, (SELECT id FROM identity WHERE subject = $6), 'human', 'Human B', $6),
+            ($7, $2, NULL, 'agent', 'Agent A', $3)`,
     [ACTOR_A, WORKSPACE_A, SUBJECT_A, ACTOR_B, WORKSPACE_B, SUBJECT_B, AGENT_A],
   );
+
+  for (const [workspaceId, subject] of [
+    [WORKSPACE_A, SUBJECT_A],
+    [WORKSPACE_B, SUBJECT_B],
+  ] as const) {
+    await admin.query(
+      `INSERT INTO workspace_member (workspace_id, identity_id, role)
+       VALUES ($1, (SELECT id FROM identity WHERE subject = $2), 'owner')
+       ON CONFLICT (workspace_id, identity_id) DO NOTHING`,
+      [workspaceId, subject],
+    );
+  }
 }
 
 async function beginIdentityLookup(session: PostgresSession, subject: string): Promise<void> {
@@ -401,15 +418,15 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
       await admin.query('SELECT set_config($1, $2, false)', [WORKSPACE_SETTING, WORKSPACE_B]);
 
       await admin.query(
-        `INSERT INTO actor (id, workspace_id, kind, display_name, external_ref)
-         VALUES ($1, $2, 'human', 'The Same Human, Elsewhere', $3)`,
+        `INSERT INTO actor (id, workspace_id, identity_id, kind, display_name, external_ref)
+         VALUES ($1, $2, (SELECT id FROM identity WHERE subject = $3), 'human', 'The Same Human, Elsewhere', $3)`,
         [DENIED_ACTOR, WORKSPACE_B, SUBJECT_A],
       );
 
       await expect(
         admin.query(
-          `INSERT INTO actor (id, workspace_id, kind, display_name, external_ref)
-           VALUES (gen_random_uuid(), $1, 'human', 'Duplicate Within One Workspace', $2)`,
+          `INSERT INTO actor (id, workspace_id, identity_id, kind, display_name, external_ref)
+           VALUES (gen_random_uuid(), $1, (SELECT id FROM identity WHERE subject = $2), 'human', 'Duplicate Within One Workspace', $2)`,
           [WORKSPACE_B, SUBJECT_A],
         ),
       ).rejects.toMatchObject({ code: '23505' });
