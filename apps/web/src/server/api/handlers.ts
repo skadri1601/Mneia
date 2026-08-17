@@ -310,6 +310,7 @@ export const handleWriteCheckpoint = async (
       confidence: written.confidence,
       loadBearing: written.loadBearing,
       trigger: input.checkpoint.trigger,
+      coverage: input.checkpoint.coverage,
     });
 
     if (written.supersedesId !== null) {

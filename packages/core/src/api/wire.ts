@@ -458,6 +458,20 @@ export const NewProjectWireSchema = z.object({
 
 export type NewProjectWire = z.infer<typeof NewProjectWireSchema>;
 
+export const EXTRACTION_INCOMPLETE_REASONS = ['provider_failed', 'invalid_output'] as const;
+
+export type ExtractionIncompleteReason = (typeof EXTRACTION_INCOMPLETE_REASONS)[number];
+
+export const ExtractionCoverageWireSchema = z.strictObject({
+  droppedTurns: z.number().int().min(0),
+  splitTurns: z.number().int().min(0),
+  pendingTurns: z.number().int().min(0),
+  consumedTurns: z.number().int().min(0),
+  incompleteCode: z.enum(EXTRACTION_INCOMPLETE_REASONS).nullable(),
+});
+
+export type ExtractionCoverageWire = z.infer<typeof ExtractionCoverageWireSchema>;
+
 export const CheckpointWriteWireSchema = z.object({
   checkpoint: z.object({
     projectId: uuid,
@@ -472,6 +486,7 @@ export const CheckpointWriteWireSchema = z.object({
     source: z.enum(TRAJECTORY_SOURCES).nullable().optional(),
     sourceSessionRef: z.string().max(300).nullable().optional(),
     sourceWatermark: z.string().max(300).nullable().optional(),
+    coverage: ExtractionCoverageWireSchema.optional(),
   }),
   items: z
     .array(
@@ -560,6 +575,7 @@ export const CheckpointProposalWireSchema = z.object({
   model: z.string(),
   pendingTurns: z.number().int().min(0).default(0),
   incompleteReason: z.string().nullable().default(null),
+  coverage: ExtractionCoverageWireSchema.optional(),
 });
 
 export type CheckpointProposalWire = z.infer<typeof CheckpointProposalWireSchema>;

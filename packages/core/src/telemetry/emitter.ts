@@ -54,6 +54,15 @@ const EVENT_SCHEMAS: Record<TelemetryEventName, z.ZodType> = {
     confidence: z.number().min(0).max(1),
     loadBearing: z.boolean(),
     trigger: z.enum(CHECKPOINT_TRIGGERS),
+    coverage: z
+      .strictObject({
+        droppedTurns: z.number().int().min(0),
+        splitTurns: z.number().int().min(0),
+        pendingTurns: z.number().int().min(0),
+        consumedTurns: z.number().int().min(0),
+        incompleteCode: z.enum(['provider_failed', 'invalid_output']).nullable(),
+      })
+      .optional(),
   }),
   'checkpoint.item_confirmed': z.strictObject({
     name: z.literal('checkpoint.item_confirmed'),

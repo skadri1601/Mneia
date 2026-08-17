@@ -315,6 +315,87 @@ describe('handleProposeCheckpoint', () => {
     expect(deps.recordUsage).toHaveBeenCalledWith({ projectId: PROJECT.id, attempts });
   });
 
+  describe('the coverage carried to §17', () => {
+    const refs = Array.from({ length: 24 }, (_, index) => `t${index}`);
+    const PROVIDER_SECRET = 'candidates: [{ title: a real decision from the transcript }]';
+
+    it('reports a clean run as fully covered, with no failure code', async () => {
+      const { deps } = depsWith();
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(['a', 'b']), deps);
+
+      expect(proposal.coverage).toEqual({
+        droppedTurns: 0,
+        splitTurns: 0,
+        pendingTurns: 0,
+        consumedTurns: 2,
+        incompleteCode: null,
+      });
+    });
+
+    it('counts turns the chunker had to split, which nothing recorded before', async () => {
+      const { deps } = depsWith({ servableContextTokens: 20_000 });
+      const { proposal } = await handleProposeCheckpoint(
+        storeStub(),
+        input(['solo'], () => `Turn solo: ${Array.from({ length: 40_000 }, () => 'x').join(' ')}`),
+        deps,
+      );
+
+      expect(proposal.coverage?.splitTurns).toBeGreaterThan(0);
+    });
+
+    it('records a provider failure as a code, never as the provider message', async () => {
+      let call = 0;
+      const { deps } = depsWith({
+        servableContextTokens: 20_000,
+        run: vi.fn(async () => {
+          call += 1;
+          if (call === 2) {
+            throw new Error(PROVIDER_SECRET);
+          }
+          return {
+            text: CANDIDATES,
+            model: 'gpt-5.6-luna',
+            attempts: [],
+          };
+        }),
+      });
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(refs, bulky), deps);
+
+      expect(proposal.coverage?.incompleteCode).toBe('provider_failed');
+      expect(JSON.stringify(proposal.coverage)).not.toContain(PROVIDER_SECRET);
+      expect(proposal.incompleteReason).toContain(PROVIDER_SECRET);
+    });
+
+    it('records unusable model output as a code, never as the output', async () => {
+      let call = 0;
+      const { deps } = depsWith({
+        servableContextTokens: 20_000,
+        run: vi.fn(async () => {
+          call += 1;
+          return {
+            text: call === 2 ? `{"broken": "${PROVIDER_SECRET}"` : CANDIDATES,
+            model: 'gpt-5.6-luna',
+            attempts: [],
+          };
+        }),
+      });
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(refs, bulky), deps);
+
+      expect(proposal.coverage?.incompleteCode).toBe('invalid_output');
+      expect(JSON.stringify(proposal.coverage)).not.toContain(PROVIDER_SECRET);
+    });
+
+    it('agrees with the top-level counts, so the two cannot drift', async () => {
+      const { deps } = depsWith({ servableContextTokens: 20_000 });
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(refs, bulky), deps);
+
+      expect(proposal.coverage?.consumedTurns).toBe(proposal.consumedTurns);
+      expect(proposal.coverage?.pendingTurns).toBe(proposal.pendingTurns);
+    });
+  });
+
   it('reports an unknown project with a message naming the fix', async () => {
     const missing = {
       ...storeStub(),

@@ -172,6 +172,39 @@ describe('handleWriteCheckpoint telemetry', () => {
     });
   });
 
+  it('copies echoed extraction coverage onto every item it emits', async () => {
+    const sink = harness(actor(AGENT, 'agent'), [writtenItem(), writtenItem()]);
+    const coverage = {
+      droppedTurns: 0,
+      splitTurns: 3,
+      pendingTurns: 40,
+      consumedTurns: 12,
+      incompleteCode: 'provider_failed' as const,
+    };
+
+    const withCoverage = {
+      ...request(),
+      checkpoint: { ...request().checkpoint, coverage },
+    };
+
+    await handleWriteCheckpoint(sink.store, withCoverage as never, deps(sink.telemetry));
+
+    const extracted = sink.events.filter((event) => event.name === 'checkpoint.item_extracted');
+    expect(extracted.length).toBeGreaterThan(0);
+    for (const event of extracted) {
+      expect(event).toMatchObject({ coverage });
+    }
+  });
+
+  it('leaves coverage absent when the client does not echo it, rather than inventing zeroes', async () => {
+    const sink = harness(actor(AGENT, 'agent'), [writtenItem()]);
+
+    await handleWriteCheckpoint(sink.store, request() as never, deps(sink.telemetry));
+
+    const extracted = sink.events.filter((event) => event.name === 'checkpoint.item_extracted');
+    expect(extracted.at(0)).not.toHaveProperty('coverage', expect.anything());
+  });
+
   it('emits item.superseded when the written item replaces one', async () => {
     const previous = '99999999-9999-4999-8999-999999999999';
     const sink = harness(actor(AGENT, 'agent'), [writtenItem({ supersedesId: previous })]);
