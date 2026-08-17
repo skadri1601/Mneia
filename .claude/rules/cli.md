@@ -17,6 +17,23 @@ Binary is `mneia`. Config lives in `.mneia/` in the repo.
 
 Do not build ahead of the milestone. §12.2 has the full intended surface.
 
+## The interactive session is not an eighth command
+
+Bare `mneia` on a TTY opens a REPL (`session.ts`), dispatched from `bin.ts` before `route()`. It is
+deliberately **not** registered as a command, so the M1 guard in `router.ts` keeps meaning what it
+says — `assertRegistrableCommands` still rejects anything outside the surface above.
+
+Two invariants, both tested:
+
+- **Every line goes through `route()`.** The REPL parses a line into argv and hands it over. It must
+  never call a command's `run` directly or reach the API itself, or the interactive and one-shot
+  forms will drift and `--json`, `--help`, and error rendering will differ between them.
+- **Off a TTY, nothing changed.** Piped, redirected, or in CI, bare `mneia` still prints the command
+  list to stderr and exits `2`. The dogfood hooks and any script depending on that must keep working.
+
+It dispatches commands; it does not talk to a model. A prompt that answers questions would be the
+§19 chat interface, which is a non-goal — see the `scope-check` skill before extending it that way.
+
 ## Every command is an authenticated API call
 
 **Hosted-only** (§11.1, resolved 2026-07-28). There is no local store, no `sync`, and no offline

@@ -67,6 +67,35 @@ rehydration is not empty.
 `handoff`, `pickup`, and `conflicts` are named but not yet shipped; running one tells you which
 release it lands in rather than failing with an unknown-command error.
 
+## The interactive session
+
+Run `mneia` with no arguments in a terminal and it opens a session instead of exiting:
+
+```
+$ mneia
+
+  mneia 0.2.0
+  example-co / api
+  signed in as Ada Lovelace
+
+  Type a task in plain words to rehydrate context for it.
+  /help for commands · /exit to leave
+
+› add rate limiting to the public API
+```
+
+Anything you type that does not start with `/` is rehydrated as a task, because that is the thing
+you do most. Commands are the same seven, prefixed with a slash and taking the same flags —
+`/status --json`, `/log --limit 5`, `/checkpoint -m "chose the token bucket"`. Tab completes a
+slash command, the up arrow walks your history, `/clear` clears the screen, and `/exit` or Ctrl+D
+leaves. Ctrl+C cancels the line you are typing; press it twice to leave.
+
+If the machine is not signed in, or the stored token has expired, the session runs the device flow
+for you rather than telling you to go and run `mneia login` first.
+
+**Only a terminal gets the session.** Piped, redirected, or run in CI, bare `mneia` still prints
+the command list and exits `2`, so a script that depends on that keeps working.
+
 ## A session
 
 ```
