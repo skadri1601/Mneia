@@ -53,6 +53,13 @@ const FIXTURES: Record<TelemetryEventName, TelemetryEvent> = {
     confidence: 0.82,
     loadBearing: true,
     trigger: 'task_boundary',
+    coverage: {
+      droppedTurns: 0,
+      splitTurns: 2,
+      pendingTurns: 40,
+      consumedTurns: 12,
+      incompleteCode: 'provider_failed',
+    },
   },
   'checkpoint.item_confirmed': {
     name: 'checkpoint.item_confirmed',
@@ -289,5 +296,31 @@ describe('MNE-50: telemetry is opt-out', () => {
 
     expect(memory.events).toEqual([]);
     await expect(readFile(filePath, 'utf8')).rejects.toThrow();
+  });
+});
+
+describe('extraction coverage on checkpoint.item_extracted', () => {
+  it('carries only counts and a bounded code, so it cannot become a content channel', async () => {
+    const sink = createMemorySink();
+    const emitter = createTelemetryEmitter({ sinks: [sink], env: {} });
+
+    await emitter.emit(FIXTURES['checkpoint.item_extracted']);
+
+    const [event] = sink.events as readonly Record<string, unknown>[];
+    const coverage = event?.coverage as Record<string, unknown>;
+
+    expect(coverage).toBeDefined();
+    for (const [key, value] of Object.entries(coverage)) {
+      if (key === 'incompleteCode') {
+        expect(['provider_failed', 'invalid_output', null]).toContain(value);
+        continue;
+      }
+      expect(typeof value).toBe('number');
+    }
+  });
+
+  it('is named so redaction does not strip it, which a "reason" field would be', () => {
+    expect(isRedactedKey('incompleteCode')).toBe(false);
+    expect(isRedactedKey('incompleteReason')).toBe(true);
   });
 });

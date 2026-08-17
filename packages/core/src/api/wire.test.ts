@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '../domain/types.js';
 import {
+  CheckpointProposalWireSchema,
+  CheckpointWriteWireSchema,
   ContextItemWireSchema,
   decodeContextItem,
   encodeContextItem,
+  ExtractionCoverageWireSchema,
   NewContextItemWireSchema,
 } from './wire.js';
 
@@ -105,5 +108,87 @@ describe('new context item wire format', () => {
         body: `why${nullByte}not`,
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('ExtractionCoverageWireSchema', () => {
+  const coverage = {
+    droppedTurns: 0,
+    splitTurns: 2,
+    pendingTurns: 40,
+    consumedTurns: 12,
+    incompleteCode: 'provider_failed' as const,
+  };
+
+  it('accepts the counts and a bounded failure code', () => {
+    expect(ExtractionCoverageWireSchema.safeParse(coverage).success).toBe(true);
+    expect(
+      ExtractionCoverageWireSchema.safeParse({ ...coverage, incompleteCode: null }).success,
+    ).toBe(true);
+  });
+
+  it('refuses a free-text reason, which is what would smuggle model output into telemetry', () => {
+    expect(
+      ExtractionCoverageWireSchema.safeParse({
+        ...coverage,
+        incompleteCode: 'gpt-5.6-luna returned {"candidates": [{"title": "a real decision"',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('refuses an unknown field, so nothing can be smuggled alongside the counts', () => {
+    expect(
+      ExtractionCoverageWireSchema.safeParse({ ...coverage, providerMessage: 'boom' }).success,
+    ).toBe(false);
+  });
+
+  it('refuses negative and fractional counts', () => {
+    expect(ExtractionCoverageWireSchema.safeParse({ ...coverage, splitTurns: -1 }).success).toBe(
+      false,
+    );
+    expect(ExtractionCoverageWireSchema.safeParse({ ...coverage, splitTurns: 1.5 }).success).toBe(
+      false,
+    );
+  });
+
+  it('is optional on a checkpoint write, so an older client still validates', () => {
+    const checkpoint = {
+      projectId: item.projectId,
+      trigger: 'manual' as const,
+    };
+    const items = [
+      {
+        action: 'created' as const,
+        item: { projectId: item.projectId, kind: 'decision' as const, title: 'ship it' },
+      },
+    ];
+
+    expect(CheckpointWriteWireSchema.safeParse({ checkpoint, items }).success).toBe(true);
+    expect(
+      CheckpointWriteWireSchema.safeParse({ checkpoint: { ...checkpoint, coverage }, items })
+        .success,
+    ).toBe(true);
+    expect(
+      CheckpointWriteWireSchema.safeParse({
+        checkpoint: { ...checkpoint, coverage: { ...coverage, incompleteCode: 'exploded' } },
+        items,
+      }).success,
+    ).toBe(false);
+  });
+
+  it('is optional on a proposal, so the field can land before clients echo it', () => {
+    const proposal = {
+      workspaceId: item.workspaceId,
+      projectId: item.projectId,
+      actorId: item.assertedBy,
+      candidates: [],
+      rejectedCount: 0,
+      watermark: 't9',
+      consumedTurns: 12,
+      model: 'gpt-5.6-luna',
+    };
+
+    expect(CheckpointProposalWireSchema.safeParse(proposal).success).toBe(true);
+    expect(CheckpointProposalWireSchema.safeParse({ ...proposal, coverage }).success).toBe(true);
   });
 });

@@ -49,6 +49,14 @@ export interface ItemIgnoredEvent extends EventBase<'rehydration.item_ignored'> 
   readonly itemId: Uuid;
 }
 
+export interface ExtractionCoverage {
+  readonly droppedTurns: number;
+  readonly splitTurns: number;
+  readonly pendingTurns: number;
+  readonly consumedTurns: number;
+  readonly incompleteCode: 'provider_failed' | 'invalid_output' | null;
+}
+
 export interface ItemExtractedEvent extends EventBase<'checkpoint.item_extracted'> {
   readonly checkpointId: Uuid;
   readonly itemId: Uuid;
@@ -56,6 +64,7 @@ export interface ItemExtractedEvent extends EventBase<'checkpoint.item_extracted
   readonly confidence: number;
   readonly loadBearing: boolean;
   readonly trigger: CheckpointTrigger;
+  readonly coverage?: ExtractionCoverage | undefined;
 }
 
 export interface ItemConfirmedEvent extends EventBase<'checkpoint.item_confirmed'> {

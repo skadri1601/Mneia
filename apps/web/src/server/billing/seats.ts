@@ -78,6 +78,16 @@ export const billingStatusFor = (stripeStatus: string): BillingStatus => {
   return mapped;
 };
 
+export const hasTeamEntitlement = (state: BillingState): boolean =>
+  state.plan === 'team' &&
+  state.seatsPurchased !== null &&
+  (state.billingStatus === 'active' ||
+    state.billingStatus === 'trialing' ||
+    state.billingStatus === 'past_due');
+
+const stripeStatusHasTeamEntitlement = (status: string): boolean =>
+  status === 'active' || status === 'trialing' || status === 'past_due';
+
 export interface UpgradeRequest {
   readonly current: BillingState;
   readonly subscriptionStatus: string;
@@ -87,12 +97,12 @@ export interface UpgradeRequest {
 
 export const stateAfterSubscription = (request: UpgradeRequest): BillingState => {
   const status = billingStatusFor(request.subscriptionStatus);
-  const paying = status === 'active' || status === 'trialing';
+  const teamEntitled = stripeStatusHasTeamEntitlement(request.subscriptionStatus);
 
   return {
-    plan: paying ? 'team' : request.current.plan === 'enterprise' ? 'enterprise' : 'solo',
+    plan: request.current.plan === 'enterprise' ? 'enterprise' : teamEntitled ? 'team' : 'solo',
     billingStatus: status,
-    seatsPurchased: paying ? request.seats : null,
+    seatsPurchased: teamEntitled ? request.seats : null,
     billingCustomerRef: request.customerRef,
   };
 };

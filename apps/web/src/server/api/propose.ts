@@ -2,6 +2,7 @@ import 'server-only';
 
 import type {
   CheckpointProposalWire,
+  ExtractionIncompleteReason,
   CheckpointProposeWire,
   ExtractionCandidate,
   ScopedStore,
@@ -19,6 +20,7 @@ import {
   resolveProject,
   turnsSince,
 } from '@mneia/core';
+import { ExtractionRunError } from '../extraction/select.js';
 import { ApiRequestError } from './handlers.js';
 
 const EXISTING_ITEM_LIMIT = 200;
@@ -41,7 +43,12 @@ export interface ExtractionAttemptRecord {
   readonly durationMs: number;
 }
 
+export type QuotaVerdict =
+  | { readonly allowed: true }
+  | { readonly allowed: false; readonly code: string; readonly message: string };
+
 export interface ProposeDependencies {
+  readonly quota: () => Promise<QuotaVerdict>;
   readonly run: (request: {
     system: string;
     user: string;
@@ -106,6 +113,11 @@ export const handleProposeCheckpoint = async (
     };
   }
 
+  const verdict = await deps.quota();
+  if (!verdict.allowed) {
+    throw new ApiRequestError('forbidden', verdict.message);
+  }
+
   const reduced = reduceTrajectory(
     {
       source: input.source,
@@ -133,7 +145,7 @@ export const handleProposeCheckpoint = async (
     );
   }
 
-  const { chunks } = chunkTurns(reduced.trajectory.turns, { budgetTokens: budget });
+  const { chunks, splitTurns } = chunkTurns(reduced.trajectory.turns, { budgetTokens: budget });
 
   const candidates: ExtractionCandidate[] = [];
   const attempts: ExtractionAttemptRecord[] = [];
@@ -141,6 +153,7 @@ export const handleProposeCheckpoint = async (
   let completedThrough = -1;
   let model = '';
   let incompleteReason: string | null = null;
+  let incompleteCode: ExtractionIncompleteReason | null = null;
 
   for (const [index, chunk] of chunks.entries()) {
     const prompt = buildExtractionPrompt({ turns: chunk.turns, existingItems });
@@ -153,6 +166,10 @@ export const handleProposeCheckpoint = async (
         maxOutputTokens: MAX_OUTPUT_TOKENS,
       });
     } catch (error) {
+      if (error instanceof ExtractionRunError) {
+        attempts.push(...error.attempts);
+      }
+      incompleteCode = 'provider_failed';
       incompleteReason = `chunk ${index + 1} of ${chunks.length} did not complete, so the watermark stops before it and those turns are re-read on the next checkpoint: ${error instanceof Error ? error.message : String(error)}`;
       break;
     }
@@ -165,6 +182,7 @@ export const handleProposeCheckpoint = async (
       output = parseExtractionOutput(run.text);
     } catch (error) {
       if (error instanceof ExtractionError) {
+        incompleteCode = 'invalid_output';
         incompleteReason = `${run.model} returned an extraction this server could not validate for chunk ${index + 1} of ${chunks.length}, so nothing from it was kept and those turns are re-read: ${error.message}`;
         break;
       }
@@ -245,6 +263,13 @@ export const handleProposeCheckpoint = async (
       model,
       pendingTurns: sent.length - consumedTurns,
       incompleteReason,
+      coverage: {
+        droppedTurns: reduced.droppedTurns,
+        splitTurns,
+        pendingTurns: sent.length - consumedTurns,
+        consumedTurns,
+        incompleteCode,
+      },
     },
   };
 };

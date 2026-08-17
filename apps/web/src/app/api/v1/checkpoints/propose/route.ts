@@ -1,5 +1,6 @@
 import { CheckpointProposeWireSchema } from '@mneia/core';
 import { handleProposeCheckpoint } from '../../../../../server/api/propose.js';
+import { checkpointQuotaFor } from '../../../../../server/billing/runtime.js';
 import { serve } from '../../../../../server/api/serve.js';
 import {
   checkpointSourceStore,
@@ -18,6 +19,7 @@ export const POST = (request: Request): Promise<Response> =>
       const sourceStore = checkpointSourceStore();
       const runner = extractionRunner();
       return handleProposeCheckpoint(store, input, {
+        quota: () => checkpointQuotaFor(store.scope.workspaceId, new Date()),
         run: (prompt) => runner.run(prompt),
         servableContextTokens: runner.servableContextTokens,
         watermarkFor: (query) =>

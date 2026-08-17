@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
-const { createExtractionRunner } = await import('./select.js');
+const { createExtractionRunner, ExtractionRunError } = await import('./select.js');
 const { ExtractionProviderError, resolveExtractionModel } = await import('./providers.js');
 
 const OPENAI_BODY = {
@@ -146,6 +146,18 @@ describe('createExtractionRunner', () => {
 
     await expect(runner.run(request)).rejects.toThrow();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it('carries billable attempts on the terminal rejection when both providers fail', async () => {
+    const fetchImpl = vi.fn(async () => failure(500)) as unknown as typeof globalThis.fetch;
+    const runner = runnerWith(fetchImpl);
+
+    const error = await runner.run(request).catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(ExtractionRunError);
+    expect(error).toMatchObject({
+      attempts: [{ outcome: 'fell_back' }, { outcome: 'failed' }],
+    });
   });
 
   it('can be configured with no fallback at all', async () => {

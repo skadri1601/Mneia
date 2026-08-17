@@ -44,6 +44,7 @@ export function AppHeader() {
           <SignedIn>
             <Link href="/projects">Projects</Link>
             <Link href="/team">Team</Link>
+            <Link href="/billing">Billing</Link>
           </SignedIn>
           {DESTINATIONS.map((destination) => (
             <a href={`${MARKETING_SITE_URL}${destination.path}`} key={destination.path}>

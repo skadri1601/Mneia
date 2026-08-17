@@ -97,6 +97,7 @@ test('keeps the signed-in header destinations and account control intact inside 
 
   expect(markup).toContain('href="/projects"');
   expect(markup).toContain('href="/team"');
+  expect(markup).toContain('href="/billing"');
   expect(markup.match(/href="https:\/\/mneia\.dev\//g)).toHaveLength(7);
   expect(markup).toContain('data-user-button="true"');
   expect(markup).toContain('href="#project-content"');

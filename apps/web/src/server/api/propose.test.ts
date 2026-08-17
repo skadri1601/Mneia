@@ -5,6 +5,7 @@ vi.mock('server-only', () => ({}));
 
 const { handleProposeCheckpoint } = await import('./propose.js');
 const { ApiRequestError } = await import('./handlers.js');
+const { ExtractionRunError } = await import('../extraction/select.js');
 
 const WORKSPACE = '22222222-2222-4222-8222-222222222222';
 const ACTOR = '44444444-4444-4444-8444-444444444444';
@@ -92,6 +93,7 @@ const CANDIDATES = JSON.stringify({
 const depsWith = (overrides: Partial<Parameters<typeof handleProposeCheckpoint>[2]> = {}) => {
   const seen: { prompts: string[]; usage: unknown[] } = { prompts: [], usage: [] };
   const deps = {
+    quota: vi.fn(async () => ({ allowed: true }) as const),
     run: vi.fn(async (request: { system: string; user: string; maxOutputTokens: number }) => {
       seen.prompts.push(request.user);
       return {
@@ -152,6 +154,51 @@ describe('handleProposeCheckpoint', () => {
     expect(proposal.candidates).toHaveLength(0);
     expect(proposal.watermark).toBe('c');
     expect(deps.run).not.toHaveBeenCalled();
+  });
+
+  describe('the quota gate', () => {
+    const exhausted = () =>
+      vi.fn(async () => ({
+        allowed: false as const,
+        code: 'allowance_exhausted',
+        message: 'this workspace has used 10 of its 10 checkpoints for the period',
+      }));
+
+    it('refuses before calling the model, so a denial costs no inference', async () => {
+      const { deps } = depsWith({ quota: exhausted() });
+
+      await expect(
+        handleProposeCheckpoint(storeStub(), input(['a', 'b']), deps),
+      ).rejects.toMatchObject({ code: 'forbidden' });
+
+      expect(deps.run).not.toHaveBeenCalled();
+      expect(deps.recordUsage).not.toHaveBeenCalled();
+    });
+
+    it('carries the refusal message through, so the caller is told what to do', async () => {
+      const { deps } = depsWith({ quota: exhausted() });
+
+      await expect(handleProposeCheckpoint(storeStub(), input(['a']), deps)).rejects.toThrow(
+        'used 10 of its 10',
+      );
+    });
+
+    it('does not consult the quota when there is nothing to extract', async () => {
+      const { deps } = depsWith({ watermarkFor: vi.fn(async () => 'c') });
+
+      await handleProposeCheckpoint(storeStub(), input(['a', 'b', 'c']), deps);
+
+      expect(deps.quota).not.toHaveBeenCalled();
+    });
+
+    it('proceeds when the workspace is unmetered', async () => {
+      const { deps } = depsWith();
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(['a']), deps);
+
+      expect(deps.quota).toHaveBeenCalledTimes(1);
+      expect(proposal.consumedTurns).toBe(1);
+    });
   });
 
   it('applies the precision filter, so filler never reaches the review queue', async () => {
@@ -243,6 +290,110 @@ describe('handleProposeCheckpoint', () => {
     await expect(handleProposeCheckpoint(storeStub(), input(['a']), deps)).rejects.toThrow();
     expect(seen.usage).toHaveLength(1);
     expect(deps.recordUsage).toHaveBeenCalledWith({ projectId: PROJECT.id, attempts });
+  });
+
+  it('records billable attempts when extraction fails', async () => {
+    const attempts = [
+      {
+        model: 'gpt-5.6-luna',
+        outcome: 'failed' as const,
+        inputTokens: 900,
+        outputTokens: 0,
+        durationMs: 12,
+      },
+    ];
+    const { deps, seen } = depsWith({
+      run: vi.fn(async () => {
+        throw new ExtractionRunError(new Error('the provider reset the connection'), attempts);
+      }),
+    });
+
+    await expect(handleProposeCheckpoint(storeStub(), input(['a']), deps)).rejects.toThrow(
+      /re-read on the next checkpoint/,
+    );
+    expect(seen.usage).toHaveLength(1);
+    expect(deps.recordUsage).toHaveBeenCalledWith({ projectId: PROJECT.id, attempts });
+  });
+
+  describe('the coverage carried to §17', () => {
+    const refs = Array.from({ length: 24 }, (_, index) => `t${index}`);
+    const PROVIDER_SECRET = 'candidates: [{ title: a real decision from the transcript }]';
+
+    it('reports a clean run as fully covered, with no failure code', async () => {
+      const { deps } = depsWith();
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(['a', 'b']), deps);
+
+      expect(proposal.coverage).toEqual({
+        droppedTurns: 0,
+        splitTurns: 0,
+        pendingTurns: 0,
+        consumedTurns: 2,
+        incompleteCode: null,
+      });
+    });
+
+    it('counts turns the chunker had to split, which nothing recorded before', async () => {
+      const { deps } = depsWith({ servableContextTokens: 20_000 });
+      const { proposal } = await handleProposeCheckpoint(
+        storeStub(),
+        input(['solo'], () => `Turn solo: ${Array.from({ length: 40_000 }, () => 'x').join(' ')}`),
+        deps,
+      );
+
+      expect(proposal.coverage?.splitTurns).toBeGreaterThan(0);
+    });
+
+    it('records a provider failure as a code, never as the provider message', async () => {
+      let call = 0;
+      const { deps } = depsWith({
+        servableContextTokens: 20_000,
+        run: vi.fn(async () => {
+          call += 1;
+          if (call === 2) {
+            throw new Error(PROVIDER_SECRET);
+          }
+          return {
+            text: CANDIDATES,
+            model: 'gpt-5.6-luna',
+            attempts: [],
+          };
+        }),
+      });
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(refs, bulky), deps);
+
+      expect(proposal.coverage?.incompleteCode).toBe('provider_failed');
+      expect(JSON.stringify(proposal.coverage)).not.toContain(PROVIDER_SECRET);
+      expect(proposal.incompleteReason).toContain(PROVIDER_SECRET);
+    });
+
+    it('records unusable model output as a code, never as the output', async () => {
+      let call = 0;
+      const { deps } = depsWith({
+        servableContextTokens: 20_000,
+        run: vi.fn(async () => {
+          call += 1;
+          return {
+            text: call === 2 ? `{"broken": "${PROVIDER_SECRET}"` : CANDIDATES,
+            model: 'gpt-5.6-luna',
+            attempts: [],
+          };
+        }),
+      });
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(refs, bulky), deps);
+
+      expect(proposal.coverage?.incompleteCode).toBe('invalid_output');
+      expect(JSON.stringify(proposal.coverage)).not.toContain(PROVIDER_SECRET);
+    });
+
+    it('agrees with the top-level counts, so the two cannot drift', async () => {
+      const { deps } = depsWith({ servableContextTokens: 20_000 });
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(refs, bulky), deps);
+
+      expect(proposal.coverage?.consumedTurns).toBe(proposal.consumedTurns);
+      expect(proposal.coverage?.pendingTurns).toBe(proposal.pendingTurns);
+    });
   });
 
   it('reports an unknown project with a message naming the fix', async () => {

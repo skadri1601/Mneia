@@ -1,11 +1,16 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
+import type { BillingSnapshot, BillingStore } from './billing-store.js';
 
 vi.mock('server-only', () => ({}));
 
-const { billingStatusFor, planSeatChange, seatsRequiredFor, stateAfterSubscription } = await import(
-  './seats.js'
-);
+const {
+  billingStatusFor,
+  hasTeamEntitlement,
+  planSeatChange,
+  seatsRequiredFor,
+  stateAfterSubscription,
+} = await import('./seats.js');
 const {
   BillingError,
   decodeSubscription,
@@ -17,7 +22,6 @@ const {
   verifyWebhookSignature,
 } = await import('./stripe.js');
 const { handleStripeWebhook } = await import('./webhook.js');
-const type = await import('./billing-store.js');
 
 const CONFIG = { secretKey: 'sk_test', priceId: 'price_1', webhookSecret: 'whsec_test' };
 const NOW = new Date('2026-08-08T12:00:00.000Z');
@@ -50,9 +54,9 @@ const subscriptionEvent = (
     },
   });
 
-const storeStub = (overrides: Partial<type.BillingStore> = {}): type.BillingStore => {
-  const applied: type.BillingSnapshot[] = [];
-  const base: type.BillingStore = {
+const storeStub = (overrides: Partial<BillingStore> = {}): BillingStore => {
+  const applied: BillingSnapshot[] = [];
+  const base: BillingStore = {
     snapshot: async () => ({
       workspaceId: WORKSPACE,
       plan: 'solo',
@@ -69,6 +73,18 @@ const storeStub = (overrides: Partial<type.BillingStore> = {}): type.BillingStor
     ...overrides,
   };
   return Object.assign(base, { applied });
+};
+
+const statefulStoreStub = (initial: BillingSnapshot): BillingStore => {
+  let snapshot = initial;
+  const base: BillingStore = {
+    snapshot: async () => snapshot,
+    applyBillingState: async ({ workspaceId, state }) => {
+      snapshot = { workspaceId, ...state, memberCount: snapshot.memberCount };
+      return snapshot;
+    },
+  };
+  return base;
 };
 
 describe('seatsRequiredFor', () => {
@@ -129,6 +145,19 @@ describe('billingStatusFor', () => {
   });
 });
 
+describe('hasTeamEntitlement', () => {
+  it.each([
+    [{ plan: 'team', billingStatus: 'active', seatsPurchased: 4 }, true],
+    [{ plan: 'team', billingStatus: 'trialing', seatsPurchased: 4 }, true],
+    [{ plan: 'team', billingStatus: 'past_due', seatsPurchased: 4 }, true],
+    [{ plan: 'solo', billingStatus: 'past_due', seatsPurchased: null }, false],
+    [{ plan: 'team', billingStatus: 'canceled', seatsPurchased: 4 }, false],
+    [{ plan: 'team', billingStatus: 'past_due', seatsPurchased: null }, false],
+  ] as const)('has Team entitlement for billing state %o: %s', (state, expected) => {
+    expect(hasTeamEntitlement({ ...state, billingCustomerRef: 'cus_1' })).toBe(expected);
+  });
+});
+
 describe('stateAfterSubscription', () => {
   const current = {
     plan: 'solo' as const,
@@ -166,6 +195,40 @@ describe('stateAfterSubscription', () => {
     expect(next.billingStatus).toBe('canceled');
   });
 
+  it.each(['unpaid', 'incomplete'])(
+    'records a retryable failed-payment Stripe status without Team entitlement',
+    (subscriptionStatus) => {
+      const next = stateAfterSubscription({
+        current: { ...current, plan: 'team', seatsPurchased: 4 },
+        subscriptionStatus,
+        seats: 4,
+        customerRef: 'cus_1',
+      });
+
+      expect(next).toMatchObject({
+        plan: 'solo',
+        billingStatus: 'past_due',
+        seatsPurchased: null,
+      });
+      expect(hasTeamEntitlement(next)).toBe(false);
+    },
+  );
+
+  it('keeps a past-due subscription on Team entitlement and preserves its seats', () => {
+    expect(
+      stateAfterSubscription({
+        current,
+        subscriptionStatus: 'past_due',
+        seats: 4,
+        customerRef: 'cus_1',
+      }),
+    ).toMatchObject({
+      plan: 'team',
+      billingStatus: 'past_due',
+      seatsPurchased: 4,
+    });
+  });
+
   it('leaves an enterprise workspace on enterprise when its subscription lapses', () => {
     const next = stateAfterSubscription({
       current: { ...current, plan: 'enterprise' },
@@ -175,6 +238,21 @@ describe('stateAfterSubscription', () => {
     });
 
     expect(next.plan).toBe('enterprise');
+  });
+
+  it('leaves an enterprise workspace on enterprise when a subscription is canceled', () => {
+    const next = stateAfterSubscription({
+      current: { ...current, plan: 'enterprise', seatsPurchased: 9 },
+      subscriptionStatus: 'canceled',
+      seats: 9,
+      customerRef: 'cus_1',
+    });
+
+    expect(next).toMatchObject({
+      plan: 'enterprise',
+      billingStatus: 'canceled',
+      seatsPurchased: null,
+    });
   });
 
   it('keeps a trialing workspace on the team plan', () => {
@@ -302,6 +380,88 @@ describe('decodeSubscription', () => {
 });
 
 describe('StripeClient', () => {
+  it('creates a subscription Checkout Session bound to the workspace', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ id: 'cs_1', url: 'https://checkout.stripe.test/session' }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+
+    const client = new StripeClient({ configuration: CONFIG, fetchImpl });
+    const session = await client.createCheckoutSession({
+      workspaceId: WORKSPACE,
+      customerId: 'cus_1',
+      seats: 3,
+      successUrl: 'https://app.mneia.dev/billing?checkout=success',
+      cancelUrl: 'https://app.mneia.dev/billing?checkout=canceled',
+      idempotencyKey: '11111111-1111-4111-8111-111111111111',
+    });
+
+    expect(session).toEqual({ id: 'cs_1', url: 'https://checkout.stripe.test/session' });
+    const [url, init] = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.stripe.com/v1/checkout/sessions');
+    expect(Object.fromEntries(new URLSearchParams(String(init.body)))).toEqual({
+      mode: 'subscription',
+      'line_items[0][price]': CONFIG.priceId,
+      'line_items[0][quantity]': '3',
+      'metadata[workspace_id]': WORKSPACE,
+      'subscription_data[metadata][workspace_id]': WORKSPACE,
+      customer: 'cus_1',
+      success_url: 'https://app.mneia.dev/billing?checkout=success',
+      cancel_url: 'https://app.mneia.dev/billing?checkout=canceled',
+    });
+    expect(init.headers).toMatchObject({
+      'Idempotency-Key': '11111111-1111-4111-8111-111111111111',
+    });
+  });
+
+  it('creates a Billing Portal Session with the customer and return URL', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ id: 'bps_1', url: 'https://billing.stripe.test/session' }), {
+          status: 200,
+        }),
+    ) as unknown as typeof fetch;
+
+    const client = new StripeClient({ configuration: CONFIG, fetchImpl });
+    const session = await client.createPortalSession({
+      customerId: 'cus_1',
+      returnUrl: 'https://app.mneia.dev/billing',
+    });
+
+    expect(session).toEqual({ id: 'bps_1', url: 'https://billing.stripe.test/session' });
+    const [url, init] = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.stripe.com/v1/billing_portal/sessions');
+    expect(Object.fromEntries(new URLSearchParams(String(init.body)))).toEqual({
+      customer: 'cus_1',
+      return_url: 'https://app.mneia.dev/billing',
+    });
+  });
+
+  it.each([
+    [{ url: 'https://checkout.stripe.test/session' }, /non-empty session id/],
+    [{ id: 'cs_1' }, /HTTPS session URL/],
+    [{ id: 'cs_1', url: 'http://checkout.stripe.test/session' }, /HTTPS session URL/],
+    [{ id: 'cs_1', url: 'not-a-url' }, /HTTPS session URL/],
+  ])('refuses an invalid Stripe hosted session response: %o', async (payload, message) => {
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify(payload), { status: 200 }),
+    ) as unknown as typeof fetch;
+    const client = new StripeClient({ configuration: CONFIG, fetchImpl });
+
+    await expect(
+      client.createCheckoutSession({
+        workspaceId: WORKSPACE,
+        seats: 3,
+        successUrl: 'https://app.mneia.dev/billing?checkout=success',
+        cancelUrl: 'https://app.mneia.dev/billing?checkout=canceled',
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_payload', message: expect.stringMatching(message) });
+  });
+
   it('creates a customer carrying the workspace id in metadata', async () => {
     const fetchImpl = vi.fn(
       async () => new Response(JSON.stringify({ id: 'cus_9' }), { status: 200 }),
@@ -451,6 +611,82 @@ describe('handleStripeWebhook', () => {
     expect(outcome.applied).toBe(true);
     const applied = (store as unknown as { applied: { plan: string }[] }).applied;
     expect(applied[0]?.plan).toBe('solo');
+  });
+
+  it('allows a same-customer active update to recover from incomplete', async () => {
+    const store = statefulStoreStub({
+      workspaceId: WORKSPACE,
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 4,
+      billingCustomerRef: 'cus_1',
+      memberCount: 3,
+    });
+    const incomplete = subscriptionEvent({ status: 'incomplete' });
+
+    await expect(
+      handleStripeWebhook({
+        payload: incomplete,
+        signatureHeader: signed(incomplete),
+        configuration: CONFIG,
+        store,
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ applied: true });
+    await expect(store.snapshot(WORKSPACE)).resolves.toMatchObject({
+      plan: 'solo',
+      billingStatus: 'past_due',
+      seatsPurchased: null,
+    });
+
+    const recovery = subscriptionEvent({ status: 'active' });
+    await expect(
+      handleStripeWebhook({
+        payload: recovery,
+        signatureHeader: signed(recovery),
+        configuration: CONFIG,
+        store,
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ applied: true });
+    await expect(store.snapshot(WORKSPACE)).resolves.toMatchObject({
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 4,
+    });
+  });
+
+  it('does not revive a same-customer subscription after a deletion', async () => {
+    const store = statefulStoreStub({
+      workspaceId: WORKSPACE,
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 4,
+      billingCustomerRef: 'cus_1',
+      memberCount: 3,
+    });
+    const deletion = subscriptionEvent({}, 'customer.subscription.deleted');
+
+    await expect(
+      handleStripeWebhook({
+        payload: deletion,
+        signatureHeader: signed(deletion),
+        configuration: CONFIG,
+        store,
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ applied: true });
+
+    const lateUpdate = subscriptionEvent({ status: 'active' });
+    await expect(
+      handleStripeWebhook({
+        payload: lateUpdate,
+        signatureHeader: signed(lateUpdate),
+        configuration: CONFIG,
+        store,
+        now: NOW,
+      }),
+    ).resolves.toMatchObject({ applied: false });
   });
 
   const cancelled = (customerRef: string) =>
