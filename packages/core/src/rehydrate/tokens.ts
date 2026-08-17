@@ -1,4 +1,4 @@
-import { createRequire } from 'node:module';
+import { encode } from 'gpt-tokenizer';
 import type { ContextItem } from '../domain/types.js';
 
 export interface TokenCounter {
@@ -126,20 +126,9 @@ export const heuristicTokenCounter: TokenCounter = {
   count: countHeuristicTokens,
 };
 
-interface GptTokenizerModule {
-  encode(text: string): readonly number[];
-}
-
-let encoder: GptTokenizerModule | null = null;
-
-const loadEncoder = (): GptTokenizerModule => {
-  encoder ??= createRequire(import.meta.url)('gpt-tokenizer') as GptTokenizerModule;
-  return encoder;
-};
-
 export const bpeTokenCounter: TokenCounter = {
   name: 'cl100k_base',
-  count: (text: string): number => (text.length === 0 ? 0 : loadEncoder().encode(text).length),
+  count: (text: string): number => (text.length === 0 ? 0 : encode(text).length),
 };
 
 export const defaultTokenCounter: TokenCounter = bpeTokenCounter;
