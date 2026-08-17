@@ -205,14 +205,22 @@ export async function seedCorpus(client: Client): Promise<void> {
     [SEED.workspaceA, SEED.teamA, SEED.agentA, 'member'],
   );
   await client.query(
-    `INSERT INTO session (id, workspace_id, project_id, actor_id, tool, started_at)
-     VALUES ($1, $2, $3, $4, $5, $6)`,
+    `INSERT INTO session (
+       id, workspace_id, project_id, actor_id, tool,
+       client_name, client_version, client_session_ref, client_session_name, client_session_url,
+       started_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
     [
       SEED.sessionA,
       SEED.workspaceA,
       SEED.projectA,
       SEED.agentA,
       'claude-code',
+      'claude-code',
+      '1.0.90',
+      'seed-session-a',
+      'Seed dogfood session',
+      'https://example.invalid/sessions/seed-session-a',
       '2026-07-08T08:00:00.000Z',
     ],
   );

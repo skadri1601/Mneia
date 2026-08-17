@@ -17,7 +17,8 @@ next-env.d.ts
 *.key
 secrets/
 
-.mneia/
+.mneia/*
+!.mneia/config.json
 *.sqlite
 *.sqlite-journal
 *.db

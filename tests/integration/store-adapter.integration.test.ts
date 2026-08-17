@@ -853,12 +853,99 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
         const project = await store.getProjectBySlug('acme-platform');
         expect(project?.id).toBe(PROJECT_A);
 
-        const session = await store.createSession(PROJECT_A, 'claude-code');
+        const session = await store.createSession(PROJECT_A, 'mcp', {
+          clientName: 'claude-code',
+          clientVersion: '1.0.90',
+          clientSessionRef: 'session-ref',
+          clientSessionName: 'MNE-86 dogfood',
+          clientSessionUrl: 'https://example.invalid/sessions/session-ref',
+        });
         expect(session.actorId).toBe(ACTOR_A);
+        expect(session).toMatchObject({
+          tool: 'mcp',
+          clientName: 'claude-code',
+          clientVersion: '1.0.90',
+          clientSessionRef: 'session-ref',
+          clientSessionName: 'MNE-86 dogfood',
+          clientSessionUrl: 'https://example.invalid/sessions/session-ref',
+        });
         expect(session.endedAt).toBeNull();
+
+        const sourced = await store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'session provenance round trip'),
+          sourceSessionId: session.id,
+        });
+        const reread = await store.getContextItem(sourced.id);
+        expect(reread?.provenance).toEqual({
+          actorId: ACTOR_A,
+          actorKind: 'human',
+          actorDisplayName: 'acme lead',
+          sourceSessionId: session.id,
+          sessionTool: 'mcp',
+          clientName: 'claude-code',
+          clientVersion: '1.0.90',
+          clientSessionRef: 'session-ref',
+          clientSessionName: 'MNE-86 dogfood',
+          clientSessionUrl: 'https://example.invalid/sessions/session-ref',
+          status: 'complete',
+          missingFields: [],
+        });
 
         const ended = await store.endSession(session.id);
         expect(ended.endedAt).not.toBeNull();
+      });
+    });
+  });
+
+  it('does not expose session metadata from another project and actor as item provenance', async () => {
+    const foreignProject = 'aaaaaaa1-0000-4000-8000-000000000009';
+    const foreignSession = 'aaaaaaa1-0000-4000-8000-000000000010';
+
+    await withAdapter(async (adapter, _source, setup) => {
+      await setup.query(
+        `INSERT INTO project (id, workspace_id, slug, display_name)
+         VALUES ($1, $2, 'foreign-session-project', 'Foreign session project')`,
+        [foreignProject, WS_A],
+      );
+      await setup.query(
+        `INSERT INTO session (
+           id, workspace_id, project_id, actor_id, tool,
+           client_name, client_version, client_session_ref, client_session_name, client_session_url,
+           started_at)
+         VALUES ($1, $2, $3, $4, 'mcp', 'codex', '1.2.3', 'foreign-ref',
+                 'Foreign session', 'https://example.invalid/sessions/foreign-ref', now())`,
+        [foreignSession, WS_A, foreignProject, AGENT_A],
+      );
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const written = await store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'foreign session metadata stays hidden'),
+          sourceSessionId: foreignSession,
+        });
+        const reread = await store.getContextItem(written.id);
+
+        expect(reread?.provenance).toEqual({
+          actorId: ACTOR_A,
+          actorKind: 'human',
+          actorDisplayName: 'acme lead',
+          sourceSessionId: null,
+          sessionTool: null,
+          clientName: null,
+          clientVersion: null,
+          clientSessionRef: null,
+          clientSessionName: null,
+          clientSessionUrl: null,
+          status: 'partial',
+          missingFields: [
+            'sourceSessionId',
+            'sessionTool',
+            'clientName',
+            'clientVersion',
+            'clientSessionRef',
+            'clientSessionName',
+            'clientSessionUrl',
+          ],
+        });
       });
     });
   });

@@ -8,6 +8,7 @@ export interface VisibilityInput {
   readonly actorTeamIds: readonly Uuid[];
   readonly projectId: Uuid;
   readonly paramOffset: number;
+  readonly itemAlias?: string;
 }
 
 export interface VisibilityFragment {
@@ -53,6 +54,8 @@ export function visibilityPredicate(input: VisibilityInput): VisibilityFragment 
 
   const actorParam = placeholder(0);
   const teamParams = teamIds.map((_, index) => placeholder(index + 1));
+  const itemColumn = (column: string): string =>
+    input.itemAlias === undefined ? column : `${input.itemAlias}.${column}`;
 
   const readableProjects =
     teamParams.length > 0
@@ -60,14 +63,14 @@ export function visibilityPredicate(input: VisibilityInput): VisibilityFragment 
       : 'SELECT id FROM project WHERE team_id IS NULL';
 
   const disjuncts = [
-    `asserted_by = ${actorParam}`,
-    `access_scope = '${WORKSPACE}'`,
-    `(access_scope = '${PROJECT}' AND project_id IN (${readableProjects}))`,
+    `${itemColumn('asserted_by')} = ${actorParam}`,
+    `${itemColumn('access_scope')} = '${WORKSPACE}'`,
+    `(${itemColumn('access_scope')} = '${PROJECT}' AND ${itemColumn('project_id')} IN (${readableProjects}))`,
   ];
 
   if (teamParams.length > 0) {
     disjuncts.push(
-      `(access_scope = '${TEAM}' AND project_id IN (SELECT id FROM project WHERE team_id IN (${teamParams.join(', ')})))`,
+      `(${itemColumn('access_scope')} = '${TEAM}' AND ${itemColumn('project_id')} IN (SELECT id FROM project WHERE team_id IN (${teamParams.join(', ')})))`,
     );
   }
 

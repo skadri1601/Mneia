@@ -72,9 +72,54 @@ export interface Session {
   readonly projectId: Uuid;
   readonly actorId: Uuid;
   readonly tool: string | null;
+  readonly clientName?: string | null;
+  readonly clientVersion?: string | null;
+  readonly clientSessionRef?: string | null;
+  readonly clientSessionName?: string | null;
+  readonly clientSessionUrl?: string | null;
   readonly startedAt: Date;
   readonly endedAt: Date | null;
 }
+
+export const CONTEXT_ITEM_PROVENANCE_FIELDS = [
+  'sourceSessionId',
+  'sessionTool',
+  'clientName',
+  'clientVersion',
+  'clientSessionRef',
+  'clientSessionName',
+  'clientSessionUrl',
+] as const;
+
+export type ContextItemProvenanceField = (typeof CONTEXT_ITEM_PROVENANCE_FIELDS)[number];
+
+export interface ContextItemProvenance {
+  readonly actorId: Uuid;
+  readonly actorKind: ActorKind;
+  readonly actorDisplayName: string;
+  readonly sourceSessionId: Uuid | null;
+  readonly sessionTool: string | null;
+  readonly clientName: string | null;
+  readonly clientVersion: string | null;
+  readonly clientSessionRef: string | null;
+  readonly clientSessionName: string | null;
+  readonly clientSessionUrl: string | null;
+  readonly status: 'complete' | 'partial';
+  readonly missingFields: readonly ContextItemProvenanceField[];
+}
+
+export type ContextItemProvenanceValues = Omit<ContextItemProvenance, 'status' | 'missingFields'>;
+
+export const deriveContextItemProvenance = (
+  values: ContextItemProvenanceValues,
+): ContextItemProvenance => {
+  const missingFields = CONTEXT_ITEM_PROVENANCE_FIELDS.filter((field) => values[field] === null);
+  return {
+    ...values,
+    status: missingFields.length === 0 ? 'complete' : 'partial',
+    missingFields,
+  };
+};
 
 export interface ContextItem {
   readonly id: Uuid;
@@ -105,6 +150,7 @@ export interface ContextItem {
   readonly embedding: Embedding | null;
   readonly embeddingModel: string | null;
   readonly supersedeReason: string | null;
+  readonly provenance?: ContextItemProvenance;
 }
 
 export interface Checkpoint {

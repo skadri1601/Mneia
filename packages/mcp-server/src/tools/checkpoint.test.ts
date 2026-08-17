@@ -358,6 +358,47 @@ describe('mneia_checkpoint input validation', () => {
     });
   });
 
+  it('accepts source session metadata supplied by the harness', () => {
+    expect(
+      checkpointTool.parse({
+        projectId: PROJECT_ID,
+        sourceSession: {
+          ref: 'conversation-42',
+          name: 'MNE-86 dogfood',
+          url: 'https://example.invalid/conversations/42',
+        },
+        items: [{ kind: 'fact', title: 'green' }],
+      }),
+    ).toMatchObject({
+      sourceSession: {
+        ref: 'conversation-42',
+        name: 'MNE-86 dogfood',
+        url: 'https://example.invalid/conversations/42',
+      },
+    });
+  });
+
+  it('rejects malformed source session metadata', () => {
+    const invalid = [
+      { ref: `before${String.fromCharCode(0)}after` },
+      { name: 'x'.repeat(301) },
+      { url: 'conversation-42' },
+      { url: 'ftp://example.invalid/conversation-42' },
+    ];
+
+    for (const sourceSession of invalid) {
+      expect(
+        messageOf(() =>
+          checkpointTool.parse({
+            projectId: PROJECT_ID,
+            sourceSession,
+            items: [{ kind: 'fact', title: 'green' }],
+          }),
+        ),
+      ).toContain('sourceSession');
+    }
+  });
+
   it('rejects a checkpoint with no candidates', () => {
     const message = messageOf(() => checkpointTool.parse({ projectId: PROJECT_ID, items: [] }));
     expect(message).toContain('mneia_checkpoint rejected the input [invalid_input]');
@@ -420,6 +461,37 @@ describe('mneia_checkpoint input validation', () => {
 });
 
 describe('mneia_checkpoint writes', () => {
+  it('links items and checkpoint source fields to the resolved session', async () => {
+    const fake = createStore();
+    const resolvedSessionId = SUCCESSOR_ID;
+    const context = createToolContextFixture(fake.store, createTelemetry().emitter, {
+      now: NOW,
+      resolveWriteSession: () =>
+        Promise.resolve({
+          sessionId: resolvedSessionId,
+          checkpointSource: 'cursor',
+          sourceSessionRef: 'conversation-42',
+        }),
+    });
+
+    await checkpointTool.run(
+      checkpointTool.parse({
+        projectId: PROJECT_ID,
+        sessionId: SESSION_ID,
+        sourceSession: { ref: 'conversation-42' },
+        items: [PLAIN_CANDIDATE],
+      }),
+      context,
+    );
+
+    expect(fake.writes[0]?.checkpoint).toMatchObject({
+      sessionId: resolvedSessionId,
+      source: 'cursor',
+      sourceSessionRef: 'conversation-42',
+    });
+    expect(fake.writes[0]?.items[0]?.item.sourceSessionId).toBe(resolvedSessionId);
+  });
+
   it('writes plain candidates in one atomic checkpoint and reports nothing pending', async () => {
     const fake = createStore();
     const telemetry = createTelemetry();

@@ -84,6 +84,14 @@ export interface NewProject {
   readonly repoUrl?: string | null;
 }
 
+export interface SessionClientProvenance {
+  readonly clientName?: string | null;
+  readonly clientVersion?: string | null;
+  readonly clientSessionRef?: string | null;
+  readonly clientSessionName?: string | null;
+  readonly clientSessionUrl?: string | null;
+}
+
 export interface ConfirmContextItemInput {
   readonly id: Uuid;
   readonly confirmedBy: Uuid;
@@ -205,7 +213,11 @@ export interface ScopedStore {
   getProjectBySlug(slug: string): Promise<Project | null>;
   getProject(id: Uuid): Promise<Project | null>;
   createProject(input: NewProject): Promise<Project>;
-  createSession(projectId: Uuid, tool: string | null): Promise<Session>;
+  createSession(
+    projectId: Uuid,
+    tool: string | null,
+    provenance?: SessionClientProvenance,
+  ): Promise<Session>;
   endSession(id: Uuid): Promise<Session>;
 
   getContextItem(id: Uuid): Promise<ContextItem | null>;

@@ -9,6 +9,7 @@ import {
   type TelemetryEvent,
 } from '@mneia/core';
 import { z } from 'zod';
+import { SourceSessionSchema } from '../source-session.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const KIND_ERROR = `kind must be one of: ${ITEM_KINDS.join(', ')}`;
@@ -41,6 +42,9 @@ const AssertInputSchema = z.object({
     .uuid()
     .optional()
     .describe('Id of the session this assertion came from, when the caller is tracking one.'),
+  sourceSession: SourceSessionSchema.optional().describe(
+    'Conversation metadata supplied by the MCP harness. Pass its stable ref, display name, and absolute http/https URL when available.',
+  ),
   sourceRef: z
     .string()
     .max(500)
@@ -117,7 +121,6 @@ function failure(code: string, message: string, details: Record<string, unknown>
 async function run(input: AssertInput, context: ToolContext): Promise<ToolResult> {
   const { store, telemetry, now } = context;
   const occurredAt = now();
-  const sessionId = input.sessionId ?? context.sessionIdFor(input.projectId);
 
   try {
     const actor = await store.getActor(store.scope.actorId);
@@ -128,6 +131,12 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
         { actorId: store.scope.actorId, workspaceId: store.scope.workspaceId },
       );
     }
+    const resolvedSession = await context.resolveWriteSession(
+      input.projectId,
+      input.sourceSession,
+      input.sessionId ?? null,
+    );
+    const sessionId = resolvedSession.sessionId;
 
     const supersedesId = input.supersedesId;
     if (supersedesId !== undefined) {
@@ -209,6 +218,12 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
         actorId: actor.id,
         trigger: 'manual',
         summary: null,
+        ...(resolvedSession.checkpointSource === null
+          ? {}
+          : { source: resolvedSession.checkpointSource }),
+        ...(resolvedSession.sourceSessionRef === null
+          ? {}
+          : { sourceSessionRef: resolvedSession.sourceSessionRef }),
       },
       items: [{ action: supersedesId === undefined ? 'created' : 'superseded', item }],
     });
@@ -290,7 +305,7 @@ export const assertTool: ToolDefinition<AssertInput> = {
   name: 'mneia_assert',
   title: 'Assert a decision, constraint, open question, or fact',
   description:
-    'Record one durable item in project memory as soon as it is settled, without waiting for a checkpoint. Use it the moment a decision is made, a constraint is stated, or a question is left open, so the next session inherits it. Supply supersedesId when the item replaces an existing one; a replacement of a human-confirmed item is never written automatically and comes back as pending for a human to confirm. Use mneia_checkpoint instead when capturing a batch of items at a task or day boundary.',
+    'Record one durable item in project memory as soon as it is settled, without waiting for a checkpoint. Pass sourceSession metadata supplied by your harness so the write remains attributable to this conversation. Use it the moment a decision is made, a constraint is stated, or a question is left open, so the next session inherits it. Supply supersedesId when the item replaces an existing one; a replacement of a human-confirmed item is never written automatically and comes back as pending for a human to confirm. Use mneia_checkpoint instead when capturing a batch of items at a task or day boundary.',
   inputSchema: INPUT_JSON_SCHEMA,
   parse: parseAssertInput,
   run,

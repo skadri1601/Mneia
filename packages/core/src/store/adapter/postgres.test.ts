@@ -414,6 +414,9 @@ describe('PostgresStoreAdapter scoped membership lookup', () => {
     });
 
     expect(session.calls.filter((sql) => sql.includes('FROM team_member'))).toHaveLength(1);
+    const itemRead = session.calls.find((sql) => sql.includes('FROM context_item')) ?? '';
+    expect(itemRead).toContain("context_item.access_scope = 'project'");
+    expect(itemRead).toContain('context_item.project_id IN');
   });
 
   it('selects all rehydration candidate groups in one context item query', async () => {
@@ -435,6 +438,12 @@ describe('PostgresStoreAdapter scoped membership lookup', () => {
 
     expect(groups).toEqual({ candidates: [], mandatory: [], superseded: [] });
     expect(session.calls.filter((sql) => sql.includes('FROM context_item'))).toHaveLength(1);
+    const itemRead = session.calls.find((sql) => sql.includes('FROM context_item')) ?? '';
+    expect(itemRead).toContain('JOIN actor AS provenance_actor');
+    expect(itemRead).toContain('LEFT JOIN session AS provenance_session');
+    expect(itemRead).toContain('provenance_session.workspace_id = context_item.workspace_id');
+    expect(itemRead).toContain('provenance_session.project_id = context_item.project_id');
+    expect(itemRead).toContain('provenance_session.actor_id = context_item.asserted_by');
   });
 });
 

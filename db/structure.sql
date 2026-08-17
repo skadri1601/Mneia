@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 30
+-- schema version: 31
 
 -- extensions
 
@@ -565,9 +565,15 @@ CREATE TABLE session (
   actor_id uuid NOT NULL,
   tool text,
   started_at timestamp with time zone NOT NULL,
-  ended_at timestamp with time zone
+  ended_at timestamp with time zone,
+  client_name text,
+  client_version text,
+  client_session_ref text,
+  client_session_name text,
+  client_session_url text
 );
 ALTER TABLE session ADD CONSTRAINT session_actor_id_not_null NOT NULL actor_id;
+ALTER TABLE session ADD CONSTRAINT session_client_provenance_fields_are_not_blank CHECK ((((client_name IS NULL) OR (client_name <> ''::text)) AND ((client_version IS NULL) OR (client_version <> ''::text)) AND ((client_session_ref IS NULL) OR (client_session_ref <> ''::text)) AND ((client_session_name IS NULL) OR (client_session_name <> ''::text)) AND ((client_session_url IS NULL) OR (client_session_url <> ''::text))));
 ALTER TABLE session ADD CONSTRAINT session_id_not_null NOT NULL id;
 ALTER TABLE session ADD CONSTRAINT session_pkey PRIMARY KEY (id);
 ALTER TABLE session ADD CONSTRAINT session_project_id_not_null NOT NULL project_id;

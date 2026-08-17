@@ -19,6 +19,7 @@ import type {
   NewContextItem,
   NewProject,
   ScopedStore,
+  SessionClientProvenance,
   WorkspaceScope,
 } from '../store/adapter/types.js';
 import { ApiError, type HttpTransport } from './http.js';
@@ -132,10 +133,27 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
       return project === null ? null : decodeProject(project);
     },
 
-    async createSession(projectId: Uuid, tool: string | null): Promise<Session> {
+    async createSession(
+      projectId: Uuid,
+      tool: string | null,
+      provenance: SessionClientProvenance = {},
+    ): Promise<Session> {
       const { session } = await transport.request('/api/v1/sessions', SessionEnvelope, {
         projectId,
         tool,
+        ...(provenance.clientName === undefined ? {} : { clientName: provenance.clientName }),
+        ...(provenance.clientVersion === undefined
+          ? {}
+          : { clientVersion: provenance.clientVersion }),
+        ...(provenance.clientSessionRef === undefined
+          ? {}
+          : { clientSessionRef: provenance.clientSessionRef }),
+        ...(provenance.clientSessionName === undefined
+          ? {}
+          : { clientSessionName: provenance.clientSessionName }),
+        ...(provenance.clientSessionUrl === undefined
+          ? {}
+          : { clientSessionUrl: provenance.clientSessionUrl }),
       });
       return decodeSession(session);
     },

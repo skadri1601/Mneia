@@ -67,6 +67,30 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/mneia-rehydrate.mjs",
+            "timeout": 25,
+            "statusMessage": "Rehydrating Mneia project memory"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/mneia-checkpoint.mjs",
+            "timeout": 60,
+            "statusMessage": "Checkpointing to Mneia"
+          }
+        ]
+      }
     ]
   }
 }

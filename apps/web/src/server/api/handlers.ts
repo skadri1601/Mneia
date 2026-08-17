@@ -113,9 +113,25 @@ export const handleGetProjectBySlug = async (
 
 export const handleCreateSession = async (
   store: ScopedStore,
-  input: { readonly projectId: Uuid; readonly tool: string | null },
+  input: {
+    readonly projectId: Uuid;
+    readonly tool: string | null;
+    readonly clientName?: string | null | undefined;
+    readonly clientVersion?: string | null | undefined;
+    readonly clientSessionRef?: string | null | undefined;
+    readonly clientSessionName?: string | null | undefined;
+    readonly clientSessionUrl?: string | null | undefined;
+  },
 ): Promise<{ session: SessionWire }> => {
-  const session = await store.createSession(input.projectId, input.tool);
+  const session = await store.createSession(input.projectId, input.tool, {
+    ...(input.clientName === undefined ? {} : { clientName: input.clientName }),
+    ...(input.clientVersion === undefined ? {} : { clientVersion: input.clientVersion }),
+    ...(input.clientSessionRef === undefined ? {} : { clientSessionRef: input.clientSessionRef }),
+    ...(input.clientSessionName === undefined
+      ? {}
+      : { clientSessionName: input.clientSessionName }),
+    ...(input.clientSessionUrl === undefined ? {} : { clientSessionUrl: input.clientSessionUrl }),
+  });
   return { session: encodeSession(session) };
 };
 

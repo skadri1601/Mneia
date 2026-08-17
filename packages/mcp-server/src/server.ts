@@ -12,6 +12,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolListing, ToolRegistry } from './registry.js';
 import { toolFailure } from './registry.js';
+import type { McpClientInfo } from './session-provenance.js';
 import type { ToolContext, ToolResult } from './tools/types.js';
 
 export const SERVER_NAME = 'mneia';
@@ -21,6 +22,7 @@ export const SERVER_INSTRUCTIONS = [
   'Call mneia_rehydrate once at the start of a session, and again whenever the task changes, before planning or writing code — it returns the active constraints, the decisions already made, and the open questions.',
   'Call mneia_assert the moment a decision is made, a constraint is stated, or a question is left open, so the next session inherits it.',
   'Call mneia_checkpoint at a task or day boundary to capture the session as a whole.',
+  'When your harness supplies conversation metadata, pass it as sourceSession on mneia_assert and mneia_checkpoint so Mneia can distinguish conversations inside a persistent MCP process; client name and version come from the MCP initialization handshake and must not be included in tool arguments.',
   'When you checkpoint after a rehydrate, pass that slice id back as sliceId along with referencedItemIds — the ids of the slice items that actually changed what you did. That is the only signal of whether the slice was worth loading, and it cannot be recovered later.',
   'Items that need a human to confirm come back as a pending queue — surface them to the user rather than treating them as written.',
 ].join(' ');
@@ -43,6 +45,7 @@ export interface MneiaServerOptions {
   readonly logger?: ServerLogger | undefined;
   readonly version?: string | undefined;
   readonly shutdownTimeoutMs?: number | undefined;
+  readonly onClientInfo?: ((client: McpClientInfo) => void) | undefined;
 }
 
 export interface MneiaServer {
@@ -159,6 +162,12 @@ export function createMneiaServer(options: MneiaServerOptions): MneiaServer {
     { name: SERVER_NAME, version: options.version ?? VERSION },
     { capabilities: { tools: {} }, instructions: SERVER_INSTRUCTIONS },
   );
+  server.oninitialized = () => {
+    const client = server.getClientVersion();
+    if (client !== undefined) {
+      options.onClientInfo?.({ name: client.name, version: client.version });
+    }
+  };
 
   const inFlight = new Set<Promise<CallToolResult>>();
   let stopping = false;

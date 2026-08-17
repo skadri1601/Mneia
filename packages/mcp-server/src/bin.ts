@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { join } from 'node:path';
 import type {
   HostedIdentity,
   RemoteStore,
@@ -34,6 +33,8 @@ import type { ReviewQueue } from './review-queue.js';
 import { createJsonlReviewQueue } from './review-queue.js';
 import type { MneiaServer, ServerLogger, ToolContextScope } from './server.js';
 import { createStderrLogger, redirectConsoleToStderr, startStdioServer } from './server.js';
+import type { McpClientInfo } from './session-provenance.js';
+import { createWriteSessionResolver } from './session-provenance.js';
 import type { SliceLog } from './slices.js';
 import { createSliceLog } from './slices.js';
 import { PoolConnectionSource } from './store.js';
@@ -52,8 +53,6 @@ interface PendingTool {
 const TOOLS_DIRECTORY = './tools/';
 
 const PENDING_TOOLS: readonly PendingTool[] = [];
-
-const SESSION_TOOL = 'mcp';
 
 const HELP = `mneia-mcp — the Mneia MCP server (stdio transport)
 
@@ -197,6 +196,7 @@ interface LocalRuntime {
   readonly start: () => Promise<void>;
   readonly close: () => Promise<void>;
   readonly describe: () => string;
+  readonly onClientInfo: (client: McpClientInfo) => void;
 }
 
 function createLocalRuntime(
@@ -216,11 +216,12 @@ function createLocalRuntime(
   const slices: SliceLog = createSliceLog();
   const reviewQueue: ReviewQueue = createJsonlReviewQueue({ filePath: binding.reviewQueuePath });
 
-  let session: { readonly id: Uuid; readonly projectId: Uuid } | null = null;
+  let clientInfo: McpClientInfo | undefined;
   let actorVerified = false;
-
-  const sessionIdFor = (projectId: Uuid): Uuid | null =>
-    session !== null && session.projectId === projectId ? session.id : null;
+  const sessions = createWriteSessionResolver({
+    client: () => clientInfo,
+    warn: (message) => logger.warn(message),
+  });
 
   const buildContext = (store: ScopedStore): ToolContext => ({
     store,
@@ -228,7 +229,9 @@ function createLocalRuntime(
     now: () => new Date(),
     slices,
     reviewQueue,
-    sessionIdFor,
+    sessionIdFor: sessions.sessionIdFor,
+    resolveWriteSession: (projectId, sourceSession, legacySessionId) =>
+      sessions.resolve(store, projectId, sourceSession, legacySessionId),
     defaultProject: binding.projectId ?? binding.projectSlug,
   });
 
@@ -242,25 +245,14 @@ function createLocalRuntime(
     });
 
   const start = async (): Promise<void> => {
-    const projectId = binding.projectId;
     try {
       await adapter.withScope(workspaceScope, async (store) => {
         await assertAgentActor(store, binding.agentActorId);
         actorVerified = true;
-        if (projectId !== null) {
-          const created = await store.createSession(projectId, SESSION_TOOL);
-          session = { id: created.id, projectId };
-        }
       });
     } catch (cause) {
       if (cause instanceof AgentActorError) {
         throw cause;
-      }
-      if (actorVerified) {
-        logger.warn(
-          `no session row was opened: ${describeCause(cause)}. Items written this run carry no session provenance.`,
-        );
-        return;
       }
       logger.warn(
         `the local store could not be reached at startup: ${describeCause(cause)}. Tool calls will retry it.`,
@@ -269,15 +261,11 @@ function createLocalRuntime(
   };
 
   const close = async (): Promise<void> => {
-    const open = session;
-    if (open !== null) {
-      try {
-        await adapter.withScope(workspaceScope, (store) => store.endSession(open.id));
-      } catch (cause) {
-        logger.warn(`session ${open.id} was not closed cleanly: ${describeCause(cause)}`);
-      }
+    try {
+      await adapter.withScope(workspaceScope, (store) => sessions.close(store));
+    } finally {
+      await adapter.close();
     }
-    await adapter.close();
   };
 
   const describe = (): string => {
@@ -288,12 +276,20 @@ function createLocalRuntime(
       `workspace ${binding.workspaceId}`,
       `agent actor ${binding.agentActorId}`,
       `project ${project}`,
-      session === null ? 'no session row' : `session ${session.id}`,
+      'sessions open lazily on first write',
       `review queue ${reviewQueue.path ?? 'off'}`,
     ].join(', ');
   };
 
-  return { scope, start, close, describe };
+  return {
+    scope,
+    start,
+    close,
+    describe,
+    onClientInfo: (client) => {
+      clientInfo = client;
+    },
+  };
 }
 
 interface HostedRuntime {
@@ -301,6 +297,7 @@ interface HostedRuntime {
   readonly start: () => Promise<void>;
   readonly close: () => Promise<void>;
   readonly describe: () => string;
+  readonly onClientInfo: (client: McpClientInfo) => void;
 }
 
 async function resolveBoundProject(
@@ -326,10 +323,11 @@ function createHostedRuntime(
 
   let store: RemoteStore | null = null;
   let identity: HostedIdentity | null = null;
-  let session: { readonly id: Uuid; readonly projectId: Uuid } | null = null;
-
-  const sessionIdFor = (projectId: Uuid): Uuid | null =>
-    session !== null && session.projectId === projectId ? session.id : null;
+  let clientInfo: McpClientInfo | undefined;
+  const sessions = createWriteSessionResolver({
+    client: () => clientInfo,
+    warn: (message) => logger.warn(message),
+  });
 
   const connect = async (): Promise<RemoteStore> => {
     if (store !== null) {
@@ -354,7 +352,9 @@ function createHostedRuntime(
       now: () => new Date(),
       slices,
       reviewQueue,
-      sessionIdFor,
+      sessionIdFor: sessions.sessionIdFor,
+      resolveWriteSession: (projectId, sourceSession, legacySessionId) =>
+        sessions.resolve(connected, projectId, sourceSession, legacySessionId),
       defaultProject: config.project === null ? null : config.project.project,
     });
   };
@@ -362,11 +362,8 @@ function createHostedRuntime(
   const start = async (): Promise<void> => {
     try {
       const connected = await connect();
-      const projectId =
-        config.project === null ? null : await resolveBoundProject(connected, config.project);
-      if (projectId !== null) {
-        const created = await connected.createSession(projectId, SESSION_TOOL);
-        session = { id: created.id, projectId };
+      if (config.project !== null) {
+        await resolveBoundProject(connected, config.project);
       }
     } catch (cause) {
       logger.warn(
@@ -376,7 +373,7 @@ function createHostedRuntime(
   };
 
   const close = async (): Promise<void> => {
-    session = null;
+    return;
   };
 
   const describe = (): string =>
@@ -385,11 +382,19 @@ function createHostedRuntime(
       identity === null
         ? 'identity not yet resolved'
         : `workspace ${identity.workspaceSlug}, actor ${identity.actorId} (${identity.actorKind})`,
-      session === null ? 'no session row' : `session ${session.id}`,
+      'sessions open lazily on first write',
       `review queue ${reviewQueue.path ?? 'off'}`,
     ].join(', ');
 
-  return { scope, start, close, describe };
+  return {
+    scope,
+    start,
+    close,
+    describe,
+    onClientInfo: (client) => {
+      clientInfo = client;
+    },
+  };
 }
 
 function installProcessHandlers(mneia: MneiaServer, logger: ServerLogger): void {
@@ -437,6 +442,7 @@ async function main(): Promise<void> {
   let closeStore: (() => Promise<void>) | undefined;
   let binding: string;
   let telemetryTarget: string;
+  let onClientInfo: (client: McpClientInfo) => void;
 
   if (config.mode === 'local') {
     const runtime = createLocalRuntime(config.local, telemetry, logger);
@@ -450,6 +456,7 @@ async function main(): Promise<void> {
     closeStore = runtime.close;
     binding = runtime.describe();
     telemetryTarget = config.telemetryEnabled ? config.local.telemetryPath : 'off';
+    onClientInfo = runtime.onClientInfo;
   } else {
     const runtime = createHostedRuntime(config, telemetry, logger);
     await runtime.start();
@@ -457,6 +464,7 @@ async function main(): Promise<void> {
     closeStore = runtime.close;
     binding = runtime.describe();
     telemetryTarget = config.telemetryEnabled ? 'remote sink only' : 'off';
+    onClientInfo = runtime.onClientInfo;
   }
 
   const mneia = await startStdioServer({
@@ -465,6 +473,7 @@ async function main(): Promise<void> {
     telemetry,
     closeStore,
     logger,
+    onClientInfo,
   });
 
   installProcessHandlers(mneia, logger);

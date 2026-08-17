@@ -1,13 +1,15 @@
 import { z } from 'zod';
 import { isStorableText, NULL_BYTE_ERROR } from '../domain/text.js';
-import type {
-  Actor,
-  Checkpoint,
-  CheckpointItem,
-  Conflict,
-  ContextItem,
-  Project,
-  Session,
+import {
+  type Actor,
+  type Checkpoint,
+  type CheckpointItem,
+  CONTEXT_ITEM_PROVENANCE_FIELDS,
+  type Conflict,
+  type ContextItem,
+  deriveContextItemProvenance,
+  type Project,
+  type Session,
 } from '../domain/types.js';
 import type { ScoredItem, Slice } from '../rehydrate/types.js';
 import type { CheckpointWriteResult } from '../store/adapter/types.js';
@@ -38,6 +40,23 @@ const toDate = (value: string): Date => new Date(value);
 const toNullableDate = (value: string | null): Date | null =>
   value === null ? null : new Date(value);
 
+const ContextItemProvenanceWireSchema = z
+  .object({
+    actorId: uuid,
+    actorKind: z.enum(ACTOR_KINDS),
+    actorDisplayName: z.string(),
+    sourceSessionId: uuid.nullable(),
+    sessionTool: z.string().nullable(),
+    clientName: z.string().nullable(),
+    clientVersion: z.string().nullable(),
+    clientSessionRef: z.string().nullable(),
+    clientSessionName: z.string().nullable(),
+    clientSessionUrl: z.string().nullable(),
+    status: z.enum(['complete', 'partial']),
+    missingFields: z.array(z.enum(CONTEXT_ITEM_PROVENANCE_FIELDS)).readonly(),
+  })
+  .transform(deriveContextItemProvenance);
+
 export const ContextItemWireSchema = z.object({
   id: uuid,
   workspaceId: uuid,
@@ -61,6 +80,7 @@ export const ContextItemWireSchema = z.object({
   supersededById: uuid.nullable(),
   supersedeReason: z.string().nullable().optional(),
   accessScope: z.enum(ACCESS_SCOPES),
+  provenance: ContextItemProvenanceWireSchema.optional(),
 });
 
 export type ContextItemWire = z.infer<typeof ContextItemWireSchema>;
@@ -88,6 +108,9 @@ export const encodeContextItem = (item: ContextItem): ContextItemWire => ({
   supersededById: item.supersededById,
   supersedeReason: item.supersedeReason,
   accessScope: item.accessScope,
+  ...(item.provenance === undefined
+    ? {}
+    : { provenance: deriveContextItemProvenance(item.provenance) }),
 });
 
 export const decodeContextItem = (wire: ContextItemWire): ContextItem => ({
@@ -115,6 +138,7 @@ export const decodeContextItem = (wire: ContextItemWire): ContextItem => ({
   accessScope: wire.accessScope,
   embedding: null,
   embeddingModel: null,
+  ...(wire.provenance === undefined ? {} : { provenance: wire.provenance }),
 });
 
 export const ActorWireSchema = z.object({
@@ -246,6 +270,11 @@ export const SessionWireSchema = z.object({
   projectId: uuid,
   actorId: uuid,
   tool: z.string().nullable(),
+  clientName: z.string().nullable().optional(),
+  clientVersion: z.string().nullable().optional(),
+  clientSessionRef: z.string().nullable().optional(),
+  clientSessionName: z.string().nullable().optional(),
+  clientSessionUrl: z.string().nullable().optional(),
   startedAt: isoDate,
   endedAt: isoDate.nullable(),
 });
@@ -258,6 +287,11 @@ export const encodeSession = (session: Session): SessionWire => ({
   projectId: session.projectId,
   actorId: session.actorId,
   tool: session.tool,
+  clientName: session.clientName,
+  clientVersion: session.clientVersion,
+  clientSessionRef: session.clientSessionRef,
+  clientSessionName: session.clientSessionName,
+  clientSessionUrl: session.clientSessionUrl,
   startedAt: session.startedAt.toISOString(),
   endedAt: session.endedAt?.toISOString() ?? null,
 });
@@ -268,6 +302,11 @@ export const decodeSession = (wire: SessionWire): Session => ({
   projectId: wire.projectId,
   actorId: wire.actorId,
   tool: wire.tool,
+  clientName: wire.clientName ?? null,
+  clientVersion: wire.clientVersion ?? null,
+  clientSessionRef: wire.clientSessionRef ?? null,
+  clientSessionName: wire.clientSessionName ?? null,
+  clientSessionUrl: wire.clientSessionUrl ?? null,
   startedAt: toDate(wire.startedAt),
   endedAt: toNullableDate(wire.endedAt),
 });

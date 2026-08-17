@@ -17,8 +17,6 @@ import type {
 } from '@mneia/core';
 import { createMemorySink, createTelemetryEmitter, ITEM_STATUSES } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
-import { createNoopReviewQueue } from '../review-queue.js';
-import { createSliceLog } from '../slices.js';
 import type { AssertInput } from './assert.js';
 import { assertTool } from './assert.js';
 import { createToolContextFixture } from './context-fixture.js';
@@ -35,7 +33,6 @@ const NEWER_ITEM_ID: Uuid = '4444dddd-4444-4444-8444-4444dddd4444';
 const WRITTEN_ITEM_ID: Uuid = '55555555-5555-4555-8555-555555555555';
 const CHECKPOINT_ID: Uuid = '66666666-6666-4666-8666-666666666666';
 const SESSION_ID: Uuid = '77777777-7777-4777-8777-777777777777';
-const SERVER_SESSION_ID: Uuid = '7777eeee-7777-4777-8777-7777eeee7777';
 const UNKNOWN_ITEM_ID: Uuid = '88888888-8888-4888-8888-888888888888';
 
 const NOW = new Date('2026-08-01T12:00:00.000Z');
@@ -404,6 +401,7 @@ describe('mneia_assert surface', () => {
         'loadBearing',
         'projectId',
         'sessionId',
+        'sourceSession',
         'sourceRef',
         'supersedesId',
         'title',
@@ -436,6 +434,53 @@ describe('mneia_assert input validation', () => {
       loadBearing: true,
       accessScope: 'team',
     });
+  });
+
+  it('accepts bounded source session metadata supplied by the harness', () => {
+    expect(
+      assertTool.parse({
+        ...MINIMAL_RAW,
+        sourceSession: {
+          ref: 'conversation-42',
+          name: 'MNE-86 dogfood',
+          url: 'https://example.invalid/conversations/42',
+        },
+      }),
+    ).toMatchObject({
+      sourceSession: {
+        ref: 'conversation-42',
+        name: 'MNE-86 dogfood',
+        url: 'https://example.invalid/conversations/42',
+      },
+    });
+  });
+
+  it('rejects malformed source session metadata', () => {
+    const invalid = [
+      { ref: 'x'.repeat(501) },
+      { name: `before${String.fromCharCode(0)}after` },
+      { url: '/relative/conversation' },
+      { url: 'file:///tmp/conversation' },
+    ];
+
+    for (const sourceSession of invalid) {
+      expect(messageOf(() => assertTool.parse({ ...MINIMAL_RAW, sourceSession }))).toContain(
+        'sourceSession',
+      );
+    }
+  });
+
+  it('drops caller-supplied client identity fields', () => {
+    const parsed = assertTool.parse({
+      ...MINIMAL_RAW,
+      clientName: 'forged-client',
+      clientVersion: '99.0.0',
+      sourceSession: { ref: 'conversation-42', clientName: 'nested-forgery' },
+    });
+
+    expect(parsed).not.toHaveProperty('clientName');
+    expect(parsed).not.toHaveProperty('clientVersion');
+    expect(parsed.sourceSession).toEqual({ ref: 'conversation-42' });
   });
 
   it('names the tool, the failing field, and the fix when input is rejected', () => {
@@ -955,6 +1000,56 @@ describe('mneia_assert supersede arbitration', () => {
 });
 
 describe('mneia_assert writes', () => {
+  it('prefers the resolved session and writes checkpoint source fields', async () => {
+    const fake = createStore({ existing: null });
+    const resolvedSessionId = NEWER_ITEM_ID;
+    const context = createToolContextFixture(fake.store, createTelemetry().emitter, {
+      now: NOW,
+      resolveWriteSession: () =>
+        Promise.resolve({
+          sessionId: resolvedSessionId,
+          checkpointSource: 'codex',
+          sourceSessionRef: 'conversation-42',
+        }),
+    });
+
+    await assertTool.run(
+      assertTool.parse({
+        ...FULL_RAW,
+        sourceSession: { ref: 'conversation-42' },
+      }),
+      context,
+    );
+
+    expect(submittedCheckpoint(fake)).toMatchObject({
+      sessionId: resolvedSessionId,
+      source: 'codex',
+      sourceSessionRef: 'conversation-42',
+    });
+    expect(submittedItem(fake).sourceSessionId).toBe(resolvedSessionId);
+  });
+
+  it('continues the write with partial provenance when session resolution returns null', async () => {
+    const fake = createStore({ existing: null });
+    const context = createToolContextFixture(fake.store, createTelemetry().emitter, {
+      now: NOW,
+      resolveWriteSession: () =>
+        Promise.resolve({
+          sessionId: null,
+          checkpointSource: 'codex',
+          sourceSessionRef: 'conversation-42',
+        }),
+    });
+
+    const result = await assertTool.run(
+      assertTool.parse({ ...MINIMAL_RAW, sourceSession: { ref: 'conversation-42' } }),
+      context,
+    );
+
+    expect(statusOf(result)).toBe('written');
+    expect(submittedItem(fake).sourceSessionId).toBeNull();
+  });
+
   it('attributes the write to a manual checkpoint owned by the scope actor', async () => {
     const fake = createStore({ existing: null });
     await runTool(FULL_RAW, fake, createTelemetry());
