@@ -74,18 +74,24 @@ repository secrets, which `deploy-web.yml` passes to the container. `/etc/mneia/
 everything else. Rotating a model key is `gh secret set` plus a re-run of the deploy — do not edit
 the droplet, or the next deploy will overwrite what you wrote.
 
-**Two defects in that path are open and unticketed** — Linear is refusing new issues on the free
-plan, so both are written up in the comments on MNE-265:
+**That path is now lossless, and the old warning here was wrong for a week.** Both MNE-265 defects
+are fixed; do not go looking for them:
 
-- The **watermark advances over turns the reducer dropped**. `propose.ts` reduces with the default
-  700,000-character cap and then advances the watermark to the last turn *fed in* rather than the
-  last turn *sent*, so on a large session hundreds of turns are skipped permanently. The chunking
-  that was meant to prevent this was never built.
-- **Failover sends prompts Haiku cannot fit.** `contextTokens` is declared on both models and read
-  by nothing, so a 242K-token prompt goes to a 200K-token model and fails naming the wrong cause.
+- **The watermark no longer passes what was never sent.** `915685c` disabled the reducer cap on the
+  server (`propose.ts`, `maxChars: Number.MAX_SAFE_INTEGER`), added `packages/core/src/extract/chunk.ts`
+  so an oversized transcript is split rather than trimmed, and moved the watermark only after a chunk
+  parses. `propose.test.ts` covers it.
+- **Failover checks the window it is failing over to.** `contextTokens` **is** read — four sites in
+  `apps/web/src/server/extraction/select.ts`, which refuses a fallback that cannot hold the prompt
+  and says so. `select.test.ts` covers it.
+- **The client stopped trimming too.** `bfd46bf` removed the 700,000-character cap from
+  `packages/cli/src/http-api.ts`; a session larger than one request is now uploaded across successive
+  runs and the remainder is reported as pending rather than dropped.
 
-Neither stops a normal session. Both matter before MNE-86's dogfood, which will hit the first one on
-day one.
+One thing in that path is genuinely still open: `turnsSince` returns `resolved: false` when the
+watermark is absent from the uploaded turns, and `propose.ts` ignores `resolved` — so **any partial
+upload is treated as entirely new**, moving the watermark backwards and re-running extraction we pay
+for. The CLI avoids it by asking for the watermark first, but nothing in the server prevents it.
 
 ## Repo map
 
