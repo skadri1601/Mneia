@@ -136,6 +136,10 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           MNEIA_INVITE_FROM: ${{ vars.MNEIA_INVITE_FROM }}
+          MNEIA_APP_ORIGIN: ${{ vars.MNEIA_APP_ORIGIN }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_PRICE_ID: ${{ secrets.STRIPE_PRICE_ID }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: |
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
             "echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u ${{ github.actor }} --password-stdin \
@@ -144,6 +148,10 @@ jobs:
              && export OPENAI_API_KEY='${OPENAI_API_KEY}' \
              && export ANTHROPIC_API_KEY='${ANTHROPIC_API_KEY}' \
              && export MNEIA_INVITE_FROM='${MNEIA_INVITE_FROM}' \
+             && export MNEIA_APP_ORIGIN='${MNEIA_APP_ORIGIN}' \
+             && export STRIPE_SECRET_KEY='${STRIPE_SECRET_KEY}' \
+             && export STRIPE_PRICE_ID='${STRIPE_PRICE_ID}' \
+             && export STRIPE_WEBHOOK_SECRET='${STRIPE_WEBHOOK_SECRET}' \
              && docker compose pull \
              && docker compose up -d --remove-orphans \
              && docker image prune -f"

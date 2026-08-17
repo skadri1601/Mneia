@@ -43,8 +43,11 @@ export interface HealthReport {
   readonly extraction: ModelHealth;
   readonly extractionFallback: ModelHealth;
   readonly embeddings: ModelHealth;
+  readonly billing: BillingHealth;
   readonly detail?: string;
 }
+
+export type BillingHealth = 'configured' | 'not_configured';
 
 const keyed = (value: string | undefined): ModelHealth =>
   value !== undefined && value.trim().length > 0 ? 'configured' : 'no_key';
@@ -60,6 +63,18 @@ export const inspectModelPosture = (env: EnvLike = process.env): ModelPosture =>
   extractionFallback: keyed(env.ANTHROPIC_API_KEY),
   embeddings: keyed(env.OPENAI_API_KEY),
 });
+
+export const inspectBillingPosture = (env: EnvLike = process.env): BillingHealth =>
+  [env.STRIPE_SECRET_KEY, env.STRIPE_PRICE_ID, env.STRIPE_WEBHOOK_SECRET].every(
+    (value) => value !== undefined && value.trim().length > 0,
+  )
+    ? 'configured'
+    : 'not_configured';
+
+export const describeBillingPosture = (billing: BillingHealth): string | null =>
+  billing === 'configured'
+    ? null
+    : 'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /billing returns 503 and no workspace can subscribe — set the three repository secrets and re-run the deploy';
 
 export const describeModelPosture = (posture: ModelPosture): string | null => {
   const missing: string[] = [];
@@ -224,6 +239,8 @@ export const checkHealth = async (
 ): Promise<HealthReport> => {
   const models = inspectModelPosture(env);
   const modelDetail = describeModelPosture(models);
+  const billing = inspectBillingPosture(env);
+  const billingDetail = describeBillingPosture(billing);
   const plan = planTelemetry(env);
   const postureDetail = describeTelemetryPosture(plan);
   let session: PostgresSession | undefined;
@@ -248,9 +265,14 @@ export const checkHealth = async (
     const telemetryOk = telemetry !== 'dropped' && telemetry !== 'failing';
     const status: HealthStatus = rlsOk && schemaOk && telemetryOk ? 'ok' : 'degraded';
 
-    const combined = [detail, schemaDetail, postureDetail, telemetryDetail, modelDetail].filter(
-      (part): part is string => part !== undefined && part !== null,
-    );
+    const combined = [
+      detail,
+      schemaDetail,
+      postureDetail,
+      telemetryDetail,
+      modelDetail,
+      billingDetail,
+    ].filter((part): part is string => part !== undefined && part !== null);
 
     const report: HealthReport = {
       status,
@@ -260,6 +282,7 @@ export const checkHealth = async (
       schemaVersion: versions,
       telemetry,
       ...models,
+      billing,
     };
 
     return combined.length === 0 ? report : { ...report, detail: combined.join('; ') };
@@ -272,6 +295,7 @@ export const checkHealth = async (
       schemaVersion: { expected: EXPECTED_SCHEMA_VERSION, applied: null },
       telemetry: plan.posture,
       ...models,
+      billing,
       detail: describe(error),
     };
   } finally {

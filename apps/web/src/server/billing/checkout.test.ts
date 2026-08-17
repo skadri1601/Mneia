@@ -68,15 +68,27 @@ describe('checkoutRequestFor', () => {
     ).toThrow(/active subscription/);
   });
 
-  it('refuses a cancelled workspace because its safe resubscription id is not stored', () => {
-    expect(() =>
-      checkoutRequestFor({
-        account: account(),
-        snapshot: snapshot({ billingStatus: 'canceled', billingCustomerRef: 'cus_cancelled' }),
-        attemptToken: ATTEMPT,
-        origin: 'https://app.mneia.dev',
-      }),
-    ).toThrow(/canceled/);
+  it('lets a cancelled workspace subscribe again, on a customer Stripe has not cancelled', () => {
+    const request = checkoutRequestFor({
+      account: account(),
+      snapshot: snapshot({ billingStatus: 'canceled', billingCustomerRef: 'cus_cancelled' }),
+      attemptToken: ATTEMPT,
+      origin: 'https://app.mneia.dev',
+    });
+
+    expect(request.customerId).toBeUndefined();
+    expect(request.workspaceId).toBe(WORKSPACE_ID);
+  });
+
+  it('reuses the stored customer while the subscription is still live', () => {
+    const request = checkoutRequestFor({
+      account: account(),
+      snapshot: snapshot({ billingStatus: 'active', billingCustomerRef: 'cus_live' }),
+      attemptToken: ATTEMPT,
+      origin: 'https://app.mneia.dev',
+    });
+
+    expect(request.customerId).toBe('cus_live');
   });
 
   it('refuses anything other than a UUID render attempt token', () => {
@@ -92,19 +104,15 @@ describe('checkoutRequestFor', () => {
 });
 
 describe('portalRequestFor', () => {
-  it('lets a lead manage a cancelled subscription through the retained customer', () => {
-    expect(
+  it('closes the portal once cancelled, so nobody pays through it for access they will not get', () => {
+    expect(() =>
       portalRequestFor({
         account: account(),
         snapshot: snapshot({ billingStatus: 'canceled', billingCustomerRef: 'cus_cancelled' }),
         attemptToken: ATTEMPT,
         origin: 'https://app.mneia.dev',
       }),
-    ).toEqual({
-      customerId: 'cus_cancelled',
-      returnUrl: 'https://app.mneia.dev/billing',
-      idempotencyKey: ATTEMPT,
-    });
+    ).toThrow(/actionable billing status/);
   });
 
   it('refuses a portal request without a Stripe customer', () => {

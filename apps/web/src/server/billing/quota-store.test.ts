@@ -124,18 +124,27 @@ describe('PostgresQuotaStore.quotaFor', () => {
     expect(sql).toContain('w.checkpoint_allowance');
     expect(sql).toContain('w.seats_purchased');
     expect(sql).toContain('team_member');
-    expect(sql).toContain('checkpoint_usage');
-    expect(sql).toContain('count(DISTINCT u.created_at)');
+    expect(sql).toContain('workspace_usage_period');
+    expect(sql).toContain('p.checkpoints_used');
+    expect(sql).not.toContain('count(DISTINCT u.created_at)');
   });
 
-  it('counts usage inside the calendar month, half-open so a month boundary is not double counted', async () => {
+  it('reads the period row for the calendar month it was asked about', async () => {
     const { session, store } = storeWith(() => [ROW]);
 
     await store.quotaFor(WORKSPACE_ID, NOW);
 
     const read = session.exchanges.find((exchange) => exchange.sql.includes('FROM workspace'));
     expect(read?.params[1]).toBe('2026-08-01T00:00:00.000Z');
-    expect(read?.params[2]).toBe('2026-09-01T00:00:00.000Z');
+    expect(read?.sql).toContain("date_trunc('month', $2::timestamptz)");
+  });
+
+  it('reads a workspace with no period row yet as zero, not as missing', async () => {
+    const { store } = storeWith(() => [{ ...ROW, checkpoints_used: 0 }]);
+
+    await expect(store.quotaFor(WORKSPACE_ID, NOW)).resolves.toMatchObject({
+      checkpointsUsed: 0,
+    });
   });
 
   it('maps the row into a quota state the policy can decide on', async () => {
