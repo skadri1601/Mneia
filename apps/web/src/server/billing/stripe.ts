@@ -359,7 +359,7 @@ export const verifyWebhookSignature = (input: {
 };
 
 export const readStripeConfiguration = (
-  env: NodeJS.ProcessEnv = process.env,
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): StripeConfiguration | null => {
   const secretKey = env[STRIPE_SECRET_KEY_VAR]?.trim();
   const priceId = env[STRIPE_PRICE_ID_VAR]?.trim();
@@ -380,7 +380,7 @@ export const readStripeConfiguration = (
 };
 
 export const requireStripeConfiguration = (
-  env: NodeJS.ProcessEnv = process.env,
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): StripeConfiguration => {
   const configuration = readStripeConfiguration(env);
   if (configuration === null) {

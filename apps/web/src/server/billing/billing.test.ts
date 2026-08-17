@@ -1,5 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
+import type { BillingSnapshot, BillingStore } from './billing-store.js';
 
 vi.mock('server-only', () => ({}));
 
@@ -21,7 +22,6 @@ const {
   verifyWebhookSignature,
 } = await import('./stripe.js');
 const { handleStripeWebhook } = await import('./webhook.js');
-const type = await import('./billing-store.js');
 
 const CONFIG = { secretKey: 'sk_test', priceId: 'price_1', webhookSecret: 'whsec_test' };
 const NOW = new Date('2026-08-08T12:00:00.000Z');
@@ -54,9 +54,9 @@ const subscriptionEvent = (
     },
   });
 
-const storeStub = (overrides: Partial<type.BillingStore> = {}): type.BillingStore => {
-  const applied: type.BillingSnapshot[] = [];
-  const base: type.BillingStore = {
+const storeStub = (overrides: Partial<BillingStore> = {}): BillingStore => {
+  const applied: BillingSnapshot[] = [];
+  const base: BillingStore = {
     snapshot: async () => ({
       workspaceId: WORKSPACE,
       plan: 'solo',
@@ -75,9 +75,9 @@ const storeStub = (overrides: Partial<type.BillingStore> = {}): type.BillingStor
   return Object.assign(base, { applied });
 };
 
-const statefulStoreStub = (initial: type.BillingSnapshot): type.BillingStore => {
+const statefulStoreStub = (initial: BillingSnapshot): BillingStore => {
   let snapshot = initial;
-  const base: type.BillingStore = {
+  const base: BillingStore = {
     snapshot: async () => snapshot,
     applyBillingState: async ({ workspaceId, state }) => {
       snapshot = { workspaceId, ...state, memberCount: snapshot.memberCount };

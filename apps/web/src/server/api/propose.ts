@@ -42,7 +42,12 @@ export interface ExtractionAttemptRecord {
   readonly durationMs: number;
 }
 
+export type QuotaVerdict =
+  | { readonly allowed: true }
+  | { readonly allowed: false; readonly code: string; readonly message: string };
+
 export interface ProposeDependencies {
+  readonly quota: () => Promise<QuotaVerdict>;
   readonly run: (request: {
     system: string;
     user: string;
@@ -105,6 +110,11 @@ export const handleProposeCheckpoint = async (
         incompleteReason: null,
       },
     };
+  }
+
+  const verdict = await deps.quota();
+  if (!verdict.allowed) {
+    throw new ApiRequestError('forbidden', verdict.message);
   }
 
   const reduced = reduceTrajectory(

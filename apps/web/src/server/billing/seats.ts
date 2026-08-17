@@ -100,8 +100,7 @@ export const stateAfterSubscription = (request: UpgradeRequest): BillingState =>
   const teamEntitled = stripeStatusHasTeamEntitlement(request.subscriptionStatus);
 
   return {
-    plan:
-      request.current.plan === 'enterprise' ? 'enterprise' : teamEntitled ? 'team' : 'solo',
+    plan: request.current.plan === 'enterprise' ? 'enterprise' : teamEntitled ? 'team' : 'solo',
     billingStatus: status,
     seatsPurchased: teamEntitled ? request.seats : null,
     billingCustomerRef: request.customerRef,

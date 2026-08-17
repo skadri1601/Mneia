@@ -3,6 +3,8 @@ import 'server-only';
 import type { PostgresConnectionSource } from '@mneia/core';
 import { database } from '../database.js';
 import { type BillingStore, PostgresBillingStore } from './billing-store.js';
+import { checkpointQuota, type QuotaDecision } from './quota.js';
+import { PostgresQuotaStore, type QuotaStore } from './quota-store.js';
 import { requireStripeConfiguration, StripeClient } from './stripe.js';
 
 const FALLBACK_APP_ORIGIN = 'https://app.mneia.dev';
@@ -27,8 +29,9 @@ const validOrigin = (value: string): string | null => {
   }
 };
 
-export const billingOrigin = (env: NodeJS.ProcessEnv = process.env): string =>
-  validOrigin(env.MNEIA_APP_ORIGIN?.trim() ?? '') ?? FALLBACK_APP_ORIGIN;
+export const billingOrigin = (
+  env: Readonly<Record<string, string | undefined>> = process.env,
+): string => validOrigin(env.MNEIA_APP_ORIGIN?.trim() ?? '') ?? FALLBACK_APP_ORIGIN;
 
 export interface BillingRuntime {
   readonly store: BillingStore;
@@ -38,7 +41,7 @@ export interface BillingRuntime {
 
 export const createBillingRuntime = (
   source: PostgresConnectionSource,
-  env: NodeJS.ProcessEnv = process.env,
+  env: Readonly<Record<string, string | undefined>> = process.env,
 ): BillingRuntime => ({
   store: createBillingStore(source),
   stripe: new StripeClient({ configuration: requireStripeConfiguration(env) }),
@@ -51,3 +54,17 @@ export const createBillingStore = (source: PostgresConnectionSource): BillingSto
 export const billingStore = (): BillingStore => createBillingStore(database);
 
 export const billingRuntime = (): BillingRuntime => createBillingRuntime(database);
+
+export const createQuotaStore = (source: PostgresConnectionSource): QuotaStore =>
+  new PostgresQuotaStore(source);
+
+export const quotaStore = (): QuotaStore => createQuotaStore(database);
+
+export const checkpointQuotaFor = async (
+  workspaceId: string,
+  now: Date,
+  store: QuotaStore = quotaStore(),
+): Promise<QuotaDecision> => {
+  const state = await store.quotaFor(workspaceId, now);
+  return state === null ? { allowed: true } : checkpointQuota(state);
+};

@@ -93,6 +93,7 @@ const CANDIDATES = JSON.stringify({
 const depsWith = (overrides: Partial<Parameters<typeof handleProposeCheckpoint>[2]> = {}) => {
   const seen: { prompts: string[]; usage: unknown[] } = { prompts: [], usage: [] };
   const deps = {
+    quota: vi.fn(async () => ({ allowed: true }) as const),
     run: vi.fn(async (request: { system: string; user: string; maxOutputTokens: number }) => {
       seen.prompts.push(request.user);
       return {
@@ -153,6 +154,51 @@ describe('handleProposeCheckpoint', () => {
     expect(proposal.candidates).toHaveLength(0);
     expect(proposal.watermark).toBe('c');
     expect(deps.run).not.toHaveBeenCalled();
+  });
+
+  describe('the quota gate', () => {
+    const exhausted = () =>
+      vi.fn(async () => ({
+        allowed: false as const,
+        code: 'allowance_exhausted',
+        message: 'this workspace has used 10 of its 10 checkpoints for the period',
+      }));
+
+    it('refuses before calling the model, so a denial costs no inference', async () => {
+      const { deps } = depsWith({ quota: exhausted() });
+
+      await expect(
+        handleProposeCheckpoint(storeStub(), input(['a', 'b']), deps),
+      ).rejects.toMatchObject({ code: 'forbidden' });
+
+      expect(deps.run).not.toHaveBeenCalled();
+      expect(deps.recordUsage).not.toHaveBeenCalled();
+    });
+
+    it('carries the refusal message through, so the caller is told what to do', async () => {
+      const { deps } = depsWith({ quota: exhausted() });
+
+      await expect(handleProposeCheckpoint(storeStub(), input(['a']), deps)).rejects.toThrow(
+        'used 10 of its 10',
+      );
+    });
+
+    it('does not consult the quota when there is nothing to extract', async () => {
+      const { deps } = depsWith({ watermarkFor: vi.fn(async () => 'c') });
+
+      await handleProposeCheckpoint(storeStub(), input(['a', 'b', 'c']), deps);
+
+      expect(deps.quota).not.toHaveBeenCalled();
+    });
+
+    it('proceeds when the workspace is unmetered', async () => {
+      const { deps } = depsWith();
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(['a']), deps);
+
+      expect(deps.quota).toHaveBeenCalledTimes(1);
+      expect(proposal.consumedTurns).toBe(1);
+    });
   });
 
   it('applies the precision filter, so filler never reaches the review queue', async () => {
