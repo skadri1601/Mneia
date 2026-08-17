@@ -18,6 +18,7 @@ export const MIN_TURNS_ENV_VAR = 'MNEIA_DOGFOOD_MIN_TURNS';
 export const STATE_DIR = join('.mneia', 'dogfood');
 export const LOCK_STALE_MS = 10 * 60 * 1000;
 export const MAX_ROOT_WALK = 12;
+export const LOCAL_CLI_RELATIVE = join('packages', 'cli', 'dist', 'bin.js');
 
 export function disabled() {
   const configured = String(process.env[DISABLE_ENV_VAR] ?? '').trim();
@@ -209,17 +210,36 @@ function attempt(command, args, cwd, ms, useShell) {
   });
 }
 
-export function runMneia(args, { cwd, timeoutMs: ms }) {
+export function resolveCli(root) {
   const configured = String(process.env[CLI_ENV_VAR] ?? '').trim();
-  const command = configured.length > 0 ? configured : 'mneia';
+  if (configured.length > 0) {
+    return { command: configured, prefix: [], label: configured, source: 'env' };
+  }
 
-  let result = attempt(command, args, cwd, ms, false);
+  const local = join(String(root ?? process.cwd()), LOCAL_CLI_RELATIVE);
+  if (existsSync(local)) {
+    return {
+      command: process.execPath,
+      prefix: [local],
+      label: `node ${LOCAL_CLI_RELATIVE}`,
+      source: 'repo',
+    };
+  }
+
+  return { command: 'mneia', prefix: [], label: 'mneia', source: 'path' };
+}
+
+export function runMneia(args, { cwd, timeoutMs: ms }) {
+  const cli = resolveCli(cwd);
+  const argv = [...cli.prefix, ...args];
+
+  let result = attempt(cli.command, argv, cwd, ms, false);
 
   // npm installs the `mneia` bin as a `.cmd` shim on Windows, and since the CVE-2024-27980 fix
   // Node refuses to spawn a .cmd without a shell — so the retry needs `shell: true`, and every
   // argument is checked against SHELL_SAFE first rather than trusted through cmd.exe.
   if (needsWindowsShellRetry(result)) {
-    const unsafe = args.find((arg) => !SHELL_SAFE.test(String(arg)));
+    const unsafe = argv.find((arg) => !SHELL_SAFE.test(String(arg)));
     if (unsafe !== undefined) {
       return {
         status: null,
@@ -227,12 +247,14 @@ export function runMneia(args, { cwd, timeoutMs: ms }) {
         stderr: '',
         timedOut: false,
         unavailable: false,
-        failure: `refusing to run ${command} through a shell: the argument ${JSON.stringify(unsafe)} contains characters cmd.exe would reinterpret`,
+        client: cli.label,
+        clientSource: cli.source,
+        failure: `refusing to run ${cli.label} through a shell: the argument ${JSON.stringify(unsafe)} contains characters cmd.exe would reinterpret`,
       };
     }
     result = attempt(
-      `${command}.cmd`,
-      args.map((arg) => `"${arg}"`),
+      `${cli.command}.cmd`,
+      argv.map((arg) => `"${arg}"`),
       cwd,
       ms,
       true,
@@ -247,7 +269,9 @@ export function runMneia(args, { cwd, timeoutMs: ms }) {
     stderr: result.stderr ?? '',
     timedOut,
     unavailable: isMissingCommand(result),
-    failure: describeFailure(result, timedOut, command, ms),
+    client: cli.label,
+    clientSource: cli.source,
+    failure: describeFailure(result, timedOut, cli.label, ms),
   };
 }
 
@@ -267,7 +291,7 @@ function describeFailure(result, timedOut, command, ms) {
     return `${command} did not finish within ${ms}ms`;
   }
   if (isMissingCommand(result)) {
-    return `${command} is not on PATH — install @mneia/cli, or set ${CLI_ENV_VAR} to its absolute path`;
+    return `${command} could not be started — run \`pnpm -r build\` so ${LOCAL_CLI_RELATIVE} exists, or set ${CLI_ENV_VAR} to the absolute path of an installed mneia executable`;
   }
   if (result.error !== undefined) {
     return `${command} could not be run: ${result.error.message}`;

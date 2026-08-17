@@ -138,16 +138,30 @@ if (result.status !== 0) {
   const reason =
     result.failure ??
     `mneia brief exited ${result.status}${result.stderr.trim().length === 0 ? '' : ` — ${result.stderr.trim().split('\n')[0]}`}`;
-  appendLog(root, { event: 'rehydrate', sessionId, outcome: 'failed', reason });
-  process.stderr.write(`[mneia-dogfood] rehydrate skipped: ${reason}\n`);
+  appendLog(root, {
+    event: 'rehydrate',
+    sessionId,
+    outcome: 'failed',
+    client: result.client,
+    clientSource: result.clientSource,
+    reason,
+  });
+  process.stderr.write(`[mneia-dogfood] rehydrate skipped (${result.client}): ${reason}\n`);
   emit(unavailableNote(reason));
 }
 
 const slice = parseJson(result.stdout);
 if (slice === null) {
   const reason = 'mneia brief --json did not return parseable JSON';
-  appendLog(root, { event: 'rehydrate', sessionId, outcome: 'failed', reason });
-  process.stderr.write(`[mneia-dogfood] rehydrate skipped: ${reason}\n`);
+  appendLog(root, {
+    event: 'rehydrate',
+    sessionId,
+    outcome: 'failed',
+    client: result.client,
+    clientSource: result.clientSource,
+    reason,
+  });
+  process.stderr.write(`[mneia-dogfood] rehydrate skipped (${result.client}): ${reason}\n`);
   emit(unavailableNote(reason));
 }
 
@@ -157,6 +171,8 @@ appendLog(root, {
   event: 'rehydrate',
   sessionId,
   outcome: 'ok',
+  client: result.client,
+  clientSource: result.clientSource,
   task,
   sliceId: typeof slice.sliceId === 'string' ? slice.sliceId : null,
   items: Array.isArray(slice.items) ? slice.items.length : 0,

@@ -78,6 +78,8 @@ try {
     event: 'checkpoint',
     sessionId,
     outcome: succeeded ? 'ok' : 'failed',
+    client: result.client,
+    clientSource: result.clientSource,
     turns,
     newTurns: turns === null ? null : turns - alreadyCovered,
     reason,
@@ -89,7 +91,7 @@ try {
   });
 
   if (!succeeded) {
-    note(`checkpoint skipped: ${reason}`);
+    note(`checkpoint skipped (${result.client}): ${reason}`);
   }
 } finally {
   releaseLock(root, sessionId);
