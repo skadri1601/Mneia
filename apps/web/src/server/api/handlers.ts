@@ -116,14 +116,22 @@ export const handleCreateSession = async (
   input: {
     readonly projectId: Uuid;
     readonly tool: string | null;
-    readonly clientName?: string | null;
-    readonly clientVersion?: string | null;
-    readonly clientSessionRef?: string | null;
-    readonly clientSessionName?: string | null;
-    readonly clientSessionUrl?: string | null;
+    readonly clientName?: string | null | undefined;
+    readonly clientVersion?: string | null | undefined;
+    readonly clientSessionRef?: string | null | undefined;
+    readonly clientSessionName?: string | null | undefined;
+    readonly clientSessionUrl?: string | null | undefined;
   },
 ): Promise<{ session: SessionWire }> => {
-  const session = await store.createSession(input.projectId, input.tool, input);
+  const session = await store.createSession(input.projectId, input.tool, {
+    ...(input.clientName === undefined ? {} : { clientName: input.clientName }),
+    ...(input.clientVersion === undefined ? {} : { clientVersion: input.clientVersion }),
+    ...(input.clientSessionRef === undefined ? {} : { clientSessionRef: input.clientSessionRef }),
+    ...(input.clientSessionName === undefined
+      ? {}
+      : { clientSessionName: input.clientSessionName }),
+    ...(input.clientSessionUrl === undefined ? {} : { clientSessionUrl: input.clientSessionUrl }),
+  });
   return { session: encodeSession(session) };
 };
 

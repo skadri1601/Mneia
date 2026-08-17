@@ -163,7 +163,7 @@ Ordered by dependency; each is its own migration, all in one PR.
 | 0026 | `workspace_usage_period` | MNE-103, MNE-178 |
 | 0027 | `api_token.scopes` | MNE-146 |
 | 0028 | `audit_event` | MNE-145 |
-| 0030 | nullable client provenance on `session` | MNE-86, §9/§10 |
+| 0031 | nullable client provenance on `session` | MNE-86, §9/§10 |
 
 **The invite reconciliation happens in 0017, not on the MNE-126 branch.** `workspace_invitation`
 shipped keyed on `team_id NOT NULL` and `team_role`, because `workspace_role` did not exist yet.
