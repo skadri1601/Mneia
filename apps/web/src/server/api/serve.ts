@@ -6,6 +6,7 @@ import { StoreError, SupersedeNotAllowedError } from '@mneia/core';
 import type { z } from 'zod';
 import { ApiAuthError, apiError, apiOk, resolveBearerIdentity } from '../api-auth.js';
 import { deviceStore } from '../device-runtime.js';
+import { reportRouteFailure } from '../error-reporting.js';
 import {
   evaluateRateLimit,
   RATE_LIMIT_RETENTION_SECONDS,
@@ -147,6 +148,8 @@ export const serve = async <TInput>(options: ServeOptions<TInput>): Promise<Resp
         return apiError('invalid_request', error.message);
       }
     }
+
+    reportRouteFailure(options.request, error);
     throw error;
   }
 };

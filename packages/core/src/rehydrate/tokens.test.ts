@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ContextItem } from '../domain/types.js';
 import {
   countItemTokens,
@@ -253,5 +253,29 @@ describe('the default token counter is a real tokenizer (MNE-70)', () => {
 
   it('counts the empty string as zero, like the heuristic', () => {
     expect(defaultTokenCounter.count('')).toBe(0);
+  });
+});
+
+describe('MNE-86: the tokenizer resolves at build time, not at call time', () => {
+  afterEach(() => {
+    vi.doUnmock('node:module');
+    vi.resetModules();
+  });
+
+  it('counts tokens when nothing can be required at runtime', async () => {
+    vi.resetModules();
+    vi.doMock('node:module', () => ({
+      createRequire:
+        () =>
+        (specifier: string): never => {
+          const error: NodeJS.ErrnoException = new Error(`Cannot find module '${specifier}'`);
+          error.code = 'MODULE_NOT_FOUND';
+          throw error;
+        },
+    }));
+
+    const { bpeTokenCounter } = await import('./tokens.js');
+
+    expect(bpeTokenCounter.count('we retry with an idempotency key')).toBe(8);
   });
 });
