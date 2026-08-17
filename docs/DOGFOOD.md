@@ -34,13 +34,21 @@ Record which client each day was worked in.
 
 ### 2.1 Sign this machine in
 
+Build the repo's own client first, then sign in **with it**:
+
 ```
-npm install -g @mneia/cli
-mneia login
+pnpm -r build
+node packages/cli/dist/bin.js login
 ```
 
-`mneia login` runs a device flow and writes a token to `~/.mneia/credentials`. **That file is the only
+`login` runs a device flow and writes a token to `~/.mneia/credentials`. **That file is the only
 credential, it is outside the repo, and it must stay there.** Nothing in this repository holds a token.
+
+**Do not sign in with a globally installed `mneia`** unless you have checked its version. `npm view
+@mneia/cli version` reports what the registry has; `mneia --version` reports what is on this machine.
+On the founder's machine that was `0.1.0` — two releases behind the repo's `0.2.0` — which is exactly
+the trap §4 describes. The credential file is shared between them, so signing in with either works;
+running the dogfood through the old one does not.
 
 ### 2.2 Check the binding matches your workspace
 
@@ -58,13 +66,13 @@ The `workspace` value **must equal the workspace your token belongs to**, becaus
 a binding that names a different one (`packages/cli/src/http-api.ts:116`). Confirm it:
 
 ```
-mneia whoami --json
+node packages/cli/dist/bin.js whoami --json
 ```
 
 If the `workspace.slug` it prints is not `mneia`, fix the file — either by hand or by running:
 
 ```
-mneia init --force --project mneia
+node packages/cli/dist/bin.js init --force --project mneia
 ```
 
 `init` creates the project if the slug does not exist yet, imports this repo's existing constraints
@@ -225,11 +233,38 @@ this landed through a PR.
 
 | Hook | Event | Script | Runs |
 |---|---|---|---|
-| Rehydrate | `SessionStart` | `.claude/hooks/mneia-rehydrate.mjs` | `mneia brief "<task>" --json` |
-| Checkpoint | `Stop` | `.claude/hooks/mneia-checkpoint.mjs` | `mneia checkpoint --json --trigger task_boundary` |
+| Rehydrate | `SessionStart` | `.claude/hooks/mneia-rehydrate.mjs` | `brief "<task>" --json` |
+| Checkpoint | `Stop` | `.claude/hooks/mneia-checkpoint.mjs` | `checkpoint --json --trigger task_boundary` |
 
-Both shell out to the **published CLI** rather than reimplementing the wire protocol. That is the
-point of a dogfood: the instrument exercises the same client surface a customer installs.
+Both shell out to the **CLI** rather than reimplementing the wire protocol. That is the point of a
+dogfood: the instrument exercises the same client surface a customer installs.
+
+### Which CLI, and why it is the repo's own build
+
+`resolveCli` in `.claude/hooks/mneia-dogfood.mjs` picks one of three, in order, and records which it
+picked in every `.mneia/dogfood/log.jsonl` line as `client` / `clientSource`:
+
+| Order | `clientSource` | What runs |
+|---|---|---|
+| 1 | `env` | `MNEIA_DOGFOOD_CLI`, spawned as a single executable path |
+| 2 | `repo` | `node <repo>/packages/cli/dist/bin.js` — the default whenever that file exists |
+| 3 | `path` | `mneia` from `PATH` — only when there is no local build |
+
+**Preferring the repo build is load-bearing, for the same reason `.mcp.json` runs
+`node ./packages/mcp-server/dist/bin.js` instead of `npx -y @mneia/mcp-server`** (§3 above). It fell
+out of the day-zero smoke test: `.claude/settings.json` sets no `env` block, so the old code fell
+through to `mneia` on `PATH`, which on this machine resolved to a globally installed **`0.1.0`** while
+the repo was on `0.2.0`. Seven days of rehydrates and checkpoints would have run through a client
+predating both the MNE-257 client fixes and session provenance, and nothing would have said so.
+
+So the hooks do not depend on a global install at all, and they do not need an `env` block in
+`.claude/settings.json`. Run `pnpm -r build` before the first session, and after any pull that touches
+`packages/` — the same instruction the MCP config already carries. With no local build the hooks fall
+back to `PATH`, and if that is missing too they fail open and name the fix.
+
+`MNEIA_DOGFOOD_CLI` remains the escape hatch and is still spawned as **one executable path**, not a
+command line: `"node C:/path/to/bin.js"` is not a valid value. Point it at a real executable — an npm
+`.cmd` shim or a binary — or leave it unset and let order 2 do the work.
 
 ### Session start
 
@@ -280,7 +315,7 @@ backstop. §12.1 keeps `mneia_rehydrate` p95 under 300ms, but the hook does not 
 | Variable | Default | Effect |
 |---|---|---|
 | `MNEIA_DOGFOOD=off` | unset | Kill switch. Both hooks exit immediately. **Use this rather than deleting the hooks — then say so in §6.** |
-| `MNEIA_DOGFOOD_CLI` | `mneia` | Absolute path to the CLI, if it is not on `PATH`. |
+| `MNEIA_DOGFOOD_CLI` | the repo build | Absolute path to a CLI **executable** to use instead. One path, not a command line. |
 | `MNEIA_DOGFOOD_TIMEOUT_MS` | 12000 / 45000 | Per-invocation timeout. |
 | `MNEIA_DOGFOOD_MIN_TURNS` | 6 | New transcript entries required before a checkpoint. |
 
@@ -290,9 +325,19 @@ backstop. §12.1 keeps `mneia_rehydrate` p95 under 300ms, but the hook does not 
 
 ```
 curl -s https://app.mneia.dev/api/health        # rls: enforced, all three model keys configured
-mneia whoami                                     # actor, workspace, team
-mneia status                                     # which project this repo is bound to
-mneia brief "verifying the dogfood instrument"   # a slice comes back
+node packages/cli/dist/bin.js --version         # 0.2.0 — the repo build, not a stale global
+node packages/cli/dist/bin.js whoami            # actor, workspace, team
+node packages/cli/dist/bin.js status            # which project this repo is bound to
+node packages/cli/dist/bin.js brief "verifying the dogfood instrument"
+```
+
+Or drive the hook itself, which is the only check that proves what the *hook* resolves rather than
+what your shell does:
+
+```
+echo '{"session_id":"verify-001","cwd":"'"$PWD"'","source":"startup","hook_event_name":"SessionStart"}' \
+  | node .claude/hooks/mneia-rehydrate.mjs
+tail -1 .mneia/dogfood/log.jsonl    # "clientSource":"repo"
 ```
 
 Then start a Claude Code session in this repo and check all three:
@@ -305,6 +350,13 @@ Then start a Claude Code session in this repo and check all three:
 
 That log file is the evidence behind the table in §6 — fill the table from it, not from memory.
 `pnpm dogfood:report` reports extraction quality across the same period.
+
+**When a hook reports a failure, check Sentry before guessing.** `apps/web` now initialises Sentry
+(`apps/web/sentry.server.config.ts`, `apps/web/src/instrumentation.ts`) and `serve.ts` captures any
+error that escapes an API route, tagged `mneia_route` / `mneia_method` / `mneia_error_class`. Before
+that, a route could return a bare 500 with an empty body and leave no trace anywhere — which is how
+the day-zero `/api/v1/rehydrate` 500 went unreported. Reporting needs `SENTRY_DSN` set on the droplet;
+without it the SDK is inert and nothing crashes.
 
 ---
 
