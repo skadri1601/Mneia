@@ -22,6 +22,7 @@ import { PostgresBillingStore } from '../../apps/web/src/server/billing/billing-
 import { checkpointQuota } from '../../apps/web/src/server/billing/quota.js';
 import { PostgresQuotaStore } from '../../apps/web/src/server/billing/quota-store.js';
 import { handleStripeWebhook } from '../../apps/web/src/server/billing/webhook.js';
+import { CheckpointSourceStore } from '../../apps/web/src/server/store/checkpoint-source-store.js';
 import { PgDriver } from './pg-driver.js';
 
 const connectionString = process.env.DATABASE_URL;
@@ -143,6 +144,7 @@ async function withWorkspace<T>(
     readonly admin: Client;
     readonly billing: PostgresBillingStore;
     readonly quota: PostgresQuotaStore;
+    readonly usage: CheckpointSourceStore;
   }) => Promise<T>,
 ): Promise<T> {
   const schema = `${schemaPrefix}_${++schemaCounter}`;
@@ -192,6 +194,7 @@ async function withWorkspace<T>(
       admin,
       billing: new PostgresBillingStore(source),
       quota: new PostgresQuotaStore(source),
+      usage: new CheckpointSourceStore(source),
     });
   } finally {
     await source.close();
@@ -270,53 +273,7 @@ describeIf('MNE-141 the billing journey a two-member team actually walks', () =>
     });
   }, 120_000);
 
-  it('cannot resubscribe after cancelling, which is where MNE-141 stops short', async () => {
-    await withWorkspace(async ({ billing }) => {
-      await applyWebhook(
-        billing,
-        subscriptionEvent({ status: 'active', customerId: FIRST_CUSTOMER, seats: 2 }),
-      );
-      await applyWebhook(
-        billing,
-        subscriptionEvent({
-          status: 'canceled',
-          customerId: FIRST_CUSTOMER,
-          seats: 2,
-          eventType: 'customer.subscription.deleted',
-        }),
-      );
-
-      const lapsed = await billing.snapshot(WORKSPACE);
-
-      expect(canStartCheckout(attempt(lapsed))).toBe(false);
-      expect(() => checkoutRequestFor(attempt(lapsed))).toThrow(/subscription id is not stored/);
-    });
-  }, 120_000);
-
-  it('leaves the Stripe portal open after cancelling, which is the only way back in', async () => {
-    await withWorkspace(async ({ billing }) => {
-      await applyWebhook(
-        billing,
-        subscriptionEvent({ status: 'active', customerId: FIRST_CUSTOMER, seats: 2 }),
-      );
-      await applyWebhook(
-        billing,
-        subscriptionEvent({
-          status: 'canceled',
-          customerId: FIRST_CUSTOMER,
-          seats: 2,
-          eventType: 'customer.subscription.deleted',
-        }),
-      );
-
-      const lapsed = await billing.snapshot(WORKSPACE);
-
-      expect(canOpenPortal(attempt(lapsed))).toBe(true);
-      expect(portalRequestFor(attempt(lapsed))).toMatchObject({ customerId: FIRST_CUSTOMER });
-    });
-  }, 120_000);
-
-  it('does not restore access when that portal is used to resubscribe the same customer', async () => {
+  it('can resubscribe after cancelling, on a fresh Stripe customer', async () => {
     await withWorkspace(async ({ billing, quota }) => {
       await applyWebhook(
         billing,
@@ -332,24 +289,53 @@ describeIf('MNE-141 the billing journey a two-member team actually walks', () =>
         }),
       );
 
-      const reactivated = await applyWebhook(
+      const lapsed = await billing.snapshot(WORKSPACE);
+      expect(canStartCheckout(attempt(lapsed))).toBe(true);
+
+      const restart = checkoutRequestFor(attempt(lapsed));
+      expect(restart.customerId).toBeUndefined();
+
+      const resumed = await applyWebhook(
         billing,
         subscriptionEvent({
           status: 'active',
-          customerId: FIRST_CUSTOMER,
+          customerId: 'cus_second',
           seats: 2,
           eventType: 'customer.subscription.created',
         }),
       );
 
-      expect(reactivated.applied).toBe(false);
+      expect(resumed.applied).toBe(true);
       await expect(billing.snapshot(WORKSPACE)).resolves.toMatchObject({
-        plan: 'solo',
-        billingStatus: 'canceled',
+        plan: 'team',
+        billingStatus: 'active',
+        billingCustomerRef: 'cus_second',
       });
 
       const state = await quota.quotaFor(WORKSPACE, NOW);
-      expect(state).toMatchObject({ plan: 'solo', seatsPurchased: null });
+      expect(checkpointQuota(state as NonNullable<typeof state>)).toEqual({ allowed: true });
+    });
+  }, 120_000);
+
+  it('closes the portal once cancelled, so nobody can pay through it and get nothing', async () => {
+    await withWorkspace(async ({ billing }) => {
+      await applyWebhook(
+        billing,
+        subscriptionEvent({ status: 'active', customerId: FIRST_CUSTOMER, seats: 2 }),
+      );
+      await applyWebhook(
+        billing,
+        subscriptionEvent({
+          status: 'canceled',
+          customerId: FIRST_CUSTOMER,
+          seats: 2,
+          eventType: 'customer.subscription.deleted',
+        }),
+      );
+
+      const lapsed = await billing.snapshot(WORKSPACE);
+      expect(canOpenPortal(attempt(lapsed))).toBe(false);
+      expect(() => portalRequestFor(attempt(lapsed))).toThrow(/actionable billing status/);
     });
   }, 120_000);
 
@@ -412,6 +398,107 @@ describeIf('MNE-141 the billing journey a two-member team actually walks', () =>
       expect(checkpointQuota(state as NonNullable<typeof state>)).toMatchObject({
         allowed: false,
         code: 'seats_exceeded',
+      });
+    });
+  }, 120_000);
+});
+
+const PROJECT = '44444444-4444-4444-8444-4444444444a1';
+
+const attemptRecord = {
+  model: 'gpt-5.6-luna',
+  outcome: 'succeeded' as const,
+  inputTokens: 100,
+  outputTokens: 20,
+  durationMs: 5,
+};
+
+const periodRow = async (admin: Client) =>
+  (
+    await admin.query(
+      `SELECT checkpoints_used FROM workspace_usage_period
+        WHERE workspace_id = $1 AND period_start = date_trunc('month', now())::date`,
+      [WORKSPACE],
+    )
+  ).rows[0] as { checkpoints_used: string } | undefined;
+
+describeIf('§9 workspace_usage_period is the margin guard, not an estimate of one', () => {
+  it('increments once per proposal, in the same transaction as the usage rows', async () => {
+    await withWorkspace(async ({ admin, usage }) => {
+      expect(await periodRow(admin)).toBeUndefined();
+
+      await usage.recordUsage({
+        workspaceId: WORKSPACE,
+        projectId: PROJECT,
+        checkpointId: null,
+        attempts: [attemptRecord, { ...attemptRecord, outcome: 'fell_back' as const }],
+      });
+
+      expect(Number((await periodRow(admin))?.checkpoints_used)).toBe(1);
+
+      const rows = await admin.query(
+        'SELECT count(*) AS n FROM checkpoint_usage WHERE workspace_id = $1',
+        [WORKSPACE],
+      );
+      expect(Number(rows.rows[0].n)).toBe(2);
+    });
+  }, 120_000);
+
+  it('records nothing at all when the usage write fails, so the counter cannot drift', async () => {
+    await withWorkspace(async ({ admin, usage }) => {
+      await expect(
+        usage.recordUsage({
+          workspaceId: WORKSPACE,
+          projectId: PROJECT,
+          checkpointId: null,
+          attempts: [{ ...attemptRecord, outcome: 'exploded' as unknown as 'succeeded' }],
+        }),
+      ).rejects.toThrow();
+
+      expect(await periodRow(admin)).toBeUndefined();
+      const rows = await admin.query(
+        'SELECT count(*) AS n FROM checkpoint_usage WHERE workspace_id = $1',
+        [WORKSPACE],
+      );
+      expect(Number(rows.rows[0].n)).toBe(0);
+    });
+  }, 120_000);
+
+  it('loses no count under concurrent proposals, which a read-time count would', async () => {
+    await withWorkspace(async ({ admin, usage }) => {
+      await Promise.all(
+        Array.from({ length: 12 }, () =>
+          usage.recordUsage({
+            workspaceId: WORKSPACE,
+            projectId: PROJECT,
+            checkpointId: null,
+            attempts: [attemptRecord],
+          }),
+        ),
+      );
+
+      expect(Number((await periodRow(admin))?.checkpoints_used)).toBe(12);
+    });
+  }, 120_000);
+
+  it('is what the quota gate reads, and refuses at the allowance', async () => {
+    await withWorkspace(async ({ admin, quota, usage }) => {
+      await admin.query('UPDATE workspace SET checkpoint_allowance = 3 WHERE id = $1', [WORKSPACE]);
+
+      for (let index = 0; index < 3; index += 1) {
+        await usage.recordUsage({
+          workspaceId: WORKSPACE,
+          projectId: PROJECT,
+          checkpointId: null,
+          attempts: [attemptRecord],
+        });
+      }
+
+      const state = await quota.quotaFor(WORKSPACE, NOW);
+      expect(state).toMatchObject({ checkpointAllowance: 3, checkpointsUsed: 3 });
+      expect(checkpointQuota(state as NonNullable<typeof state>)).toMatchObject({
+        allowed: false,
+        code: 'allowance_exhausted',
       });
     });
   }, 120_000);

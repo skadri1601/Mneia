@@ -3,7 +3,7 @@ import 'server-only';
 import type { BillingSnapshot } from './billing-store.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const PORTAL_STATUSES = new Set(['active', 'trialing', 'past_due', 'canceled']);
+const PORTAL_STATUSES = new Set(['active', 'trialing', 'past_due']);
 
 export class BillingControlError extends Error {
   constructor(message: string) {
@@ -71,13 +71,10 @@ const checkoutFailure = ({ snapshot }: BillingControlInput): string | null => {
   if (snapshot.memberCount < 2) {
     return 'Team checkout needs at least two accepted members';
   }
-  if (snapshot.billingStatus === 'canceled') {
-    return 'a canceled subscription cannot safely be restarted because its subscription id is not stored';
-  }
   if (snapshot.plan !== 'solo' || snapshot.seatsPurchased !== null) {
     return 'this workspace already has an active subscription';
   }
-  if (snapshot.billingStatus !== 'active') {
+  if (snapshot.billingStatus !== 'active' && snapshot.billingStatus !== 'canceled') {
     return `this workspace already has a ${snapshot.billingStatus} subscription state`;
   }
   return null;
@@ -105,7 +102,7 @@ export const checkoutRequestFor = (input: BillingAttemptInput): CheckoutRequest 
   const idempotencyKey = assertAttemptToken(input.attemptToken);
   return {
     workspaceId: input.snapshot.workspaceId,
-    ...(input.snapshot.billingCustomerRef === null
+    ...(input.snapshot.billingCustomerRef === null || input.snapshot.billingStatus === 'canceled'
       ? {}
       : { customerId: input.snapshot.billingCustomerRef }),
     seats: input.snapshot.memberCount,

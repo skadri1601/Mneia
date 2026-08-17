@@ -109,6 +109,15 @@ export class CheckpointSourceStore {
           ],
         );
       }
+
+      await session.execute(
+        `INSERT INTO workspace_usage_period (workspace_id, period_start, checkpoints_used)
+         VALUES ($1, date_trunc('month', now())::date, 1)
+         ON CONFLICT (workspace_id, period_start)
+         DO UPDATE SET checkpoints_used = workspace_usage_period.checkpoints_used + 1,
+                       updated_at = now()`,
+        [record.workspaceId],
+      );
     });
   }
 }

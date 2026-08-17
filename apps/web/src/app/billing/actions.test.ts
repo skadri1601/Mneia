@@ -114,7 +114,7 @@ describe('billing actions', () => {
     mocks.snapshot.mockResolvedValue({
       workspaceId: WORKSPACE_ID,
       plan: 'solo',
-      billingStatus: 'canceled',
+      billingStatus: 'active',
       seatsPurchased: null,
       billingCustomerRef: 'cus_cancelled',
       memberCount: 2,

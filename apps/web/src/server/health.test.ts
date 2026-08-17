@@ -18,6 +18,13 @@ const CURRENT_SCHEMA = {
   telemetry: 'persisted',
 } as const;
 const BOTH_KEYS = { OPENAI_API_KEY: 'sk-x', ANTHROPIC_API_KEY: 'sk-ant-x' };
+const STRIPE_KEYS = {
+  STRIPE_SECRET_KEY: 'sk_test_x',
+  STRIPE_PRICE_ID: 'price_x',
+  STRIPE_WEBHOOK_SECRET: 'whsec_x',
+};
+const NO_BILLING_DETAIL =
+  'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /billing returns 503 and no workspace can subscribe — set the three repository secrets and re-run the deploy';
 const NO_MODELS = {
   extraction: 'no_key',
   extractionFallback: 'no_key',
@@ -110,7 +117,8 @@ describe('checkHealth', () => {
       rls: 'enforced',
       ...CURRENT_SCHEMA,
       ...NO_MODELS,
-      detail: NO_MODEL_DETAIL,
+      billing: 'not_configured',
+      detail: `${NO_MODEL_DETAIL}; ${NO_BILLING_DETAIL}`,
     });
     expect(session.statements.at(0)).toBe('SELECT 1');
   });
@@ -247,10 +255,15 @@ describe('model posture', () => {
     expect(report.embeddings).toBe('no_key');
   });
 
-  it('reports no model detail once both keys are set', async () => {
+  it('reports no detail once the model and billing keys are all set', async () => {
     const session = new RecordingSession();
 
-    const report = await checkHealth(sourceOf(session), noEscapeHatch, BOTH_KEYS, noDelivery);
+    const report = await checkHealth(
+      sourceOf(session),
+      noEscapeHatch,
+      { ...BOTH_KEYS, ...STRIPE_KEYS },
+      noDelivery,
+    );
 
     expect(report).toEqual({
       status: 'ok',
@@ -260,7 +273,31 @@ describe('model posture', () => {
       extraction: 'configured',
       extractionFallback: 'configured',
       embeddings: 'configured',
+      billing: 'configured',
     });
+  });
+
+  it('reports billing not_configured when any one Stripe variable is missing', async () => {
+    const session = new RecordingSession();
+
+    for (const missing of Object.keys(STRIPE_KEYS)) {
+      const partial = { ...BOTH_KEYS, ...STRIPE_KEYS } as Record<string, string>;
+      delete partial[missing];
+
+      const report = await checkHealth(sourceOf(session), noEscapeHatch, partial, noDelivery);
+
+      expect(report.billing).toBe('not_configured');
+      expect(report.detail).toContain('no workspace can subscribe');
+    }
+  });
+
+  it('does not degrade status for missing billing keys, because reads still work', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, BOTH_KEYS, noDelivery);
+
+    expect(report.billing).toBe('not_configured');
+    expect(report.status).toBe('ok');
   });
 });
 

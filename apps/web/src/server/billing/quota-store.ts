@@ -19,11 +19,11 @@ const QUOTA_SQL = `SELECT w.plan,
           (SELECT count(DISTINCT tm.actor_id)
              FROM team_member AS tm
             WHERE tm.workspace_id = w.id) AS member_count,
-          (SELECT count(DISTINCT u.created_at)
-             FROM checkpoint_usage AS u
-            WHERE u.workspace_id = w.id
-              AND u.created_at >= $2
-              AND u.created_at < $3) AS checkpoints_used
+          COALESCE((SELECT p.checkpoints_used
+                      FROM workspace_usage_period AS p
+                     WHERE p.workspace_id = w.id
+                       AND p.period_start = date_trunc('month', $2::timestamptz)::date), 0)
+            AS checkpoints_used
      FROM workspace AS w
     WHERE w.id = $1`;
 
@@ -111,7 +111,6 @@ export class PostgresQuotaStore implements QuotaStore {
       const { rows } = await session.execute<SqlRow>(QUOTA_SQL, [
         workspaceId,
         period.start.toISOString(),
-        period.end.toISOString(),
       ]);
       const row = rows[0];
       if (row === undefined) {
