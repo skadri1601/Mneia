@@ -368,6 +368,28 @@ first**: `.claude/rules/` does **not** auto-load for you.
 founder uses it daily on this repo and does not turn it off."* M1 does not close without it, and it
 closes on **2026-09-01**.
 
+**Its setup phase is landing now**, approved by the founder 2026-08-16 (recorded as a comment on
+MNE-86, because Linear is at its free issue limit). An agent can build the instrument; only the
+founder can run it. What the setup adds:
+
+- `.mneia/config.json` — the non-secret repo binding, now **tracked**. `.gitignore` narrowed from
+  `.mneia/` to `.mneia/*` plus a `!.mneia/config.json` negation, so the binding is versioned and the
+  credential and local state are still not. **§0 above is now half-wrong**: a worktree does inherit
+  `.mneia/config.json`, and still shares no `.env`, credential, or dogfood state.
+- `.mcp.json` and `.cursor/mcp.json` — committed MCP wiring for Claude Code and Cursor. Claude
+  Desktop, Codex, and Gemini CLI are user-scoped and cannot be committed; their exact paths and
+  blocks are in `docs/DOGFOOD.md` §3.
+- `.claude/hooks/mneia-rehydrate.mjs` (`SessionStart`) and `.claude/hooks/mneia-checkpoint.mjs`
+  (`Stop`) — deterministic rehydrate and one-pass checkpoint for Claude Code. Both **fail open**: if
+  Mneia is unreachable they log and exit 0, because an instrument that blocks the founder's work is
+  worse than one that misses a checkpoint. The other four clients rely on the MCP server's
+  `instructions` field instead, which is where the vendor-neutrality claim gets tested.
+
+**`docs/DOGFOOD.md` is the runbook and the log.** The seven-day clock starts when that setup is
+merged and activated — planned Mon 2026-08-17 → Tue 2026-08-25 — not when it was written. Its §6
+carries a first-class place to record the instrument being turned off, because MNE-86's clause is
+satisfied by an honest failure just as much as by seven clean days.
+
 **Two rulings are also founder-only, and both are blocking:**
 
 - **§12.1's 300ms budget is not met.** `docs/REHYDRATE-LATENCY.md` measures 146ms store + 187ms

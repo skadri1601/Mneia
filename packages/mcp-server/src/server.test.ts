@@ -12,6 +12,7 @@ import type { MneiaServer, ToolContextScope } from './server.js';
 import {
   createMneiaServer,
   redirectConsoleToStderr,
+  SERVER_INSTRUCTIONS,
   SERVER_NAME,
   ToolAdvertisementError,
 } from './server.js';
@@ -179,6 +180,19 @@ describe('createMneiaServer tool advertisement', () => {
 
     expect(client.getServerVersion()).toMatchObject({ name: SERVER_NAME, version: '1.2.3' });
     expect(client.getInstructions()).toContain('mneia_rehydrate');
+
+    await mneia.shutdown();
+  });
+
+  it('tells a client with no hook support to rehydrate at session start and checkpoint at a task boundary', async () => {
+    const mneia = serverWith([stubTool('mneia_rehydrate')]);
+    const client = await connectClient(mneia);
+    const instructions = client.getInstructions() ?? '';
+
+    expect(instructions).toBe(SERVER_INSTRUCTIONS);
+    expect(instructions).toMatch(/mneia_rehydrate once at the start of a session/);
+    expect(instructions).toMatch(/mneia_checkpoint at a task or day boundary/);
+    expect(instructions).not.toMatch(/Claude|Cursor|Codex|Gemini/);
 
     await mneia.shutdown();
   });
