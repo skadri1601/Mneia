@@ -102,12 +102,22 @@ Already in the repo root. Claude Code prompts once to approve a project-scoped M
 {
   "mcpServers": {
     "mneia": {
-      "command": "npx",
-      "args": ["-y", "@mneia/mcp-server"]
+      "command": "node",
+      "args": ["./packages/mcp-server/dist/bin.js"]
     }
   }
 }
 ```
+
+**This runs the local build, not `npx @mneia/mcp-server`, and that is load-bearing.** The published
+`0.2.0` tarball contains no `dist/session-provenance.js` — it was cut before that work existed. The
+local package is *also* version `0.2.0`, so npm has no way to tell the two apart and `npx` would
+silently serve the older one. A dogfood run against it would leave all five `session.client_*`
+columns NULL for seven days and nothing would warn. Run `pnpm -r build` before the first session, and
+after any pull that touches `packages/`.
+
+Once a release carrying session provenance is on the registry, these two committed configs can move
+back to `npx -y @mneia/mcp-server@<version>` — pinned, not floating.
 
 No `env` block, on purpose. The server resolves its credential in a documented order — `MNEIA_TOKEN`,
 then `~/.mneia/credentials`, then `~/.mneia/local.json` (`docs/CLIENTS.md` §"How the server finds a
@@ -116,7 +126,8 @@ break the config outright if the variable were ever unset.
 
 ### Cursor — committed, `.cursor/mcp.json`
 
-Same block, same reasoning. Cursor reads project-scoped MCP config from `.cursor/mcp.json`.
+Same block, same reasoning, including the local-build point above. Cursor reads project-scoped MCP
+config from `.cursor/mcp.json`.
 
 > Cursor has **never been driven end to end** against this server — `docs/CLIENTS.md` says so
 > explicitly. The config shape is documented, not observed. If day one in Cursor fails, that is the
@@ -136,12 +147,17 @@ Merge this into the existing `mcpServers` object, then restart Claude Desktop co
 {
   "mcpServers": {
     "mneia": {
-      "command": "npx",
-      "args": ["-y", "@mneia/mcp-server"]
+      "command": "node",
+      "args": ["C:\\Users\\kadri\\stealth-startup\\packages\\mcp-server\\dist\\bin.js"]
     }
   }
 }
 ```
+
+**Absolute path, for the same reason the committed configs use the local build** — see Claude Code
+above. A user-scoped client launches outside the repo, so the relative path used there will not
+resolve; substitute your own checkout path. `npx -y @mneia/mcp-server` would start a server with no
+session provenance in it.
 
 Claude Desktop does not pass your shell environment to the server, so if `~/.mneia/credentials` does
 not exist you must add an `env` block referencing the variable rather than pasting a literal:
@@ -159,16 +175,18 @@ mean in Desktop and not in the others.
 `%USERPROFILE%\.codex\config.toml` on Windows, `~/.codex/config.toml` elsewhere. Let the CLI write it:
 
 ```
-codex mcp add mneia -- npx -y @mneia/mcp-server
+codex mcp add mneia -- node C:\Users\kadri\stealth-startup\packages\mcp-server\dist\bin.js
 ```
 
 which produces:
 
 ```toml
 [mcp_servers.mneia]
-command = "npx"
-args = ["-y", "@mneia/mcp-server"]
+command = "node"
+args = ["C:\\Users\\kadri\\stealth-startup\\packages\\mcp-server\\dist\\bin.js"]
 ```
+
+Absolute path, and your own checkout — `npx -y @mneia/mcp-server` has no session provenance in it.
 
 **A copy-pasted JSON block silently does nothing here.** `docs/CLIENTS.md` names this as the single
 most likely setup failure. Verify with `codex mcp get mneia` — it should report `enabled: true` and
@@ -184,12 +202,14 @@ existing top-level object:
 {
   "mcpServers": {
     "mneia": {
-      "command": "npx",
-      "args": ["-y", "@mneia/mcp-server"]
+      "command": "node",
+      "args": ["C:\\Users\\kadri\\stealth-startup\\packages\\mcp-server\\dist\\bin.js"]
     }
   }
 }
 ```
+
+Absolute path, and your own checkout — same reason as the other user-scoped clients.
 
 Confirm with `/mcp` inside the CLI; it should list `mneia` with four tools.
 

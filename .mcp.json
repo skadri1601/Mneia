@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "mneia": {
-      "command": "npx",
-      "args": ["-y", "@mneia/mcp-server"]
+      "command": "node",
+      "args": ["./packages/mcp-server/dist/bin.js"]
     }
   }
 }
