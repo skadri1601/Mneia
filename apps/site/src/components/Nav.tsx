@@ -12,6 +12,7 @@ const ROUTES = [
   { href: '/features', label: 'Features' },
   { href: '/pricing', label: 'Pricing' },
   { href: '/docs', label: 'Docs' },
+  { href: '/blog', label: 'Blog' },
   { href: '/about', label: 'About' },
 ];
 
@@ -22,6 +23,7 @@ const PAGE_NAMES: Record<string, string> = {
   '/pricing': 'Pricing',
   '/about': 'About',
   '/docs': 'Documentation',
+  '/blog': 'Blog',
   '/faq': 'FAQ',
   '/help': 'Help',
   '/contact': 'Contact',
@@ -30,6 +32,9 @@ const PAGE_NAMES: Record<string, string> = {
 function pageNameFor(pathname: string): string {
   if (pathname.startsWith('/docs/')) {
     return 'Documentation';
+  }
+  if (pathname.startsWith('/blog/')) {
+    return 'Blog';
   }
   return PAGE_NAMES[pathname] ?? 'Mneia';
 }

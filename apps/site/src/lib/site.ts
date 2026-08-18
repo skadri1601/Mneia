@@ -35,6 +35,10 @@ export type RoutePath =
   | '/docs/concepts'
   | '/docs/cli'
   | '/docs/mcp'
+  | '/blog'
+  | '/blog/the-unit-of-value-is-the-handoff'
+  | '/blog/seven-days-of-dogfooding'
+  | '/blog/the-watermark-that-skipped-600-turns'
   | '/faq'
   | '/help'
   | '/contact'
@@ -128,7 +132,7 @@ export const ROUTES: readonly RouteEntry[] = [
     name: 'CLI reference',
     title: 'CLI reference',
     description:
-      'Every Mneia CLI command — init, brief, checkpoint, log, and status — with flags, environment variables, JSON output, and exit codes.',
+      'Every Mneia CLI command — init, login, whoami, brief, checkpoint, log, and status — plus the interactive session, with flags, environment variables, JSON output, and exit codes.',
     priority: 0.7,
     changeFrequency: 'weekly',
   },
@@ -140,6 +144,42 @@ export const ROUTES: readonly RouteEntry[] = [
       'The four Mneia MCP tools — mneia_rehydrate, mneia_assert, mneia_checkpoint, and mneia_search — how to configure the server, and when to call each one.',
     priority: 0.7,
     changeFrequency: 'weekly',
+  },
+  {
+    path: '/blog',
+    name: 'Blog',
+    title: 'Blog',
+    description:
+      'Notes from building the shared memory and handoff layer: the arguments behind the product, and the bugs that taught us something worth writing down.',
+    priority: 0.7,
+    changeFrequency: 'weekly',
+  },
+  {
+    path: '/blog/seven-days-of-dogfooding',
+    name: 'Seven days of dogfooding our own memory layer',
+    title: 'Seven days of dogfooding our own memory layer',
+    description:
+      'We wired five AI clients to our own project memory and ran the loop for a week. The interesting part was not whether it worked, but what had to be true before it could.',
+    priority: 0.6,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/blog/the-watermark-that-skipped-600-turns',
+    name: 'The watermark that skipped 600 turns',
+    title: 'The watermark that skipped 600 turns',
+    description:
+      'A transcript reducer, a progress marker, and an off-by-one-assumption that silently dropped half of every long session. The bug was in the gap between two correct components.',
+    priority: 0.6,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/blog/the-unit-of-value-is-the-handoff',
+    name: 'The unit of value is not memory. It is the handoff.',
+    title: 'The unit of value is not memory. It is the handoff.',
+    description:
+      'Every AI memory product gives you somewhere to put context and a way to query it. That is a database posture, and it fails at the exact moment it is needed — when someone is picking up work they did not do.',
+    priority: 0.6,
+    changeFrequency: 'monthly',
   },
   {
     path: '/faq',

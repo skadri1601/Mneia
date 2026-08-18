@@ -1,3 +1,4 @@
+import type { BlogPost } from '@/content/blog';
 import type { DocPage } from '@/content/docs';
 import { CONTACT } from '@/content/legal';
 import type { Faq } from '@/content/pages';
@@ -220,6 +221,49 @@ export function howToSchema(page: DocPage, path: RoutePath): JsonLdNode | null {
     inLanguage: 'en',
     totalTime: `PT${page.minutes}M`,
     step: steps,
+  };
+}
+
+export function blogPostingSchema(post: BlogPost, path: RoutePath): JsonLdNode {
+  return {
+    '@type': 'BlogPosting',
+    '@id': `${absoluteUrl(path)}#post`,
+    url: absoluteUrl(path),
+    headline: post.heading,
+    name: post.title,
+    description: post.description,
+    inLanguage: 'en',
+    isPartOf: { '@id': `${absoluteUrl('/blog')}#blog` },
+    about: { '@id': SOFTWARE_ID },
+    publisher: { '@id': ORGANIZATION_ID },
+    author: { '@type': 'Person', name: post.author },
+    datePublished: post.published,
+    dateModified: post.published,
+    articleSection: post.sections.map((section) => section.heading),
+    keywords: post.tags.join(', '),
+    timeRequired: `PT${post.minutes}M`,
+  };
+}
+
+export function blogSchema(posts: readonly BlogPost[]): JsonLdNode {
+  return {
+    '@type': 'Blog',
+    '@id': `${absoluteUrl('/blog')}#blog`,
+    url: absoluteUrl('/blog'),
+    name: `${SITE_NAME} blog`,
+    description: routeFor('/blog').description,
+    inLanguage: 'en',
+    isPartOf: { '@id': WEBSITE_ID },
+    publisher: { '@id': ORGANIZATION_ID },
+    blogPost: posts.map((post) => ({
+      '@type': 'BlogPosting',
+      '@id': `${absoluteUrl(`/blog/${post.slug}`)}#post`,
+      url: absoluteUrl(`/blog/${post.slug}`),
+      headline: post.heading,
+      description: post.description,
+      datePublished: post.published,
+      author: { '@type': 'Person', name: post.author },
+    })),
   };
 }
 
