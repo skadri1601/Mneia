@@ -1,7 +1,10 @@
-import { createInterface } from 'node:readline';
 import type { CommandDefinition, CommandIo } from './command.js';
 import { EXIT_OK } from './command.js';
+import { type CompletionItem, type LineEvent, requiresArgument } from './session-editor.js';
+import { type HistoryStore, memoryHistoryStore, rememberLine } from './session-history.js';
 import { LOGO, plainTheme, shortenPath, type Theme } from './session-theme.js';
+
+export type { LineEvent } from './session-editor.js';
 
 export const SESSION_BUILTIN_NAMES = ['help', 'clear', 'exit'] as const;
 
@@ -12,11 +15,6 @@ export type SessionInput =
   | { readonly kind: 'help'; readonly topic: string | undefined }
   | { readonly kind: 'bare_command'; readonly name: string }
   | { readonly kind: 'argv'; readonly argv: readonly string[] };
-
-export type LineEvent =
-  | { readonly kind: 'line'; readonly value: string }
-  | { readonly kind: 'interrupt' }
-  | { readonly kind: 'eof' };
 
 export interface SessionContext {
   readonly actor: string | null;
@@ -34,11 +32,10 @@ export interface SessionDeps {
   readonly dispatch: (argv: readonly string[]) => Promise<number>;
   readonly clearScreen: () => void;
   readonly theme?: Theme;
+  readonly history?: HistoryStore;
 }
 
 export const PROMPT = '› ';
-
-const HISTORY_LIMIT = 500;
 
 interface TokenizeState {
   readonly tokens: string[];
@@ -123,22 +120,22 @@ export function parseLine(line: string, commandNames: readonly string[]): Sessio
   return { kind: 'argv', argv: [name, ...rest] };
 }
 
-export function completeSlash(line: string, names: readonly string[]): [string[], string] {
-  if (!line.startsWith('/') || line.includes(' ')) {
-    return [[], line];
-  }
-  const prefix = line.slice(1).toLowerCase();
-  const hits = names.filter((name) => name.startsWith(prefix)).map((name) => `/${name}`);
-  return [hits, line];
-}
+export const SESSION_BUILTINS: readonly CompletionItem[] = [
+  { name: 'help', summary: 'Show every command, or the usage for one.', requiresArgument: false },
+  { name: 'clear', summary: 'Clear the screen.', requiresArgument: false },
+  { name: 'exit', summary: 'Leave the session.', requiresArgument: false },
+];
 
-export function rememberLine(history: readonly string[], line: string): string[] {
-  const trimmed = line.trim();
-  if (trimmed.length === 0) {
-    return [...history];
-  }
-  const without = history.filter((entry) => entry !== trimmed);
-  return [trimmed, ...without].slice(0, HISTORY_LIMIT);
+export function completionItems(commands: readonly CommandDefinition[]): CompletionItem[] {
+  const fromCommands = commands.map((command) => ({
+    name: command.name,
+    summary: command.summary,
+    requiresArgument: requiresArgument(command.usage),
+  }));
+
+  return [...fromCommands, ...SESSION_BUILTINS].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  );
 }
 
 export function bannerLines(
@@ -159,7 +156,7 @@ export function bannerLines(
       : `${shortenPath(context.directory)}  ·  ${context.project}`;
 
   const info = [
-    `${theme.bold('mneia')} ${theme.dim(version)}`,
+    `${theme.bold('mneia')}  ${theme.dim(`v${version}`)}`,
     theme.dim(identity),
     theme.dim(where),
   ];
@@ -170,12 +167,7 @@ export function bannerLines(
     lines.push(`  ${theme.accent(mark)}   ${info[index] ?? ''}`.trimEnd());
   }
 
-  lines.push(
-    '',
-    theme.dim('  Type a task in plain words to rehydrate context for it.'),
-    theme.dim('  /help for commands · /exit to leave'),
-    '',
-  );
+  lines.push('', theme.dim('  /help for commands · /exit to leave'), '');
 
   return lines;
 }
@@ -241,13 +233,14 @@ async function applyInput(input: SessionInput, deps: SessionDeps): Promise<'cont
 export async function runSession(deps: SessionDeps): Promise<number> {
   const { io } = deps;
   const commandNames = deps.commands.map((command) => command.name);
+  const store = deps.history ?? memoryHistoryStore;
   const context = await deps.preflight();
 
   const theme = deps.theme ?? plainTheme;
 
   io.stdout(`${bannerLines(context, deps.version, theme).join('\n')}\n`);
 
-  let history: string[] = [];
+  let history: string[] = await store.read();
   let interrupted = false;
 
   for (;;) {
@@ -265,6 +258,7 @@ export async function runSession(deps: SessionDeps): Promise<number> {
 
     interrupted = false;
     history = rememberLine(history, event.value);
+    await store.append(event.value);
 
     const outcome = await applyInput(parseLine(event.value, commandNames), deps);
 
@@ -272,55 +266,4 @@ export async function runSession(deps: SessionDeps): Promise<number> {
       return EXIT_OK;
     }
   }
-}
-
-export interface ReadLineStreams {
-  readonly input: NodeJS.ReadStream;
-  readonly output: NodeJS.WriteStream;
-}
-
-export function createLineReader(
-  streams: ReadLineStreams,
-  commandNames: readonly string[],
-  theme: Theme = plainTheme,
-): (history: readonly string[]) => Promise<LineEvent> {
-  const completionNames = [...commandNames, ...SESSION_BUILTIN_NAMES].sort((left, right) =>
-    left.localeCompare(right),
-  );
-
-  return (history) =>
-    new Promise<LineEvent>((resolve) => {
-      const rl = createInterface({
-        input: streams.input,
-        output: streams.output,
-        terminal: true,
-        history: [...history],
-        historySize: HISTORY_LIMIT,
-        completer: (line: string) => completeSlash(line, completionNames),
-        prompt: theme.accent(PROMPT),
-      });
-
-      let settled = false;
-
-      const settle = (event: LineEvent): void => {
-        if (settled) {
-          return;
-        }
-        settled = true;
-        rl.close();
-        resolve(event);
-      };
-
-      rl.on('line', (value) => {
-        settle({ kind: 'line', value });
-      });
-      rl.on('SIGINT', () => {
-        settle({ kind: 'interrupt' });
-      });
-      rl.on('close', () => {
-        settle({ kind: 'eof' });
-      });
-
-      rl.prompt();
-    });
 }

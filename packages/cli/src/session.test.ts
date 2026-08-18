@@ -3,15 +3,14 @@ import type { CommandDefinition, CommandIo } from './command.js';
 import { EXIT_OK } from './command.js';
 import {
   bannerLines,
-  completeSlash,
+  completionItems,
   helpLines,
-  type LineEvent,
   parseLine,
-  rememberLine,
   runSession,
   type SessionContext,
   tokenize,
 } from './session.js';
+import type { LineEvent } from './session-editor.js';
 import { LOGO } from './session-theme.js';
 
 const COMMAND_NAMES = ['brief', 'checkpoint', 'init', 'log', 'login', 'status', 'whoami'];
@@ -167,44 +166,38 @@ describe('parseLine', () => {
   });
 });
 
-describe('completeSlash', () => {
-  it('completes a slash prefix', () => {
-    const [hits] = completeSlash('/st', [...COMMAND_NAMES, 'help']);
-    expect(hits).toEqual(['/status']);
+describe('completionItems', () => {
+  it('offers every command and every session builtin', () => {
+    const names = completionItems(COMMANDS).map((item) => item.name);
+    for (const name of [...COMMAND_NAMES, 'help', 'clear', 'exit']) {
+      expect(names).toContain(name);
+    }
   });
 
-  it('offers every command for a bare slash', () => {
-    const [hits] = completeSlash('/', COMMAND_NAMES);
-    expect(hits).toHaveLength(COMMAND_NAMES.length);
+  it('sorts by name so the menu order never depends on registration order', () => {
+    const names = completionItems(COMMANDS).map((item) => item.name);
+    expect(names).toEqual([...names].sort((left, right) => left.localeCompare(right)));
   });
 
-  it('offers nothing for plain text, which is a task not a command', () => {
-    expect(completeSlash('fix the', COMMAND_NAMES)).toEqual([[], 'fix the']);
+  it('carries each command summary into the menu', () => {
+    const status = completionItems(COMMANDS).find((item) => item.name === 'status');
+    expect(status?.summary).toBe('does status');
   });
 
-  it('stops completing once the command name is finished', () => {
-    expect(completeSlash('/status ', COMMAND_NAMES)).toEqual([[], '/status ']);
-  });
-});
-
-describe('rememberLine', () => {
-  it('puts the newest line first', () => {
-    expect(rememberLine(['older'], 'newer')).toEqual(['newer', 'older']);
-  });
-
-  it('does not record a blank line', () => {
-    expect(rememberLine(['older'], '   ')).toEqual(['older']);
-  });
-
-  it('moves a repeated line to the front instead of duplicating it', () => {
-    expect(rememberLine(['b', 'a'], 'a')).toEqual(['a', 'b']);
+  it('marks a command with a required argument so completing it leaves room to type', () => {
+    const items = completionItems([
+      { ...stubCommand('brief'), usage: 'mneia brief "<task>" [--json]' },
+      { ...stubCommand('status'), usage: 'mneia status [--json]' },
+    ]);
+    expect(items.find((item) => item.name === 'brief')?.requiresArgument).toBe(true);
+    expect(items.find((item) => item.name === 'status')?.requiresArgument).toBe(false);
   });
 });
 
 describe('bannerLines', () => {
   it('names the version, actor, workspace, directory, and project', () => {
     const text = bannerLines(CONTEXT, '0.2.0').join('\n');
-    expect(text).toContain('mneia 0.2.0');
+    expect(text).toContain('mneia  v0.2.0');
     expect(text).toContain('Saad · Mneia');
     expect(text).toContain('/repo');
     expect(text).toContain('mneia');
@@ -257,7 +250,7 @@ describe('helpLines', () => {
 describe('runSession', () => {
   it('prints the banner before the first prompt', async () => {
     const session = await run([]);
-    expect(session.output).toContain('mneia 0.2.0');
+    expect(session.output).toContain('mneia  v0.2.0');
     expect(session.code).toBe(EXIT_OK);
   });
 

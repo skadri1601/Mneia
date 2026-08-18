@@ -9,8 +9,10 @@ import { loginCommand } from './commands/login.js';
 import { statusCommand } from './commands/status.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { route } from './router.js';
-import { createLineReader, runSession } from './session.js';
+import { completionItems, PROMPT, runSession } from './session.js';
 import { createSessionPreflight } from './session-auth.js';
+import { createLineReader } from './session-editor.js';
+import { createHistoryStore } from './session-history.js';
 import { CLEAR_SCREEN, createTheme } from './session-theme.js';
 
 const io: CommandIo = {
@@ -45,22 +47,27 @@ async function main(): Promise<void> {
 
   if (startsInteractively(argv)) {
     const theme = createTheme({ isTty: true, env: process.env });
+    const clearScreen = (): void => {
+      process.stdout.write(CLEAR_SCREEN);
+    };
 
     process.exitCode = await runSession({
       io,
       commands,
       version: VERSION,
       preflight: createSessionPreflight({ io, signIn: () => dispatch(['login']) }),
-      readLine: createLineReader(
-        { input: process.stdin, output: process.stdout },
-        commands.map((command) => command.name),
+      readLine: createLineReader({
+        input: process.stdin,
+        output: process.stdout,
+        items: completionItems(commands),
+        prompt: PROMPT,
         theme,
-      ),
+        clearScreen,
+      }),
       dispatch,
-      clearScreen: () => {
-        process.stdout.write(CLEAR_SCREEN);
-      },
+      clearScreen,
       theme,
+      history: createHistoryStore(process.env),
     });
     return;
   }
