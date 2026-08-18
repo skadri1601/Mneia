@@ -1,9 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { docPage } from '@/content/docs';
+import { docPage, DOC_PAGES, GLOSSARY } from '@/content/docs';
 import { ALL_FAQS } from '@/content/faq';
 import {
   breadcrumbSchema,
   contactPageSchema,
+  definedTermSetSchema,
   faqSchema,
   howToSchema,
   itemListSchema,
@@ -79,15 +80,46 @@ describe('discoverability schemas', () => {
     expect(howToSchema(docPage('concepts'), '/docs/concepts')).toBeNull();
   });
 
-  test('lists the docs index in reading order', () => {
-    const list = itemListSchema('Mneia documentation', [
-      '/docs/quickstart',
-      '/docs/concepts',
-      '/docs/cli',
-      '/docs/mcp',
-    ]);
+  test('lists every doc page in the index, not a hardcoded subset', () => {
+    const list = itemListSchema(
+      'Mneia documentation',
+      DOC_PAGES.map((page) => `/docs/${page.slug}` as const),
+    );
 
-    expect(list.numberOfItems).toBe(4);
+    expect(list.numberOfItems).toBe(DOC_PAGES.length);
+    expect(DOC_PAGES.length).toBeGreaterThan(4);
     expect((list.itemListElement as readonly Node[])[0]?.name).toBe('Quickstart');
+  });
+
+  test('publishes the vocabulary as a DefinedTermSet answer engines can cite', () => {
+    const set = definedTermSetSchema();
+    const terms = set.hasDefinedTerm as readonly Node[];
+
+    expect(set['@type']).toBe('DefinedTermSet');
+    expect(terms.length).toBe(GLOSSARY.length);
+    expect(new Set(terms.map((term) => term['@id'])).size).toBe(terms.length);
+
+    const loadBearing = terms.find((term) => term.name === 'Load-bearing');
+    expect(loadBearing?.['@id']).toBe('https://mneia.dev/docs/glossary#load-bearing');
+    expect(loadBearing?.alternateName).toContain('load_bearing');
+    expect(String(loadBearing?.description)).toMatch(/work goes wrong/i);
+  });
+
+  test('anchors every doc section so a generative engine can cite a fragment', () => {
+    const page = docPage('rehydrate');
+    const parts = techArticleSchema(page, '/docs/rehydrate').hasPart as readonly Node[];
+
+    expect(parts.map((part) => part.url)).toEqual(
+      page.sections.map((section) => `https://mneia.dev/docs/rehydrate#${section.id}`),
+    );
+  });
+
+  test('grades reference pages as advanced and the quickstart as beginner', () => {
+    expect(techArticleSchema(docPage('data-model'), '/docs/data-model').proficiencyLevel).toBe(
+      'Advanced',
+    );
+    expect(techArticleSchema(docPage('quickstart'), '/docs/quickstart').proficiencyLevel).toBe(
+      'Beginner',
+    );
   });
 });

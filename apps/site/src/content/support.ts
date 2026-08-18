@@ -203,10 +203,10 @@ export const HELP_SYMPTOMS: readonly HelpSymptom[] = [
     fix: 'The error names the offending field. Fix that field, or delete the file and run mneia init to rewrite it.',
   },
   {
-    symptom: 'a command reports that it ships in a later milestone',
+    symptom: 'a command reports that this build does not carry it',
     cause:
-      'handoff and pickup ship in M2; conflicts ships in M4. The CLI refuses to pretend a surface exists before it does.',
-    fix: 'Run mneia --help for the commands this build supports. There is nothing to fix locally.',
+      'The CLI refuses to pretend a surface exists before the build in front of you has it, so it says which command it is rather than failing as an unknown one.',
+    fix: 'Run mneia --help for the commands this build supports, and upgrade with npm install -g @mneia/cli. There is nothing to fix locally.',
   },
   {
     symptom: 'the MCP server exits immediately on startup',
