@@ -300,6 +300,50 @@ inference · a vector database (we use one) · support for every framework on da
 
 Run the `scope-check` skill before building anything that touches this list.
 
+## Where you work — one worktree, start to finish
+
+**Take a worktree when you start a task and stay in it until that task is done.** Not a worktree per
+task — a worktree per agent, reused across tasks. `git worktree list` is the inventory; take one
+that is idle rather than adding to the set. `docs/WORKSTREAMS.md` §0 names the lanes, but trust
+`git worktree list` over that table when the two disagree.
+
+**Never create a new one.** `.claude/hooks/worktree-guard.mjs` refuses `git worktree add` and the
+`EnterWorktree` tool, and it is right to. Every new worktree is another full `pnpm install` and
+another `node_modules` resolving this workspace independently — the drift between those trees is
+where the dependency failures came from, and twenty stale worktrees were removed on 2026-08-16 for
+exactly that reason. If your work genuinely fits no existing worktree, **say so and let the founder
+decide** rather than creating one.
+
+**Between tasks, rebase in place — do not relocate.** Finishing a task does not mean finding a new
+worktree. Bring the one you are already in up to date and start the next task there:
+
+```
+git fetch origin
+git checkout -b <next-branch> origin/main    # or: git rebase origin/main to continue on this one
+```
+
+That keeps the installed dependencies. Run `pnpm install` afterwards only if `pnpm-lock.yaml` moved.
+
+**Leave no worktree dirty.** When you stop working — task finished, task handed over, or session
+ending — `git status` in your worktree is empty. Everything is committed and pushed, or deliberately
+discarded. Never abandoned. Uncommitted work in a worktree is invisible to every other agent and to
+the founder, it survives no cleanup, and it is what made those twenty stale trees expensive to
+remove. This applies to the primary checkout at the repo root too.
+
+**Running low on usage? Commit first, then say so.** If the session's usage or context is running
+out mid-task, do not stop with a dirty tree and do not quietly trail off. Commit what exists on the
+task branch, push it, and tell the user plainly — something like:
+
+> I have committed work in progress on `<branch>` because the session was running low on usage.
+> This is a checkpoint, not a finished task. Still to do: …
+
+Say it in the commit body as well, so the next agent reads it from `git log` rather than guessing.
+A work-in-progress commit that admits what it is can be picked up. An uncommitted worktree cannot.
+
+**The branch belongs to the directory, not to your session.** Another agent working the same
+worktree can switch it under you between one command and the next. Re-check `git branch --show-current`
+immediately before you commit, and stage explicit paths rather than `git add -A`.
+
 ## Working agreement
 
 - **Linear is the source of truth for status.** Every unit of work starts by moving a ticket to
