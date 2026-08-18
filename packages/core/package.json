@@ -41,7 +41,8 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc --build"
+    "build": "tsc --build",
+    "prepublishOnly": "node ../../scripts/sync-version.mjs --check"
   },
   "dependencies": {
     "zod": "^4.4.3",
