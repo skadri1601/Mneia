@@ -11,6 +11,7 @@ import { whoamiCommand } from './commands/whoami.js';
 import { route } from './router.js';
 import { createLineReader, runSession } from './session.js';
 import { createSessionPreflight } from './session-auth.js';
+import { CLEAR_SCREEN, createTheme } from './session-theme.js';
 
 const io: CommandIo = {
   stdout: (text) => {
@@ -43,6 +44,8 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
 
   if (startsInteractively(argv)) {
+    const theme = createTheme({ isTty: true, env: process.env });
+
     process.exitCode = await runSession({
       io,
       commands,
@@ -51,11 +54,13 @@ async function main(): Promise<void> {
       readLine: createLineReader(
         { input: process.stdin, output: process.stdout },
         commands.map((command) => command.name),
+        theme,
       ),
       dispatch,
       clearScreen: () => {
-        process.stdout.write('\u001b[2J\u001b[H');
+        process.stdout.write(CLEAR_SCREEN);
       },
+      theme,
     });
     return;
   }

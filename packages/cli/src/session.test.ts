@@ -12,6 +12,7 @@ import {
   type SessionContext,
   tokenize,
 } from './session.js';
+import { LOGO } from './session-theme.js';
 
 const COMMAND_NAMES = ['brief', 'checkpoint', 'init', 'log', 'login', 'status', 'whoami'];
 
@@ -65,6 +66,7 @@ const CONTEXT: SessionContext = {
   actor: 'Saad',
   workspace: 'Mneia',
   project: 'mneia',
+  directory: '/repo',
 };
 
 async function run(events: readonly LineEvent[], context: SessionContext = CONTEXT) {
@@ -200,25 +202,44 @@ describe('rememberLine', () => {
 });
 
 describe('bannerLines', () => {
-  it('names the workspace, project, and actor', () => {
+  it('names the version, actor, workspace, directory, and project', () => {
     const text = bannerLines(CONTEXT, '0.2.0').join('\n');
     expect(text).toContain('mneia 0.2.0');
-    expect(text).toContain('Mneia / mneia');
-    expect(text).toContain('signed in as Saad');
+    expect(text).toContain('Saad · Mneia');
+    expect(text).toContain('/repo');
+    expect(text).toContain('mneia');
+  });
+
+  it('draws the logo beside the identity lines', () => {
+    const text = bannerLines(CONTEXT, '0.2.0').join('\n');
+    for (const mark of LOGO) {
+      expect(text).toContain(mark);
+    }
   });
 
   it('tells an unbound directory what to run', () => {
-    const text = bannerLines({ actor: 'Saad', workspace: 'Mneia', project: null }, '0.2.0').join(
-      '\n',
-    );
+    const text = bannerLines({ ...CONTEXT, project: null }, '0.2.0').join('\n');
     expect(text).toContain('/init');
   });
 
-  it('omits the actor line when identity is unknown', () => {
-    const text = bannerLines({ actor: null, workspace: null, project: 'mneia' }, '0.2.0').join(
-      '\n',
-    );
-    expect(text).not.toContain('signed in as');
+  it('does not repeat a workspace that is just the actor name', () => {
+    const text = bannerLines({ ...CONTEXT, workspace: 'Saad' }, '0.2.0').join('\n');
+    expect(text).not.toContain('Saad · Saad');
+    expect(text).toContain('Saad');
+  });
+
+  it('says so plainly when identity is unknown', () => {
+    const text = bannerLines({ ...CONTEXT, actor: null, workspace: null }, '0.2.0').join('\n');
+    expect(text).toContain('not signed in');
+  });
+
+  it('carries every fact as text, so meaning never depends on colour', () => {
+    const painted = bannerLines(CONTEXT, '0.2.0', {
+      accent: (s) => `<a>${s}</a>`,
+      bold: (s) => `<b>${s}</b>`,
+      dim: (s) => `<d>${s}</d>`,
+    }).join('\n');
+    expect(painted.replace(/<\/?[abd]>/g, '')).toBe(bannerLines(CONTEXT, '0.2.0').join('\n'));
   });
 });
 
