@@ -5,6 +5,7 @@ import { JsonLd } from '@/components/JsonLd';
 import { DOC_PAGES, type DocPage, type DocSlug } from '@/content/docs';
 import {
   breadcrumbSchema,
+  definedTermSetSchema,
   howToSchema,
   type JsonLdNode,
   techArticleSchema,
@@ -18,8 +19,17 @@ type Params = { slug: string };
 const ROUTE_BY_SLUG: Readonly<Record<DocSlug, RoutePath>> = {
   quickstart: '/docs/quickstart',
   concepts: '/docs/concepts',
+  glossary: '/docs/glossary',
+  checkpoint: '/docs/checkpoint',
+  rehydrate: '/docs/rehydrate',
+  handoff: '/docs/handoff',
+  conflicts: '/docs/conflicts',
+  scope: '/docs/scope',
   cli: '/docs/cli',
   mcp: '/docs/mcp',
+  'data-model': '/docs/data-model',
+  integrations: '/docs/integrations',
+  security: '/docs/security',
 };
 
 function findPage(slug: string): DocPage | undefined {
@@ -57,6 +67,9 @@ export default async function DocPageRoute({ params }: { params: Promise<Params>
   const howTo = howToSchema(page, path);
   if (howTo) {
     nodes.push(howTo);
+  }
+  if (page.slug === 'glossary') {
+    nodes.push(definedTermSetSchema());
   }
 
   return (

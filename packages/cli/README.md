@@ -74,11 +74,10 @@ Run `mneia` with no arguments in a terminal and it opens a session instead of ex
 ```
 $ mneia
 
-  mneia 0.2.0
-  example-co / api
-  signed in as Ada Lovelace
+  █▄   ▄█   mneia  v0.4.0
+  █ ▀▄▀ █   Ada Lovelace · example-co
+  █     █   ~/code/api  ·  api
 
-  Type a task in plain words to rehydrate context for it.
   /help for commands · /exit to leave
 
 › add rate limiting to the public API
@@ -86,9 +85,17 @@ $ mneia
 
 Anything you type that does not start with `/` is rehydrated as a task, because that is the thing
 you do most. Commands are the same seven, prefixed with a slash and taking the same flags —
-`/status --json`, `/log --limit 5`, `/checkpoint -m "chose the token bucket"`. Tab completes a
-slash command, the up arrow walks your history, `/clear` clears the screen, and `/exit` or Ctrl+D
-leaves. Ctrl+C cancels the line you are typing; press it twice to leave.
+`/status --json`, `/log --limit 5`, `/checkpoint -m "chose the token bucket"`.
+
+Typing `/` opens a menu of every command, and each further character narrows it. The arrow keys move
+the selection, Tab or the right arrow accepts it, and Escape dismisses it; the rest of the selected
+name is shown after the cursor so there is nothing to memorise. Enter runs the selected command, or
+leaves the cursor after it when the command still needs an argument.
+
+The up arrow walks your history, which is kept in `~/.mneia/history` and survives the session.
+Ctrl+L clears the screen without losing the line you are typing, and Ctrl+A, Ctrl+E, Ctrl+U, Ctrl+K
+and Ctrl+W work as they do in a shell. `/exit` or Ctrl+D leaves; Ctrl+C cancels the line you are
+typing, and twice in a row leaves.
 
 If the machine is not signed in, or the stored token has expired, the session runs the device flow
 for you rather than telling you to go and run `mneia login` first.

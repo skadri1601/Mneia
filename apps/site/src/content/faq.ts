@@ -18,7 +18,7 @@ export const FAQ_GETTING_STARTED: readonly Faq[] = [
   {
     question: 'Is Mneia available yet?',
     answer:
-      'Yes. Sign up at app.mneia.dev and install the clients from npm. Checkpoint, rehydrate, search, and assert are live in both the CLI and the MCP server. Handoff and conflict resolution are named but not shipped yet — running one tells you which release it lands in rather than failing as an unknown command, so you can always tell "not yet" from "you typed it wrong".',
+      'Yes. Sign up at app.mneia.dev and install the clients from npm, then read the quickstart — it takes you from nothing to a rehydrated session in six steps. If a command is not in the build you have, the CLI names it rather than failing as an unknown command, so you can always tell that apart from a typo.',
   },
   {
     question: 'How do I get access?',

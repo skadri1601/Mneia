@@ -57,18 +57,6 @@
   transform: scale(var(--press-scale));
 }
 
-.badge {
-  flex: none;
-  padding: 2px var(--space-xs);
-  border: 1px solid var(--tile-hairline);
-  border-radius: var(--rounded-pill);
-  font-family: var(--font-mono);
-  font-size: var(--size-micro-legal);
-  line-height: var(--leading-micro-legal);
-  letter-spacing: var(--tracking-micro-legal);
-  color: var(--tile-faint);
-}
-
 @media (max-width: 1068px) {
   .sidebar {
     position: static;
