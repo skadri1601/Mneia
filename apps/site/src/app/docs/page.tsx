@@ -67,19 +67,29 @@ export default function DocsPage() {
 
       <h2 className={styles.sectionHeading}>The three operations</h2>
       <p className={styles.paragraph}>
-        Everything in these pages serves one of three operations. <strong>Checkpoint</strong>{' '}
+        Everything in these pages serves one of three operations.{' '}
+        <Link className={styles.inlineLink} href="/docs/checkpoint">
+          Checkpoint
+        </Link>{' '}
         captures the decisions, constraints, and open questions out of a session at a task or day
-        boundary. <strong>Rehydrate</strong> assembles the minimal high-signal slice for the next
-        task under a token budget. <strong>Handoff</strong> produces a receivable artifact when work
-        changes hands.
+        boundary.{' '}
+        <Link className={styles.inlineLink} href="/docs/rehydrate">
+          Rehydrate
+        </Link>{' '}
+        assembles the minimal high-signal slice for the next task under a token budget.{' '}
+        <Link className={styles.inlineLink} href="/docs/handoff">
+          Handoff
+        </Link>{' '}
+        produces a receivable artifact when work changes hands.
       </p>
       <p className={styles.paragraph}>
-        Checkpoint and rehydrate are available now. Handoff ships in the next milestone, and both
-        clients refuse that surface by name today rather than pretending it exists — see{' '}
-        <Link className={styles.inlineLink} href="/handoff">
-          the handoff artifact
+        Where two of them collide,{' '}
+        <Link className={styles.inlineLink} href="/docs/conflicts">
+          conflict resolution
         </Link>{' '}
-        for what it will contain.
+        decides what happens — and only one of its three rules is automatic. Every surface is a
+        translation of the same verbs, so the CLI, an MCP client, the web app, and a CI runner
+        return the same answer for the same input.
       </p>
     </>
   );

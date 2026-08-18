@@ -18,8 +18,16 @@ type Params = { slug: string };
 const ROUTE_BY_SLUG: Readonly<Record<DocSlug, RoutePath>> = {
   quickstart: '/docs/quickstart',
   concepts: '/docs/concepts',
+  checkpoint: '/docs/checkpoint',
+  rehydrate: '/docs/rehydrate',
+  handoff: '/docs/handoff',
+  conflicts: '/docs/conflicts',
+  scope: '/docs/scope',
   cli: '/docs/cli',
   mcp: '/docs/mcp',
+  'data-model': '/docs/data-model',
+  integrations: '/docs/integrations',
+  security: '/docs/security',
 };
 
 function findPage(slug: string): DocPage | undefined {

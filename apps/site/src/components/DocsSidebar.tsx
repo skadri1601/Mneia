@@ -24,7 +24,6 @@ export function DocsSidebar() {
                     href={item.href}
                   >
                     <span>{item.label}</span>
-                    {item.badge ? <span className={styles.badge}>{item.badge}</span> : null}
                   </Link>
                 </li>
               );

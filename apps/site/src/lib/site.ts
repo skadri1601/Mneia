@@ -33,8 +33,16 @@ export type RoutePath =
   | '/docs'
   | '/docs/quickstart'
   | '/docs/concepts'
+  | '/docs/checkpoint'
+  | '/docs/rehydrate'
+  | '/docs/handoff'
+  | '/docs/conflicts'
+  | '/docs/scope'
   | '/docs/cli'
   | '/docs/mcp'
+  | '/docs/data-model'
+  | '/docs/integrations'
+  | '/docs/security'
   | '/blog'
   | '/blog/the-unit-of-value-is-the-handoff'
   | '/blog/seven-days-of-dogfooding'
@@ -105,7 +113,7 @@ export const ROUTES: readonly RouteEntry[] = [
     name: 'Documentation',
     title: 'Documentation',
     description:
-      'How Mneia works and how to run it: the quickstart, the concepts, the CLI reference, and the MCP server reference.',
+      'How Mneia works and how to run it: the quickstart, the concepts, the three operations in depth, and the CLI, MCP, data model, and security references.',
     priority: 0.9,
     changeFrequency: 'weekly',
   },
@@ -128,11 +136,56 @@ export const ROUTES: readonly RouteEntry[] = [
     changeFrequency: 'monthly',
   },
   {
+    path: '/docs/checkpoint',
+    name: 'Checkpoint',
+    title: 'Checkpoint',
+    description:
+      'How Mneia captures a session into project memory: triggers, extraction into the typed schema, deduplication, contradiction detection, the human confirmation queue, and the quality metric that governs the pipeline.',
+    priority: 0.8,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/docs/rehydrate',
+    name: 'Rehydrate',
+    title: 'Rehydrate',
+    description:
+      'How Mneia assembles a context slice for a stated task: the scoring function, per-kind quotas, the guaranteed-inclusion pass for load-bearing constraints, the token budget, and the 300ms latency budget.',
+    priority: 0.8,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/docs/handoff',
+    name: 'Handoff',
+    title: 'Handoff',
+    description:
+      'The handoff artifact: its sections, the superseded-recently block, freeze semantics and the live link, directed and open handoffs, and the measurement that proves it reduces pickup cost.',
+    priority: 0.8,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/docs/conflicts',
+    name: 'Conflict resolution',
+    title: 'Conflict resolution',
+    description:
+      'How Mneia arbitrates when two sources disagree: agent versus agent, agent versus a human-confirmed item, and human versus human — plus rationale capture and why the three rules are not symmetrical.',
+    priority: 0.7,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/docs/scope',
+    name: 'Workspaces, teams, and scope',
+    title: 'Workspaces, teams, and scope',
+    description:
+      'Identities and actors, workspaces, teams and their function, roles and invitations, the five-value visibility hierarchy, and how a question crosses from one team to another.',
+    priority: 0.7,
+    changeFrequency: 'monthly',
+  },
+  {
     path: '/docs/cli',
     name: 'CLI reference',
     title: 'CLI reference',
     description:
-      'Every Mneia CLI command — init, login, whoami, brief, checkpoint, log, and status — plus the interactive session, with flags, environment variables, JSON output, and exit codes.',
+      'Every Mneia CLI command — init, login, whoami, brief, checkpoint, handoff, pickup, conflicts, log, and status — plus the interactive session, with flags, environment variables, JSON output, and exit codes.',
     priority: 0.7,
     changeFrequency: 'weekly',
   },
@@ -141,9 +194,36 @@ export const ROUTES: readonly RouteEntry[] = [
     name: 'MCP server reference',
     title: 'MCP server reference',
     description:
-      'The four Mneia MCP tools — mneia_rehydrate, mneia_assert, mneia_checkpoint, and mneia_search — how to configure the server, and when to call each one.',
+      'The Mneia MCP tools — mneia_rehydrate, mneia_assert, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, and mneia_conflicts — how to configure the server, and when to call each one.',
     priority: 0.7,
     changeFrequency: 'weekly',
+  },
+  {
+    path: '/docs/data-model',
+    name: 'Data model',
+    title: 'Data model',
+    description:
+      'The schema underneath Mneia: identities and actors, teams and projects, the context item with its provenance and bi-temporal columns, embeddings, checkpoints, handoffs, conflicts, and the event spine.',
+    priority: 0.6,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/docs/integrations',
+    name: 'Integrations',
+    title: 'Integrations',
+    description:
+      'Where Mneia plugs in: MCP clients like Claude Code, Cursor, and Codex; file interop with AGENTS.md, CLAUDE.md, and .cursor/rules; the web app; CI runners; and what is deliberately not built.',
+    priority: 0.6,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/docs/security',
+    name: 'Security and privacy',
+    title: 'Security and privacy',
+    description:
+      'How Mneia isolates one workspace from another, how credentials and device approval work, what telemetry records and how to turn it off, retention and residency controls, audit export, and enterprise governance.',
+    priority: 0.7,
+    changeFrequency: 'monthly',
   },
   {
     path: '/blog',
