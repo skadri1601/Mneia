@@ -7,12 +7,7 @@ import styles from './page.module.css';
 
 export const metadata = pageMetadata('/docs');
 
-const DOC_ROUTES: readonly RoutePath[] = [
-  '/docs/quickstart',
-  '/docs/concepts',
-  '/docs/cli',
-  '/docs/mcp',
-];
+const DOC_ROUTES: readonly RoutePath[] = DOC_PAGES.map((page) => `/docs/${page.slug}` as RoutePath);
 
 export default function DocsPage() {
   return (

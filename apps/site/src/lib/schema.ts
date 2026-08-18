@@ -1,5 +1,6 @@
 import type { BlogPost } from '@/content/blog';
 import type { DocPage } from '@/content/docs';
+import { GLOSSARY } from '@/content/docs';
 import { CONTACT } from '@/content/legal';
 import type { Faq } from '@/content/pages';
 import { TIERS } from '@/content/pages';
@@ -20,6 +21,7 @@ export type JsonLdNode = Record<string, unknown>;
 const ORGANIZATION_ID = `${SITE_URL}/#organization`;
 const WEBSITE_ID = `${SITE_URL}/#website`;
 const SOFTWARE_ID = `${SITE_URL}/#software`;
+const GLOSSARY_ID = `${SITE_URL}/docs/glossary#glossary`;
 
 export function organizationSchema(): JsonLdNode {
   return {
@@ -174,6 +176,13 @@ export function contactPageSchema(): JsonLdNode {
   };
 }
 
+const ADVANCED_SLUGS: ReadonlySet<string> = new Set([
+  'data-model',
+  'security',
+  'conflicts',
+  'rehydrate',
+]);
+
 export function techArticleSchema(page: DocPage, path: RoutePath): JsonLdNode {
   return {
     '@type': 'TechArticle',
@@ -185,10 +194,44 @@ export function techArticleSchema(page: DocPage, path: RoutePath): JsonLdNode {
     inLanguage: 'en',
     isPartOf: { '@id': WEBSITE_ID },
     about: { '@id': SOFTWARE_ID },
+    mentions: { '@id': GLOSSARY_ID },
     publisher: { '@id': ORGANIZATION_ID },
     articleSection: page.sections.map((section) => section.heading),
     timeRequired: `PT${page.minutes}M`,
-    proficiencyLevel: 'Beginner',
+    proficiencyLevel: ADVANCED_SLUGS.has(page.slug) ? 'Advanced' : 'Beginner',
+    isAccessibleForFree: true,
+    license: 'https://www.apache.org/licenses/LICENSE-2.0',
+    hasPart: page.sections.map((section) => ({
+      '@type': 'WebPageElement',
+      '@id': `${absoluteUrl(path)}#${section.id}`,
+      name: section.heading,
+      url: `${absoluteUrl(path)}#${section.id}`,
+    })),
+  };
+}
+
+export function definedTermSetSchema(): JsonLdNode {
+  const url = absoluteUrl('/docs/glossary');
+
+  return {
+    '@type': 'DefinedTermSet',
+    '@id': GLOSSARY_ID,
+    url,
+    name: `${SITE_NAME} glossary`,
+    description: routeFor('/docs/glossary').description,
+    inLanguage: 'en',
+    isPartOf: { '@id': WEBSITE_ID },
+    about: { '@id': SOFTWARE_ID },
+    publisher: { '@id': ORGANIZATION_ID },
+    hasDefinedTerm: GLOSSARY.map((entry) => ({
+      '@type': 'DefinedTerm',
+      '@id': `${url}#${entry.id}`,
+      url: `${url}#${entry.id}`,
+      name: entry.term,
+      alternateName: entry.aliases,
+      description: entry.definition,
+      inDefinedTermSet: { '@id': GLOSSARY_ID },
+    })),
   };
 }
 

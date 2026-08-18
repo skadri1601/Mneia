@@ -1,7 +1,7 @@
 import type { BlogPost } from '@/content/blog';
 import { BLOG_INTRO, BLOG_POSTS, BLOG_STATUS } from '@/content/blog';
 import type { DocBlock, DocPage } from '@/content/docs';
-import { DOC_PAGES, DOCS_INTRO, DOCS_STATUS } from '@/content/docs';
+import { DOC_PAGES, DOCS_INTRO, DOCS_STATUS, GLOSSARY } from '@/content/docs';
 import { FAQ_GROUPS, FAQ_INTRO } from '@/content/faq';
 import type { Block, Faq, Intro, Paragraph } from '@/content/pages';
 import {
@@ -48,7 +48,14 @@ import {
   HELP_SYMPTOMS,
   HELP_TASKS,
 } from '@/content/support';
-import { absoluteUrl, ROUTES, SITE_DESCRIPTION, SITE_NAME, SITE_TAGLINE } from './site';
+import {
+  absoluteUrl,
+  ROUTES,
+  type RoutePath,
+  SITE_DESCRIPTION,
+  SITE_NAME,
+  SITE_TAGLINE,
+} from './site';
 
 function paragraphs(value: readonly Paragraph[]): string {
   return value.map(paragraphText).join('\n\n');
@@ -225,16 +232,73 @@ MNEIA performs three operations. Checkpoint captures the decisions, constraints,
 
 It runs as an MCP server for Claude Code, Cursor, Codex, or any MCP client, as a CLI, and as a deliberately thin web app. The client packages are Apache 2.0. The hosted service is proprietary and required.`;
 
+const FACTS = `## Key facts
+
+- **What it is:** shared project memory and a handoff layer for teams working with AI coding agents.
+- **What it is not:** not an agent framework, not an orchestration runtime, not observability or evals, not enterprise document search, not a chat interface, not a vector database. MNEIA sits beside LangGraph, CrewAI, and Claude Code, never above them.
+- **The distinguishing claim:** the unit of value is the handoff, not the memory store. Competitors give you somewhere to put context and a way to query it; MNEIA produces an artifact at the moment work stops and consumes it at the moment work resumes.
+- **What nobody else produces:** the "superseded recently" block — what was tried and rejected — which is what stops a fresh agent re-proposing an approach the team already ruled out.
+- **Provenance:** every item records whether a human or an agent asserted it, which one, and when. An agent assertion never overrules a human-confirmed item.
+- **Arbitration:** agent versus agent resolves on confidence then recency; agent versus human-confirmed always defers to the human; human versus human is never resolved automatically.
+- **Surfaces:** MCP server (\`mneia-mcp\`), CLI (\`mneia\`), web app, and CI runners. Every surface is a translation of the same verbs and returns the same answer for the same input.
+- **Deployment:** hosted only. The clients require an account and do not function without the service. Privacy is enforced by controls — scope enforcement, row-level security, retention, residency — not by keeping data on your machine.
+- **Licensing:** \`@mneia/cli\`, \`@mneia/mcp-server\`, and \`@mneia/core\` are Apache 2.0. The hosted API, store, and web app are proprietary.
+- **Pricing:** the individual tier is free and is never charged for. Team pricing is per seat with an included checkpoint allowance; the extraction call is the only metered marginal cost.`;
+
+const GROUPS: readonly { heading: string; paths: readonly RoutePath[] }[] = [
+  {
+    heading: 'Product',
+    paths: ['/', '/handoff', '/features', '/pricing', '/about'],
+  },
+  {
+    heading: 'Documentation',
+    paths: ROUTES.filter((route) => route.path.startsWith('/docs')).map((route) => route.path),
+  },
+  {
+    heading: 'Writing',
+    paths: ROUTES.filter((route) => route.path.startsWith('/blog')).map((route) => route.path),
+  },
+  {
+    heading: 'Support',
+    paths: ['/faq', '/help', '/contact'],
+  },
+  {
+    heading: 'Legal',
+    paths: ['/terms', '/privacy', '/cookies'],
+  },
+];
+
+function groupIndex(paths: readonly RoutePath[]): string {
+  return paths
+    .map((path) => {
+      const route = ROUTES.find((entry) => entry.path === path);
+      return route ? `- [${route.name}](${absoluteUrl(route.path)}): ${route.description}` : null;
+    })
+    .filter((line): line is string => line !== null)
+    .join('\n');
+}
+
 export function llmsTxt(): string {
-  const index = ROUTES.map(
-    (route) => `- [${route.name}](${absoluteUrl(route.path)}): ${route.description}`,
+  const sections = GROUPS.filter((group) => group.paths.length > 0)
+    .map((group) => `## ${group.heading}\n\n${groupIndex(group.paths)}`)
+    .join('\n\n');
+
+  const glossary = GLOSSARY.map(
+    (entry) =>
+      `- **${entry.term}**: ${entry.definition} ${absoluteUrl('/docs/glossary')}#${entry.id}`,
   ).join('\n');
 
   return `${PREAMBLE}
 
-## Pages
+${FACTS}
 
-${index}
+${sections}
+
+## Glossary
+
+Terms MNEIA uses precisely. Full definitions at ${absoluteUrl('/docs/glossary')}.
+
+${glossary}
 
 ## Optional
 

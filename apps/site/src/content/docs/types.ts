@@ -15,6 +15,7 @@ export type DocSection = {
 export type DocSlug =
   | 'quickstart'
   | 'concepts'
+  | 'glossary'
   | 'checkpoint'
   | 'rehydrate'
   | 'handoff'

@@ -33,6 +33,7 @@ export type RoutePath =
   | '/docs'
   | '/docs/quickstart'
   | '/docs/concepts'
+  | '/docs/glossary'
   | '/docs/checkpoint'
   | '/docs/rehydrate'
   | '/docs/handoff'
@@ -132,6 +133,15 @@ export const ROUTES: readonly RouteEntry[] = [
     title: 'Concepts',
     description:
       'The three operations, the vocabulary Mneia uses for a context item, how provenance and superseding work, and why conflicts between a human and an agent are resolved the way they are.',
+    priority: 0.8,
+    changeFrequency: 'monthly',
+  },
+  {
+    path: '/docs/glossary',
+    name: 'Glossary',
+    title: 'Glossary',
+    description:
+      'Every term Mneia uses precisely, defined once: checkpoint, rehydrate, handoff, context item, load-bearing, human-confirmed, superseding, provenance, access scope, workspace, actor, and the rest.',
     priority: 0.8,
     changeFrequency: 'monthly',
   },

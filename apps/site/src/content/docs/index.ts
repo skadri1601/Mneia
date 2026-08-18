@@ -4,6 +4,7 @@ import { CLI } from './cli';
 import { CONCEPTS } from './concepts';
 import { CONFLICTS } from './conflicts';
 import { DATA_MODEL } from './data-model';
+import { GLOSSARY_PAGE } from './glossary';
 import { HANDOFF_DOC } from './handoff';
 import { INTEGRATIONS } from './integrations';
 import { MCP } from './mcp';
@@ -13,6 +14,8 @@ import { SCOPE } from './scope';
 import { SECURITY } from './security';
 import type { DocPage, DocSlug, DocsNavGroup } from './types';
 
+export { GLOSSARY, glossaryTerm } from './glossary';
+export type { GlossaryTerm } from './glossary';
 export type {
   DocBlock,
   DocPage,
@@ -29,6 +32,7 @@ export const DOCS_NAV: readonly DocsNavGroup[] = [
       { href: '/docs', label: 'Overview' },
       { href: '/docs/quickstart', label: 'Quickstart' },
       { href: '/docs/concepts', label: 'Concepts' },
+      { href: '/docs/glossary', label: 'Glossary' },
     ],
   },
   {
@@ -125,6 +129,7 @@ export const DOCS_STATUS =
 export const DOC_PAGES: readonly DocPage[] = [
   QUICKSTART,
   CONCEPTS,
+  GLOSSARY_PAGE,
   CHECKPOINT,
   REHYDRATE,
   HANDOFF_DOC,
