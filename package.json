@@ -35,7 +35,8 @@
     "version:packages": "changeset version && node scripts/sync-version.mjs",
     "release:dry": "changeset publish --dry-run",
     "sync:version": "node scripts/sync-version.mjs",
-    "check:version": "node scripts/sync-version.mjs --check"
+    "check:version": "node scripts/sync-version.mjs --check",
+    "release:publish": "changeset publish"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",

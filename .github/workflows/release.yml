@@ -1,30 +1,36 @@
 name: Release
 
-# Publishing to npm is a deliberate act, the same as pnpm db:migrate against production.
-# Nothing here fires on a push or a merge — a human has to run it from the Actions tab.
+# Releases are automatic. A merge to main that carries a changeset makes the bot
+# open or update a "Version Packages" PR holding the bump and the CHANGELOG.
+# Merging THAT PR is the release: this workflow then publishes to npm and tags.
+#
+# Nothing publishes straight from a feature merge, so the version and the
+# changelog are always visible before they become public and immutable.
+#
+# workflow_dispatch remains as an escape hatch for a re-run after a failed publish.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      dry_run:
-        description: 'Pack and inspect only; publish nothing'
-        type: boolean
-        default: true
 
 concurrency:
   group: release
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
   id-token: write
 
 jobs:
-  publish:
-    name: publish to npm
+  release:
+    name: version or publish
     runs-on: ubuntu-latest
     environment: npm
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
 
@@ -36,36 +42,20 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: refuse to act on a client that misreports its own version
+        run: pnpm check:version
+
       - name: build the publishable packages
         run: pnpm build
 
-      - name: refuse to publish while a changeset is still unconsumed
-        if: ${{ inputs.dry_run == false }}
-        run: |
-          pending=$(find .changeset -name '*.md' ! -name 'README.md' | wc -l)
-          if [ "$pending" -ne 0 ]; then
-            echo "::error::$pending changeset(s) have not been applied, so this version's CHANGELOG would omit them. Run pnpm version:packages, commit the bump, then release."
-            find .changeset -name '*.md' ! -name 'README.md'
-            exit 1
-          fi
-
-      - name: refuse to publish a client that misreports its own version
-        run: pnpm check:version
-
-      - name: refuse to publish a package that already exists at this version
-        run: node scripts/check-publish.mjs
-
-      - name: pack and show what would ship
-        run: |
-          for package in core cli mcp-server; do
-            echo "::group::@mneia/$package"
-            (cd "packages/$package" && pnpm pack --pack-destination "$RUNNER_TEMP")
-            echo "::endgroup::"
-          done
-          ls -la "$RUNNER_TEMP"/*.tgz
-
-      - name: publish
-        if: ${{ inputs.dry_run == false }}
-        run: pnpm publish -r --access public --no-git-checks --report-summary
+      - name: open the version PR, or publish the one that was merged
+        uses: changesets/action@v1
+        with:
+          version: pnpm version:packages
+          publish: pnpm release:publish
+          commit: 'release: version the client packages'
+          title: 'release: version the client packages'
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
