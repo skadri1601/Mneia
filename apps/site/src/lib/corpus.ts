@@ -1,3 +1,5 @@
+import type { BlogPost } from '@/content/blog';
+import { BLOG_INTRO, BLOG_POSTS, BLOG_STATUS } from '@/content/blog';
 import type { DocBlock, DocPage } from '@/content/docs';
 import { DOC_PAGES, DOCS_INTRO, DOCS_STATUS } from '@/content/docs';
 import { FAQ_GROUPS, FAQ_INTRO } from '@/content/faq';
@@ -184,6 +186,27 @@ const CONTACT_PAGE = page('/contact', 'Contact', [
   blockSection(CONTACT_NOT_YET),
 ]);
 
+function blogPostText(post: BlogPost): string {
+  const body = post.sections
+    .map((section) => `#### ${section.heading}\n\n${section.blocks.map(docBlock).join('\n\n')}`)
+    .join('\n\n');
+
+  return page(`/blog/${post.slug}`, post.title, [
+    `Published ${post.published} by ${post.author}. ${post.minutes} min read. Tags: ${post.tags.join(', ')}.`,
+    `### ${post.heading}\n\n${post.lead}`,
+    body,
+  ]);
+}
+
+const BLOG_INDEX = page('/blog', 'Blog', [
+  section(BLOG_INTRO),
+  BLOG_STATUS,
+  BLOG_POSTS.map(
+    (post) =>
+      `- [${post.title}](${absoluteUrl(`/blog/${post.slug}`)}) — ${post.published}: ${post.description}`,
+  ).join('\n'),
+]);
+
 const DOCS_INDEX = page('/docs', 'Documentation', [
   section(DOCS_INTRO),
   DOCS_STATUS,
@@ -232,6 +255,8 @@ ${[
   ABOUT,
   DOCS_INDEX,
   ...DOC_PAGES.map(docPageText),
+  BLOG_INDEX,
+  ...BLOG_POSTS.map(blogPostText),
   FAQ,
   HELP,
   CONTACT_PAGE,

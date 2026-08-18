@@ -33,6 +33,7 @@ const COLUMNS = [
     heading: 'Company',
     links: [
       { href: '/about', label: 'About' },
+      { href: '/blog', label: 'Blog' },
       { href: '/about#licensing', label: 'Licensing' },
     ],
   },

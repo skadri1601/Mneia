@@ -112,7 +112,7 @@ export const DOCS_INTRO: Intro = {
 };
 
 export const DOCS_STATUS =
-  'Checkpoint, rehydrate, search, and assert are live in both the CLI and the MCP server, and everything documented on those behaves as described. Handoff and conflict resolution are named but not shipped — running one names the release it lands in rather than failing as an unknown command, so a page describing them is marked rather than silently aspirational.';
+  'Checkpoint, rehydrate, search, and assert are live in both the CLI and the MCP server, and everything documented on those behaves as described. The CLI ships seven commands plus an interactive session. Handoff and conflict resolution are named but not shipped — running one names the release it lands in rather than failing as an unknown command, so a page describing them is marked rather than silently aspirational.';
 
 const QUICKSTART: DocPage = {
   slug: 'quickstart',
@@ -296,6 +296,26 @@ const QUICKSTART: DocPage = {
             '',
             'mneia checkpoint',
             'mneia status',
+          ],
+        },
+        {
+          kind: 'text',
+          paragraphs: [
+            'Or run **mneia** with no arguments and stay in the session, where a bare line is the task to rehydrate and the commands are slash-prefixed:',
+          ],
+        },
+        {
+          kind: 'code',
+          label: 'shell',
+          lines: [
+            '$ mneia',
+            '',
+            '› migrate the ledger writes to the v2 schema',
+            '',
+            '# ... work ...',
+            '',
+            '› /checkpoint -m "kept the writes idempotent under retry"',
+            '› /status',
           ],
         },
       ],
@@ -512,11 +532,11 @@ const CLI: DocPage = {
   name: 'CLI reference',
   title: 'CLI reference',
   description:
-    'Every Mneia CLI command — init, brief, checkpoint, log, and status — with flags, environment variables, JSON output, and exit codes.',
+    'Every Mneia CLI command — init, login, whoami, brief, checkpoint, log, and status — plus the interactive session, with flags, environment variables, JSON output, and exit codes.',
   eyebrow: 'Documentation',
   heading: 'The mneia command, in full.',
   lead: 'The CLI is a thin surface over the same core the MCP server uses, so the two return the same answer for the same input. Every command takes --json and --help.',
-  minutes: 7,
+  minutes: 8,
   sections: [
     {
       id: 'commands',
@@ -530,6 +550,11 @@ const CLI: DocPage = {
               '`mneia init`',
               'Attach this repository to a Mneia project and import its existing constraints',
             ],
+            ['`mneia login`', 'Sign this machine in to a workspace, through a browser device flow'],
+            [
+              '`mneia whoami`',
+              'Show the actor, workspace, team, and endpoint this machine is signed in as',
+            ],
             ['`mneia brief "<task>"`', 'Print the rehydrated context slice for a stated task'],
             ['`mneia checkpoint`', 'Capture the session into project memory at a boundary'],
             ['`mneia log`', 'Show the decision history for this project, newest first'],
@@ -537,8 +562,53 @@ const CLI: DocPage = {
           ],
         },
         {
+          kind: 'text',
+          paragraphs: [
+            'Seven commands, and `mneia` with no arguments opens an interactive session over the same seven — see **the interactive session** below.',
+          ],
+        },
+        {
           kind: 'note',
-          text: '`handoff` and `pickup` ship in M2; `conflicts` ships in M4. Running them today returns a usage error naming the milestone rather than a generic "unknown command", so you can tell "not yet" from "you typed it wrong".',
+          text: '`handoff` and `pickup` ship in M2; `conflicts` ships in M4. Running them today returns a usage error naming the milestone rather than a generic "unknown command", so you can tell "not yet" from "you typed it wrong". There is no `sync` and there will not be one — every command is an authenticated API call, so there is nothing to reconcile.',
+        },
+      ],
+    },
+    {
+      id: 'session',
+      heading: 'The interactive session',
+      blocks: [
+        {
+          kind: 'text',
+          paragraphs: [
+            'Run **mneia** with no arguments in a terminal and it opens a session instead of printing usage and exiting.',
+          ],
+        },
+        {
+          kind: 'code',
+          label: 'shell',
+          lines: [
+            '$ mneia',
+            '',
+            '  mneia 0.2.0',
+            '  example-co / api',
+            '  signed in as Ada Lovelace',
+            '',
+            '  Type a task in plain words to rehydrate context for it.',
+            '  /help for commands · /exit to leave',
+            '',
+            '› add rate limiting to the public API',
+          ],
+        },
+        {
+          kind: 'text',
+          paragraphs: [
+            'Anything you type that does not begin with `/` is rehydrated as a task, because that is the thing you do most often. The commands are the same seven, slash-prefixed and taking the same flags — `/status --json`, `/log --limit 5`, `/checkpoint -m "chose the token bucket"`.',
+            'Tab completes a slash command, the up arrow walks your history, `/clear` clears the screen, and `/exit` or Ctrl+D leaves. Ctrl+C cancels the line you are typing; press it twice to leave. If the machine is not signed in, or the stored token has expired, the session runs the device flow for you rather than telling you to go and run **mneia login** first.',
+          ],
+        },
+        {
+          kind: 'note',
+          text: '**Only a terminal gets the session.** Piped, redirected, or run in CI, bare `mneia` still prints the command list to stderr and exits `2` — so a script that depends on that behaviour keeps working. It dispatches commands and does not talk to a model; a prompt that answered questions would be a chat interface, which is deliberately not what this is.',
         },
       ],
     },
@@ -581,6 +651,39 @@ const CLI: DocPage = {
       ],
     },
     {
+      id: 'auth',
+      heading: 'mneia login and mneia whoami',
+      blocks: [
+        {
+          kind: 'code',
+          label: 'usage',
+          lines: ['mneia login [--json]', 'mneia whoami [--json]'],
+        },
+        {
+          kind: 'text',
+          paragraphs: [
+            '`login` runs a browser device flow. It prints a link, a user code, and a confirmation number; approve it in the browser — checking that the workspace named on that page is the one you expect — and the token is written to `~/.mneia/credentials` with `0600` permissions.',
+            '`whoami` is how you confirm it worked, and the first thing worth running when something behaves unexpectedly. It prints the actor, workspace, team, and endpoint this machine is signed in as.',
+          ],
+        },
+        {
+          kind: 'code',
+          label: 'shell',
+          lines: [
+            '$ mneia whoami',
+            'actor      Ada Lovelace <ada@example.com>',
+            'workspace  example-co',
+            'team       platform',
+            'endpoint   https://app.mneia.dev',
+          ],
+        },
+        {
+          kind: 'note',
+          text: 'In CI, set `MNEIA_TOKEN` rather than running `login`. The rest of the surface is identical, which is what makes an ephemeral runner an ordinary client rather than a special case.',
+        },
+      ],
+    },
+    {
       id: 'brief',
       heading: 'mneia brief',
       blocks: [
@@ -595,6 +698,28 @@ const CLI: DocPage = {
             'The terminal-side rehydration. State the task in the words you would use to a colleague — the slice is chosen for that task, so "fix the ledger rounding bug" and "migrate the ledger schema" return different context from the same project.',
             '`--budget` caps the slice in tokens. Load-bearing active constraints are included regardless of what you set it to.',
           ],
+        },
+      ],
+    },
+    {
+      id: 'checkpoint',
+      heading: 'mneia checkpoint',
+      blocks: [
+        {
+          kind: 'code',
+          label: 'usage',
+          lines: ['mneia checkpoint [-m "<summary>"] [--trigger <trigger>] [--json]'],
+        },
+        {
+          kind: 'text',
+          paragraphs: [
+            'Captures what the session decided. `-m` attaches your own one-line summary, which is worth using when the session covered more than its commits suggest. `--trigger` records why the checkpoint ran — useful when a hook fires it rather than a person.',
+            'This is the surface that asks you to confirm things, and it only asks about what genuinely needs a human: items that are load-bearing, and items that contradict something already recorded. Everything else is written without interrupting you.',
+          ],
+        },
+        {
+          kind: 'note',
+          text: 'Checkpointing resumes from a server-side watermark, so a run that fails part way through does not lose the turns it had already read, and running it twice does not capture the same session twice.',
         },
       ],
     },

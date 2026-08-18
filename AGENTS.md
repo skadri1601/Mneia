@@ -33,10 +33,15 @@ re-explain what is already in those files, and do not restate their content in t
 
 ## Current status
 
-M0 (Foundations & Instrumentation) is the active milestone. Implementation has started: the
-migration runner and schema versioning landed with MNE-40, so `packages/core/src/store/` is real.
-Almost everything else is still ahead — if you are looking for an implementation and cannot find it,
-that is expected. Check `ROADMAP.md` for which milestone it belongs to before assuming it is missing.
+M1 (Core Loop — Checkpoint & Rehydrate) is the active milestone, Aug 4 – Sep 1. M0 closed. M1 is
+carrying more than its name suggests: the 2026-07-29 ruling (§12.3) moved the web app (MNE-25) and
+billing (MNE-26) into it, so it covers the core loop, the hosted API, the full web surface, and
+Stripe. `ROADMAP.md` §M1 is the checklist; check it for which milestone a thing belongs to before
+assuming an implementation is missing.
+
+Most of the loop is real and deployed. `packages/core/src/store/` is at schema version 31, the CLI
+ships seven commands plus an interactive session, the MCP server ships four tools, and extraction
+runs against real sessions in production.
 
 **The core tables exist. Multi-tenancy is ruled.** §11.2 Q3 closed on 2026-07-31 (MNE-172): shared
 schema, `workspace_id` on every row, Postgres RLS mandatory — see `vision.md` §11.3. Migrations
@@ -139,11 +144,14 @@ pnpm release:dry      # changeset publish --dry-run
 **Publishing to npm is manual, on purpose.** `.github/workflows/release.yml` is `workflow_dispatch`
 only and defaults to a dry run — nothing publishes on a merge or a tag, the same shape as
 `db:migrate`. It needs an `NPM_TOKEN` secret on the `npm` environment. The `@mneia` scope **does**
-now exist: `0.1.0` of all three client packages is live, published some time after 2026-08-07.
+now exist, and `0.2.0` of all three client packages is live.
 
-**The registry is behind the repo.** `0.1.1` was bumped by MNE-261 to carry the MNE-257 client fixes
-and `release.yml` was never run, so nothing a customer installs contains them. Check with
-`npm view @mneia/cli version` rather than reading a package.json.
+**The registry and the repo agree, as of 2026-08-17.** `npm view` reports `0.2.0` for `@mneia/cli`,
+`@mneia/core` and `@mneia/mcp-server`, which is what the package.json files say. The MNE-257 client
+fixes are therefore in what a customer installs — the earlier note here, that `0.1.1` was bumped and
+never published, is no longer true. Five changesets are pending against `0.2.0`, so the *next*
+release is unpublished, not this one. Keep checking with `npm view @mneia/cli version` rather than
+reading a package.json; that is the habit that caught the drift both times.
 
 **Versioning goes through changesets** (MNE-38). A PR that changes the client packages adds one with
 `pnpm changeset`; at release time `pnpm version:packages` applies every pending changeset, bumps, and
@@ -168,8 +176,8 @@ rather than a silent green. That is what makes the GUARD invariants real instead
 
 **Restructured 2026-08-02 by MNE-226**, after the project went over its Neon storage allowance —
 0.53 of 0.5 GB against a database holding 17 MB of actual rows. The cause was this workflow: it ran
-the whole suite *against a Neon branch*, and every integration file creates a schema, applies all
-ten migrations, and drops it. Neon retains that change history and bills it as storage. On
+the whole suite *against a Neon branch*, and every integration file creates a schema, applies every
+migration in the chain, and drops it. Neon retains that change history and bills it as storage. On
 2026-08-02 it happened 34 times, mostly for documentation PRs.
 
 Two workflows now, each doing only what it is for:

@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import type { DocBlock, DocPage } from '@/content/docs';
+import type { DocBlock, DocPage, DocSection } from '@/content/docs';
 import styles from './DocBody.module.css';
 
 type InlineToken = { text: string; strong?: boolean; code?: boolean };
@@ -129,10 +129,10 @@ function Block({ block }: { block: DocBlock }) {
   );
 }
 
-export function DocSections({ page }: { page: DocPage }) {
+export function DocSectionList({ sections }: { sections: readonly DocSection[] }) {
   return (
     <>
-      {page.sections.map((section) => (
+      {sections.map((section) => (
         <section className={styles.section} id={section.id} key={section.id}>
           <h2 className={styles.heading}>{section.heading}</h2>
           <div className={styles.blocks}>
@@ -145,4 +145,8 @@ export function DocSections({ page }: { page: DocPage }) {
       ))}
     </>
   );
+}
+
+export function DocSections({ page }: { page: DocPage }) {
+  return <DocSectionList sections={page.sections} />;
 }

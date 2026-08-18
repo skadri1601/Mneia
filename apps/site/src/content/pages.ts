@@ -38,7 +38,7 @@ export function rich(text: string): Paragraph {
 export const HOME_INTRO: Intro = {
   eyebrow: 'Project memory and handoff',
   heading: 'Your agent forgets.',
-  lead: 'Your teammate never knew. Mneia captures the decisions a session produced at the moment work stops, and hands them to whoever picks it up next.',
+  lead: 'Your teammate never knew. Mneia captures what a session decided at the moment work stops, and gives it to whoever picks the work up next — the same person tomorrow, a colleague next week, or a different agent on the next task.',
 };
 
 export const HOME_PROBLEM: Block = {
@@ -66,6 +66,11 @@ export const HOME_PROBLEM: Block = {
         strong: true,
       },
     ],
+    [
+      {
+        text: 'None of this is a tooling gap you can close with a better prompt. The context that mattered was never written down anywhere durable, and the one place it existed was designed to be thrown away.',
+      },
+    ],
   ],
 };
 
@@ -86,7 +91,7 @@ export const HOME_SURFACES: Block = {
   paragraphs: [
     [
       {
-        text: 'An MCP server that works in Claude Code, Cursor, Codex, or any MCP client. A CLI. File interop with the AGENTS.md and CLAUDE.md you already keep. Plus a deliberately thin web app for the things a terminal is bad at.',
+        text: 'An MCP server that works in Claude Code, Cursor, Codex, or any MCP client. A CLI that also opens an interactive session when you run it bare. File interop with the AGENTS.md and CLAUDE.md you already keep. Plus a deliberately thin web app for the things a terminal is bad at.',
       },
     ],
     [
@@ -95,13 +100,18 @@ export const HOME_SURFACES: Block = {
         text: " A handoff that only works inside one vendor's tool is not a handoff, it is a session feature.",
       },
     ],
+    [
+      {
+        text: 'Nothing here asks you to change how you work. You keep your editor, your agent, and your files; Mneia is the thing underneath them that remembers.',
+      },
+    ],
   ],
 };
 
 export const HOME_START: Intro = {
   eyebrow: 'Get started',
   heading: 'Free for one. The point is the second person.',
-  lead: 'Create a workspace, install the CLI and the MCP server from npm, and checkpoint your first session. Then invite the teammate who will pick the work up — that is the half nobody else builds.',
+  lead: 'Create a workspace, install the CLI and the MCP server from npm, and checkpoint your first session — about five minutes. Then invite the teammate who will pick the work up, because that is the half nobody else builds.',
 };
 
 export const OPERATIONS = [
@@ -248,6 +258,12 @@ export const FEATURES_COMPOUND: Block = {
     [
       {
         text: 'After a year of checkpointing, your project carries its own history: what was decided, why, who confirmed it, and what was already ruled out. That record is yours, it is specific to your work, and it gets more useful every month it grows.',
+      },
+    ],
+    [
+      { text: 'Which is also why the switching cost runs the right way.', strong: true },
+      {
+        text: ' A competitor can copy a feature list in a quarter. What they cannot copy is the year your team spent deciding things, because it is your history rather than our software.',
       },
     ],
   ],

@@ -51,17 +51,18 @@ resolution, and permissions — which a single-user memory product cannot bolt o
 
 ## Status
 
-**M0 (Foundations) is the active milestone. M1 targets 1 September 2026.** Last verified 2026-08-07.
+**M1 (Core Loop) is the active milestone, and it ends 1 September 2026.** Last verified 2026-08-17.
 
 | | |
 |---|---|
 | Hosted API | Live at `app.mneia.dev` — checkpoints, rehydrate, items, projects, sessions, actors |
-| CLI | `init` `login` `logout` `whoami` `status` `log` `checkpoint` `brief` |
+| CLI | `init` `login` `whoami` `status` `log` `checkpoint` `brief`, plus an interactive session when run bare in a terminal |
 | MCP tools | `mneia_rehydrate` `mneia_checkpoint` `mneia_search` `mneia_assert` |
 | Auth | Browser device flow; `MNEIA_TOKEN` for CI |
 | Tenancy | `workspace_id` on every row, Postgres row-level security enforced and asserted at connection time |
 | Workspaces | Invite a colleague by email; they land in the inviting workspace |
-| **npm** | **Not published yet.** The packages are versioned and publishable, but nothing is on the registry. |
+| **npm** | **Published.** `@mneia/cli`, `@mneia/mcp-server`, and `@mneia/core` are live at `0.2.0`. |
+| Billing | Code complete, **not switched on** — `/api/health` reports `billing: not_configured` and nothing is charged |
 
 `handoff`, `pickup`, and `conflicts` are named but not shipped — running one names the milestone it
 lands in rather than failing as an unknown command.
@@ -94,6 +95,11 @@ mneia init           # bind this repo to a project, import constraints from AGEN
 
 In CI, set `MNEIA_TOKEN` instead of logging in. The surface is otherwise identical, which makes an
 ephemeral runner a first-class client rather than a special case.
+
+Run `mneia` with no arguments in a terminal and it opens an interactive session rather than exiting.
+Anything not starting with `/` is rehydrated as a task; the commands are the same ones, slash-prefixed
+and taking the same flags. Off a TTY — piped, redirected, or in CI — bare `mneia` still prints the
+command list and exits `2`, so scripts depending on that keep working.
 
 Step by step, including per-client MCP configuration: [`docs/INSTALL.md`](./docs/INSTALL.md). Which
 clients have actually been verified, and how far each check reached:
