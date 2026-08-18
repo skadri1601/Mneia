@@ -141,24 +141,38 @@ pnpm version:packages # apply pending changesets: bump versions and write CHANGE
 pnpm release:dry      # changeset publish --dry-run
 ```
 
-**Publishing to npm is manual, on purpose.** `.github/workflows/release.yml` is `workflow_dispatch`
-only and defaults to a dry run — nothing publishes on a merge or a tag, the same shape as
-`db:migrate`. It needs an `NPM_TOKEN` secret on the `npm` environment. The `@mneia` scope **does**
-now exist, and `0.2.0` of all three client packages is live.
+**Publishing to npm is automatic** (MNE-17, ruled by the founder 2026-08-17, replacing the earlier
+manual-only rule). Merging a PR that carries a changeset makes `changesets/action` open or update a
+**"Version Packages" PR** holding the bump and the CHANGELOG. **Merging that PR is the release** —
+`release.yml` then runs `changeset publish` and tags. Nothing publishes straight off a feature merge,
+so the version and changelog are always visible before they are public and, after 72 hours,
+permanent. `workflow_dispatch` remains only to re-run a failed publish.
 
-**The registry and the repo agree, as of 2026-08-17.** `npm view` reports `0.2.0` for `@mneia/cli`,
-`@mneia/core` and `@mneia/mcp-server`, which is what the package.json files say. The MNE-257 client
-fixes are therefore in what a customer installs — the earlier note here, that `0.1.1` was bumped and
-never published, is no longer true. Five changesets are pending against `0.2.0`, so the *next*
-release is unpublished, not this one. Keep checking with `npm view @mneia/cli version` rather than
-reading a package.json; that is the habit that caught the drift both times.
+Do not "trigger a release". There is nothing to trigger — merge the version PR.
 
-**Versioning goes through changesets** (MNE-38). A PR that changes the client packages adds one with
-`pnpm changeset`; at release time `pnpm version:packages` applies every pending changeset, bumps, and
-writes the `CHANGELOG.md` files. The three client packages are `fixed` in `.changeset/config.json`,
-so they always move together — which is what MNE-261 did by hand. `release.yml` refuses a real
-publish while any changeset is still unconsumed, because that would ship a version whose changelog
-omits the change.
+**Check the registry, never a package.json.** `npm view @mneia/cli version` was `0.4.0` on
+2026-08-18, with no changesets pending. That habit caught real drift twice; keep it. Note that a
+version number alone is not proof of contents — see the tarball check below.
+
+## The version scale
+
+Ruled by the founder 2026-08-18. **This is the repo's scale, and it overrides the instinct to reach
+for semver's usual meanings.** Pick the changeset type by what the change *is*, not by what the word
+sounds like:
+
+| The change is | Choose | `0.4.0` becomes | Increment |
+|---|---|---|---|
+| A **milestone** — M1, M2, the shape of the product moving | `major` | `1.0.0` | to 1.00 |
+| A **major update** — a new command, a new surface, a feature | `minor` | `0.5.0` | 0.1 |
+| A **minor upgrade** — a fix, a polish, a doc-visible tweak | `patch` | `0.4.1` | 0.01 |
+
+Verified against changesets 2.29.7 rather than assumed: at `0.x` a `major` really does go to `1.0.0`,
+so **never write `major` unless a milestone is genuinely shipping.** It is a one-way door — npm
+versions are immutable, and there is no route back from `1.0.0`.
+
+The three client packages are `fixed` in `.changeset/config.json`, so they always move together; the
+highest bump among pending changesets decides the release. `pnpm changeset` records one; a PR
+touching the client packages needs one or the change ships with an incomplete changelog.
 
 **`ci.yml` does not run tests or typecheck.** Ruled by the founder 2026-07-30: both were judged
 noise. That job is format, lint errors, build, and git policy. It builds with `pnpm -r --if-present
