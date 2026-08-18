@@ -1,5 +1,60 @@
 # @mneia/cli
 
+## 0.3.0
+
+### Minor Changes
+
+- 0780ecf: MNE-86: record which client and which conversation a context item came from.
+
+  `session` gains five nullable columns — `client_name`, `client_version`, `client_session_ref`,
+  `client_session_name`, `client_session_url` — populated from the MCP initialization handshake and
+  the harness conversation metadata, and surfaced on context reads as store-derived provenance.
+
+  Client identity is taken only from the handshake, never from a tool payload, so `asserted_by` and
+  `human_confirmed` keep their §10 authority. A write whose client metadata is missing is preserved
+  and flagged partial rather than discarded, and reads that cannot resolve provenance report it as
+  incomplete instead of fabricating it. Sessions are created lazily per conversation, so
+  `mneia_rehydrate` gains no round trip against the §12.1 300ms budget.
+
+- d3876cc: MNE-12: `mneia` with no arguments opens an interactive session instead of exiting.
+
+  Bare `mneia` printed the command list to stderr and exited `2` — correct for a script, wrong for a
+  person. On a TTY it now opens a persistent session: a prompt that dispatches `/init`, `/brief`,
+  `/checkpoint`, `/log`, `/status`, `/login` and `/whoami` with their usual flags, completes slash
+  commands on Tab, keeps a history, and treats anything not starting with `/` as a task to rehydrate.
+  An absent or expired token runs the existing device flow inline rather than sending the user away
+  to another command.
+
+  Off a TTY — piped, redirected, or in CI — bare `mneia` is unchanged: command list to stderr, exit
+  `2`. One-shot `mneia <command>` is unchanged in every context.
+
+  The session is a shell over the existing commands. It reimplements none of them, adds no dependency,
+  and never reaches the API itself; every line goes through the same router as the one-shot form, so
+  the two cannot drift.
+
+### Patch Changes
+
+- bfd46bf: `mneia checkpoint` no longer discards turns from a large session before uploading it. Previously the
+  client reduced the transcript to 700,000 characters and sent only what survived; because the server
+  sets its watermark from what it received, the discarded turns were marked as covered and running the
+  command again did not pick them up.
+
+  A session too large for one request is now uploaded across successive runs instead. The turns that do
+  not fit are reported as pending — the state that already means "run again, nothing was skipped" —
+  rather than dropped. Per-turn truncation of large tool output and secret redaction are unchanged.
+
+- f3ed751: MNE-271: report the version the package actually is.
+
+  `VERSION` was a hand-maintained constant in `packages/core/src/index.ts` that changesets never
+  touched, so `0.2.0` shipped reporting itself as `0.1.1` through `mneia --version`,
+  `mneia-mcp --version`, the MCP `serverInfo`, and the API user-agent. `pnpm version:packages` now
+  syncs it, and `pnpm check:version` fails CI and the release preflight if the two ever disagree.
+
+- Updated dependencies [0780ecf]
+- Updated dependencies [c401ca9]
+- Updated dependencies [f3ed751]
+  - @mneia/core@0.3.0
+
 ## 0.2.0
 
 ### Minor Changes
