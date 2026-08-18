@@ -1,5 +1,11 @@
 # @mneia/mcp-server
 
+## 0.5.0
+
+### Patch Changes
+
+- @mneia/core@0.5.0
+
 ## 0.4.0
 
 ### Patch Changes
