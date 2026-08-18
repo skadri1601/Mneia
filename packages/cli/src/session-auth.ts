@@ -52,7 +52,7 @@ export function createSessionPreflight(deps: PreflightDeps): () => Promise<Sessi
         io.stderr(
           `\n  Could not confirm who this machine is signed in as: ${error instanceof Error ? error.message : String(error)}\n  Starting the session anyway — each command will report its own failure.\n`,
         );
-        return { actor: null, workspace: null, project };
+        return { actor: null, workspace: null, project, directory: io.cwd };
       }
 
       io.stdout(`\n  ${error.message}\n  Signing in now.\n`);
@@ -60,13 +60,13 @@ export function createSessionPreflight(deps: PreflightDeps): () => Promise<Sessi
       const code = await deps.signIn();
 
       if (code !== 0) {
-        return { actor: null, workspace: null, project };
+        return { actor: null, workspace: null, project, directory: io.cwd };
       }
 
       try {
         identity = await readIdentity(io, readToken, fetchImpl);
       } catch {
-        return { actor: null, workspace: null, project };
+        return { actor: null, workspace: null, project, directory: io.cwd };
       }
     }
 
@@ -74,6 +74,7 @@ export function createSessionPreflight(deps: PreflightDeps): () => Promise<Sessi
       actor: identity.actor.displayName,
       workspace: identity.workspace.displayName,
       project,
+      directory: io.cwd,
     };
   };
 }

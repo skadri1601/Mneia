@@ -65,6 +65,7 @@ describe('createSessionPreflight', () => {
       actor: 'Saad',
       workspace: 'Mneia',
       project: 'mneia',
+      directory: '/repo',
     });
   });
 
@@ -147,6 +148,7 @@ describe('createSessionPreflight', () => {
       actor: null,
       workspace: null,
       project: 'mneia',
+      directory: '/repo',
     });
   });
 

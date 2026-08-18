@@ -1,6 +1,7 @@
 import { createInterface } from 'node:readline';
 import type { CommandDefinition, CommandIo } from './command.js';
 import { EXIT_OK } from './command.js';
+import { LOGO, plainTheme, shortenPath, type Theme } from './session-theme.js';
 
 export const SESSION_BUILTIN_NAMES = ['help', 'clear', 'exit'] as const;
 
@@ -21,6 +22,7 @@ export interface SessionContext {
   readonly actor: string | null;
   readonly workspace: string | null;
   readonly project: string | null;
+  readonly directory: string;
 }
 
 export interface SessionDeps {
@@ -31,6 +33,7 @@ export interface SessionDeps {
   readonly readLine: (history: readonly string[]) => Promise<LineEvent>;
   readonly dispatch: (argv: readonly string[]) => Promise<number>;
   readonly clearScreen: () => void;
+  readonly theme?: Theme;
 }
 
 export const PROMPT = '› ';
@@ -138,25 +141,39 @@ export function rememberLine(history: readonly string[], line: string): string[]
   return [trimmed, ...without].slice(0, HISTORY_LIMIT);
 }
 
-export function bannerLines(context: SessionContext, version: string): string[] {
-  const lines = ['', `  mneia ${version}`];
+export function bannerLines(
+  context: SessionContext,
+  version: string,
+  theme: Theme = plainTheme,
+): string[] {
+  const identity =
+    context.actor === null
+      ? 'not signed in'
+      : context.workspace === null || context.workspace === context.actor
+        ? context.actor
+        : `${context.actor} · ${context.workspace}`;
 
-  if (context.project !== null) {
-    const scope =
-      context.workspace !== null ? `${context.workspace} / ${context.project}` : context.project;
-    lines.push(`  ${scope}`);
-  } else {
-    lines.push('  no project bound to this directory — run /init');
-  }
+  const where =
+    context.project === null
+      ? `${shortenPath(context.directory)}  ·  no project — run /init`
+      : `${shortenPath(context.directory)}  ·  ${context.project}`;
 
-  if (context.actor !== null) {
-    lines.push(`  signed in as ${context.actor}`);
+  const info = [
+    `${theme.bold('mneia')} ${theme.dim(version)}`,
+    theme.dim(identity),
+    theme.dim(where),
+  ];
+
+  const lines = [''];
+
+  for (const [index, mark] of LOGO.entries()) {
+    lines.push(`  ${theme.accent(mark)}   ${info[index] ?? ''}`.trimEnd());
   }
 
   lines.push(
     '',
-    '  Type a task in plain words to rehydrate context for it.',
-    '  /help for commands · /exit to leave',
+    theme.dim('  Type a task in plain words to rehydrate context for it.'),
+    theme.dim('  /help for commands · /exit to leave'),
     '',
   );
 
@@ -226,7 +243,9 @@ export async function runSession(deps: SessionDeps): Promise<number> {
   const commandNames = deps.commands.map((command) => command.name);
   const context = await deps.preflight();
 
-  io.stdout(`${bannerLines(context, deps.version).join('\n')}\n`);
+  const theme = deps.theme ?? plainTheme;
+
+  io.stdout(`${bannerLines(context, deps.version, theme).join('\n')}\n`);
 
   let history: string[] = [];
   let interrupted = false;
@@ -263,6 +282,7 @@ export interface ReadLineStreams {
 export function createLineReader(
   streams: ReadLineStreams,
   commandNames: readonly string[],
+  theme: Theme = plainTheme,
 ): (history: readonly string[]) => Promise<LineEvent> {
   const completionNames = [...commandNames, ...SESSION_BUILTIN_NAMES].sort((left, right) =>
     left.localeCompare(right),
@@ -277,7 +297,7 @@ export function createLineReader(
         history: [...history],
         historySize: HISTORY_LIMIT,
         completer: (line: string) => completeSlash(line, completionNames),
-        prompt: PROMPT,
+        prompt: theme.accent(PROMPT),
       });
 
       let settled = false;
