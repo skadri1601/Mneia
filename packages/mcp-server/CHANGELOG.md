@@ -1,5 +1,19 @@
 # @mneia/mcp-server
 
+## 0.6.0
+
+### Minor Changes
+
+- 6154620: `mneia_handoff_create` and `mneia_handoff_receive` ship. Both refused with "M2" until now; the MCP surface is six tools.
+
+### Patch Changes
+
+- Updated dependencies [8835fd8]
+- Updated dependencies [1b90804]
+- Updated dependencies [974d555]
+- Updated dependencies [23760fe]
+  - @mneia/core@0.6.0
+
 ## 0.5.0
 
 ### Patch Changes

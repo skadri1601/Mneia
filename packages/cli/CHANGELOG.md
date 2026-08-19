@@ -1,5 +1,20 @@
 # @mneia/cli
 
+## 0.6.0
+
+### Minor Changes
+
+- 8835fd8: `mneia handoff` freezes a receivable artifact and `mneia pickup` receives one, or lists the open handoffs when given no id. Both were refused with "ships in M2" until now.
+
+### Patch Changes
+
+- cab2ea6: `mneia init` now detects hand edits inside the generated section instead of silently overwriting them. The begin marker carries a digest of the body Mneia wrote — `<!-- mneia:begin sha=… -->` — and a mismatch stops the run before anything is written, naming what to move out of the fence or offering `--force`. Sections written by earlier versions carry no digest and are accepted unchanged, then stamped on the next write.
+- Updated dependencies [8835fd8]
+- Updated dependencies [1b90804]
+- Updated dependencies [974d555]
+- Updated dependencies [23760fe]
+  - @mneia/core@0.6.0
+
 ## 0.5.0
 
 ### Minor Changes
