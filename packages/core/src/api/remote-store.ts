@@ -30,9 +30,11 @@ import {
   decodeActor,
   decodeCheckpointWriteResult,
   decodeContextItem,
+  decodeHandoff,
   decodeProject,
   decodeSession,
   decodeSlice,
+  HandoffWireSchema,
   type NewContextItemWire,
   ProjectWireSchema,
   SessionWireSchema,
@@ -49,6 +51,8 @@ const ContextItemEnvelope = z.object({ item: nullable(ContextItemWireSchema) });
 const ContextItemsEnvelope = z.object({ items: z.array(ContextItemWireSchema) });
 const CheckpointWriteEnvelope = z.object({ result: CheckpointWriteResultWireSchema });
 const SliceEnvelope = z.object({ slice: SliceWireSchema });
+const HandoffEnvelope = z.object({ handoff: HandoffWireSchema });
+const NullableHandoffEnvelope = z.object({ handoff: nullable(HandoffWireSchema) });
 
 export interface RemoteStoreOptions {
   readonly transport: HttpTransport;
@@ -61,8 +65,16 @@ export interface RemoteRehydrateRequest {
   readonly tokenBudget: number;
 }
 
+export interface RemoteCreateHandoffRequest {
+  readonly project: string;
+  readonly nextAction: string;
+  readonly toActor?: Uuid | null;
+  readonly supersededWindowDays?: number;
+}
+
 export interface RemoteStore extends ScopedStore {
   rehydrate(request: RemoteRehydrateRequest): Promise<Slice>;
+  handoff(request: RemoteCreateHandoffRequest): Promise<Handoff>;
 }
 
 const encodeNewItem = (item: NewContextItem): NewContextItemWire => ({
@@ -226,13 +238,37 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
       return unsupported('listCheckpoints', 'M2');
     },
     createHandoff(): Promise<Handoff> {
-      return unsupported('createHandoff', 'M2');
+      return Promise.reject(
+        new ApiError(
+          'unsupported',
+          'createHandoff writes a pre-rendered handoff and the hosted API does not accept one from a client — call handoff() instead, which assembles and renders the artifact server-side from project state',
+          400,
+        ),
+      );
     },
-    receiveHandoff(): Promise<Handoff> {
-      return unsupported('receiveHandoff', 'M2');
+    async receiveHandoff(id: Uuid): Promise<Handoff> {
+      const { handoff } = await transport.request('/api/v1/handoff/receive', HandoffEnvelope, {
+        id,
+      });
+      return decodeHandoff(handoff);
     },
-    getHandoff(): Promise<Handoff | null> {
-      return unsupported('getHandoff', 'M2');
+    async getHandoff(id: Uuid): Promise<Handoff | null> {
+      const { handoff } = await transport.request(
+        `/api/v1/handoff/${encodeURIComponent(id)}`,
+        NullableHandoffEnvelope,
+      );
+      return handoff === null ? null : decodeHandoff(handoff);
+    },
+    async handoff(request: RemoteCreateHandoffRequest): Promise<Handoff> {
+      const { handoff } = await transport.request('/api/v1/handoff', HandoffEnvelope, {
+        project: request.project,
+        toActor: request.toActor ?? null,
+        nextAction: request.nextAction,
+        ...(request.supersededWindowDays === undefined
+          ? {}
+          : { supersededWindowDays: request.supersededWindowDays }),
+      });
+      return decodeHandoff(handoff);
     },
     recordConflict(): Promise<Conflict> {
       return unsupported('recordConflict', 'M4');

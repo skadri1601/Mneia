@@ -32,6 +32,7 @@ const WRITES: Readonly<Record<string, readonly string[]>> = {
   supersedeContextItem: ['item.superseded'],
   confirmContextItem: ['checkpoint.item_confirmed'],
   createHandoff: ['handoff.created'],
+  assembleHandoff: ['handoff.created'],
   receiveHandoff: ['handoff.received'],
   recordConflict: ['conflict.detected'],
   resolveConflict: ['conflict.resolved'],
@@ -78,7 +79,7 @@ const allSurfaceFiles = async (): Promise<readonly { path: string; source: strin
 };
 
 const callsWrite = (source: string, method: string): boolean =>
-  new RegExp(`\\.${method}\\s*\\(`).test(source);
+  new RegExp(`(?:\\.|\\b)${method}\\s*\\(`).test(source);
 
 const emitsAnyEvent = (source: string): boolean =>
   TELEMETRY_EVENT_NAMES.some((name) => source.includes(`'${name}'`));

@@ -8,6 +8,7 @@ import {
   type Conflict,
   type ContextItem,
   deriveContextItemProvenance,
+  type Handoff,
   type Project,
   type Session,
 } from '../domain/types.js';
@@ -618,3 +619,58 @@ export const CheckpointProposalWireSchema = z.object({
 });
 
 export type CheckpointProposalWire = z.infer<typeof CheckpointProposalWireSchema>;
+
+export const HandoffWireSchema = z.object({
+  id: uuid,
+  workspaceId: uuid,
+  projectId: uuid,
+  fromActor: uuid,
+  toActor: uuid.nullable(),
+  createdAt: isoDate,
+  receivedAt: isoDate.nullable(),
+  nextAction: z.string(),
+  rendered: z.string(),
+});
+
+export type HandoffWire = z.infer<typeof HandoffWireSchema>;
+
+export const encodeHandoff = (handoff: Handoff): HandoffWire => ({
+  id: handoff.id,
+  workspaceId: handoff.workspaceId,
+  projectId: handoff.projectId,
+  fromActor: handoff.fromActor,
+  toActor: handoff.toActor,
+  createdAt: handoff.createdAt.toISOString(),
+  receivedAt: handoff.receivedAt === null ? null : handoff.receivedAt.toISOString(),
+  nextAction: handoff.nextAction,
+  rendered: handoff.rendered,
+});
+
+export const decodeHandoff = (wire: HandoffWire): Handoff => ({
+  id: wire.id,
+  workspaceId: wire.workspaceId,
+  projectId: wire.projectId,
+  fromActor: wire.fromActor,
+  toActor: wire.toActor,
+  createdAt: toDate(wire.createdAt),
+  receivedAt: toNullableDate(wire.receivedAt),
+  nextAction: wire.nextAction,
+  rendered: wire.rendered,
+});
+
+export const MAX_NEXT_ACTION_LENGTH = 1000;
+
+export const CreateHandoffWireSchema = z.object({
+  project: z.string().min(1),
+  toActor: uuid.nullable().optional(),
+  nextAction: z.string().min(1).max(MAX_NEXT_ACTION_LENGTH).refine(isStorableText, NO_NULL_BYTE),
+  supersededWindowDays: z.number().int().min(1).max(365).optional(),
+});
+
+export type CreateHandoffWire = z.infer<typeof CreateHandoffWireSchema>;
+
+export const ReceiveHandoffWireSchema = z.object({
+  id: uuid,
+});
+
+export type ReceiveHandoffWire = z.infer<typeof ReceiveHandoffWireSchema>;
