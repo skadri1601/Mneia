@@ -47,6 +47,14 @@ const EXEMPT: Readonly<Record<string, string>> = {
   endSession: 'session lifecycle — see createSession',
 };
 
+const EXEMPT_CALLS: Readonly<Record<string, string>> = {
+  'packages/mcp-server/src/tools/handoff.ts::receiveHandoff':
+    'hosted client, not the write path — apps/web/src/server/api/handoff.ts emits handoff.received when the API serves this call, and emitting here as well would double-count the arbitration dataset',
+};
+
+const exempted = (path: string, method: string): boolean =>
+  Object.hasOwn(EXEMPT_CALLS, `${path}::${method}`);
+
 const readScopedStoreMethods = async (): Promise<readonly string[]> => {
   const source = await readFile(join(REPO_ROOT, STORE_TYPES), 'utf8');
   const block = /export interface ScopedStore\s*\{([\s\S]*?)\n\}/.exec(source);
@@ -103,7 +111,11 @@ describe('§17 coverage — every write path emits its event', () => {
     const files = await allSurfaceFiles();
 
     const silent = files
-      .filter((file) => Object.keys(WRITES).some((method) => callsWrite(file.source, method)))
+      .filter((file) =>
+        Object.keys(WRITES).some(
+          (method) => callsWrite(file.source, method) && !exempted(file.path, method),
+        ),
+      )
       .filter((file) => !emitsAnyEvent(file.source))
       .map((file) => relative('.', file.path));
 
@@ -115,7 +127,7 @@ describe('§17 coverage — every write path emits its event', () => {
 
     const mismatched = files.flatMap((file) =>
       Object.entries(WRITES)
-        .filter(([method]) => callsWrite(file.source, method))
+        .filter(([method]) => callsWrite(file.source, method) && !exempted(file.path, method))
         .filter(([, required]) => !required.some((name) => file.source.includes(`'${name}'`)))
         .map(
           ([method]) => `${file.path} calls ${method} without emitting one of ${WRITES[method]}`,
@@ -123,6 +135,15 @@ describe('§17 coverage — every write path emits its event', () => {
     );
 
     expect(mismatched).toEqual([]);
+  });
+
+  it('gives every exempted call a reason and a write it is exempt from', () => {
+    for (const [key, reason] of Object.entries(EXEMPT_CALLS)) {
+      const [path, method] = key.split('::');
+      expect(reason.length).toBeGreaterThan(40);
+      expect(path).toMatch(/\.tsx?$/);
+      expect(Object.keys(WRITES)).toContain(method);
+    }
   });
 
   it('keeps at least one instrumented write path, so the scan cannot pass by finding nothing', async () => {

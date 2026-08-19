@@ -2,22 +2,22 @@ import type { ToolContext, ToolDefinition, ToolResult } from './tools/types.js';
 
 export type ErasedToolDefinition = ToolDefinition<unknown>;
 
-export const M1_TOOL_NAMES = [
+export const SHIPPED_TOOL_NAMES = [
   'mneia_rehydrate',
   'mneia_assert',
   'mneia_checkpoint',
   'mneia_search',
+  'mneia_handoff_create',
+  'mneia_handoff_receive',
 ] as const;
 
-export type M1ToolName = (typeof M1_TOOL_NAMES)[number];
+export type ShippedToolName = (typeof SHIPPED_TOOL_NAMES)[number];
 
 export const DEFERRED_TOOL_MILESTONES: ReadonlyMap<string, string> = new Map([
-  ['mneia_handoff_create', 'M2'],
-  ['mneia_handoff_receive', 'M2'],
   ['mneia_conflicts', 'M4'],
 ]);
 
-const M1_TOOL_NAME_SET: ReadonlySet<string> = new Set(M1_TOOL_NAMES);
+const SHIPPED_TOOL_NAME_SET: ReadonlySet<string> = new Set(SHIPPED_TOOL_NAMES);
 
 export interface ToolListing {
   readonly name: string;
@@ -89,13 +89,13 @@ function rejectRegistration(name: string): never {
   if (deferredMilestone !== undefined) {
     throw new ToolRegistrationError(
       name,
-      `${name} ships in ${deferredMilestone} and must not be registered now — the M1 tool surface is exactly ${M1_TOOL_NAMES.join(', ')}. Remove it from the tool list, or move the milestone in .claude/rules/mcp-server.md first.`,
+      `${name} ships in ${deferredMilestone} and must not be registered now — the M1 tool surface is exactly ${SHIPPED_TOOL_NAMES.join(', ')}. Remove it from the tool list, or move the milestone in .claude/rules/mcp-server.md first.`,
     );
   }
 
   throw new ToolRegistrationError(
     name,
-    `"${name}" is not a Mneia tool. Registrable tools are ${M1_TOOL_NAMES.join(', ')}; rename the definition or remove it from the tool list.`,
+    `"${name}" is not a Mneia tool. Registrable tools are ${SHIPPED_TOOL_NAMES.join(', ')}; rename the definition or remove it from the tool list.`,
   );
 }
 
@@ -106,7 +106,7 @@ export class ToolRegistry {
     this.byName = new Map();
 
     for (const tool of tools) {
-      if (!M1_TOOL_NAME_SET.has(tool.name)) {
+      if (!SHIPPED_TOOL_NAME_SET.has(tool.name)) {
         rejectRegistration(tool.name);
       }
       if (this.byName.has(tool.name)) {
@@ -128,12 +128,12 @@ export class ToolRegistry {
   }
 
   names(): readonly string[] {
-    return M1_TOOL_NAMES.filter((name) => this.byName.has(name));
+    return SHIPPED_TOOL_NAMES.filter((name) => this.byName.has(name));
   }
 
   list(): readonly ToolListing[] {
     const listings: ToolListing[] = [];
-    for (const name of M1_TOOL_NAMES) {
+    for (const name of SHIPPED_TOOL_NAMES) {
       const tool = this.byName.get(name);
       if (tool !== undefined) {
         listings.push({
@@ -191,7 +191,7 @@ export class ToolRegistry {
       );
     }
 
-    if (M1_TOOL_NAME_SET.has(name)) {
+    if (SHIPPED_TOOL_NAME_SET.has(name)) {
       return toolFailure(
         'tool_not_available',
         `${name} is a Mneia tool but this server did not load it.`,

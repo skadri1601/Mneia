@@ -231,10 +231,10 @@ describe('createMneiaServer error handling', () => {
     });
     const client = await connectClient(mneia);
 
-    const result = await client.callTool({ name: 'mneia_handoff_create', arguments: {} });
+    const result = await client.callTool({ name: 'mneia_conflicts', arguments: {} });
 
     expect(result.isError).toBe(true);
-    expect(firstText(result)).toContain('M2');
+    expect(firstText(result)).toContain('M4');
     expect(sessions).toBe(0);
 
     await mneia.shutdown();
