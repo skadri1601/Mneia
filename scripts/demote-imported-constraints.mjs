@@ -15,8 +15,16 @@ const INTEROP_SOURCES = ['AGENTS.md:%', 'CLAUDE.md:%', '.cursor/rules%'];
 
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
-const workspaceIndex = args.indexOf('--workspace');
-const workspace = workspaceIndex === -1 ? undefined : args[workspaceIndex + 1];
+const flagValue = (flag) => {
+  const index = args.indexOf(flag);
+  return index === -1 ? undefined : args[index + 1];
+};
+
+const workspace = flagValue('--workspace');
+const only = (flagValue('--only') ?? '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter((value) => value !== '');
 
 const fail = (message) => {
   process.stderr.write(`demote:imported-constraints: ${message}\n`);
@@ -49,6 +57,8 @@ const describe = (url) => {
   }
 };
 
+const ONLY_CLAUSE = only.length === 0 ? '' : 'and id = any($5::uuid[])';
+
 const SELECT = `
   select id, title, source_ref, asserted_at
     from context_item
@@ -57,6 +67,7 @@ const SELECT = `
      and load_bearing = true
      and valid_to is null
      and (source_ref like $2 or source_ref like $3 or source_ref like $4)
+     ${ONLY_CLAUSE}
    order by source_ref, asserted_at
 `;
 
@@ -68,6 +79,7 @@ const UPDATE = `
      and load_bearing = true
      and valid_to is null
      and (source_ref like $2 or source_ref like $3 or source_ref like $4)
+     ${ONLY_CLAUSE}
 `;
 
 const { Client } = require('pg');
@@ -83,7 +95,9 @@ try {
   await client.query('begin');
   await client.query('select set_config($1, $2, true)', ['mneia.workspace_id', workspace]);
 
-  const { rows } = await client.query(SELECT, [workspace, ...INTEROP_SOURCES]);
+  const parameters =
+    only.length === 0 ? [workspace, ...INTEROP_SOURCES] : [workspace, ...INTEROP_SOURCES, only];
+  const { rows } = await client.query(SELECT, parameters);
 
   if (rows.length === 0) {
     process.stdout.write(
@@ -95,19 +109,30 @@ try {
 
   process.stdout.write(`  ${rows.length} load-bearing constraint(s) came from a file scrape:\n`);
   for (const row of rows) {
-    process.stdout.write(`    ${row.source_ref}  ${row.title}\n`);
+    process.stdout.write(`    ${row.id}  ${row.source_ref}  ${row.title}\n`);
+  }
+
+  if (apply && only.length === 0) {
+    await client.query('rollback');
+    fail(
+      'refusing to demote every scraped row at once.\n' +
+        '  Most of them are real rules — the nine standing rules were imported this way too, and\n' +
+        '  demoting those strips rule 2 from the rules rule 2 exists to protect.\n' +
+        '  Re-run with --only <id,id,...> naming exactly the rows to demote.',
+    );
   }
 
   if (!apply) {
     await client.query('rollback');
     process.stdout.write(
-      '\n  Nothing was written. Re-run with --apply to set load_bearing = false on these rows.\n' +
-        '  Title, body and status are never touched, so nothing is superseded.\n',
+      '\n  Nothing was written. Re-run with --apply --only <id,id,...> to set load_bearing = false\n' +
+        '  on exactly the rows you name. Title, body and status are never touched, so nothing is\n' +
+        '  superseded.\n',
     );
     process.exit(0);
   }
 
-  const { rowCount } = await client.query(UPDATE, [workspace, ...INTEROP_SOURCES]);
+  const { rowCount } = await client.query(UPDATE, parameters);
   await client.query('commit');
 
   process.stdout.write(`\n  demoted ${rowCount} row(s) to load_bearing = false\n`);
