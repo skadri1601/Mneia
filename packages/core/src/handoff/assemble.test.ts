@@ -212,6 +212,50 @@ describe('assembleHandoff', () => {
     expect(itemIds).toEqual([first.id, second.id]);
   });
 
+  it('records which section each item landed in, so the artifact can be traced back', async () => {
+    const constraint = contextItem({ id: id('item0001') });
+    const decision = contextItem({
+      id: id('item0002'),
+      kind: 'decision',
+      title: 'Advisory locks',
+    });
+    const gone = contextItem({
+      id: id('item0003'),
+      kind: 'decision',
+      status: 'superseded',
+      title: 'Redis lock',
+      validTo: new Date(NOW.getTime() - 24 * 60 * 60 * 1000),
+    });
+    const { store, created } = storeStub({}, [constraint, decision, gone]);
+
+    await assembleHandoff(store, { projectId: PROJECT_ID, nextAction: NEXT_ACTION, now: NOW });
+
+    expect(created[0]?.items).toEqual([
+      { itemId: constraint.id, section: 'Constraints (do not violate)' },
+      { itemId: decision.id, section: 'Decisions and why' },
+      { itemId: gone.id, section: 'Superseded recently (do not re-propose)' },
+    ]);
+  });
+
+  it('does not record an item the render dropped, so the item set matches the prose', async () => {
+    const stale = new Date(
+      NOW.getTime() - (DEFAULT_SUPERSEDED_WINDOW_DAYS + 1) * 24 * 60 * 60 * 1000,
+    );
+    const { store, created } = storeStub({}, [
+      contextItem({ id: id('item0001') }),
+      contextItem({ id: id('item0004'), status: 'superseded', validTo: stale }),
+    ]);
+
+    const { itemIds } = await assembleHandoff(store, {
+      projectId: PROJECT_ID,
+      nextAction: NEXT_ACTION,
+      now: NOW,
+    });
+
+    expect(created[0]?.items).toHaveLength(1);
+    expect(itemIds).toEqual([id('item0001')]);
+  });
+
   it('refuses a project this workspace cannot see', async () => {
     const { store } = storeStub({ getProject: vi.fn(async () => null) });
 

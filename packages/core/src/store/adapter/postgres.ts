@@ -54,6 +54,7 @@ import type {
   ContextItemReviewOutcome,
   ContextItemReviewOutcomeKind,
   ContextItemSearch,
+  HandoffItem,
   NewConflict,
   NewContextItem,
   NewHandoff,
@@ -1348,21 +1349,56 @@ class PostgresScopedStore implements ReviewCapableStore {
     const id = assertOptionalUuid(handoff.id, 'handoff.id');
     const toActor = assertOptionalUuid(handoff.toActor, 'handoff.toActor');
 
-    const rows = await this.rows(
-      `INSERT INTO handoff (id, workspace_id, project_id, from_actor, to_actor, next_action, rendered)
+    return this.atomic(`creating a handoff on project ${handoff.projectId}`, async () => {
+      const rows = await this.rows(
+        `INSERT INTO handoff (id, workspace_id, project_id, from_actor, to_actor, next_action, rendered)
        VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5, $6, $7)
        RETURNING ${HANDOFF_COLUMNS}`,
-      [
-        id,
-        this.scope.workspaceId,
-        handoff.projectId,
-        handoff.fromActor,
-        toActor,
-        handoff.nextAction,
-        handoff.rendered,
-      ],
+        [
+          id,
+          this.scope.workspaceId,
+          handoff.projectId,
+          handoff.fromActor,
+          toActor,
+          handoff.nextAction,
+          handoff.rendered,
+        ],
+      );
+      const created = toHandoff(
+        expectOne(rows, `creating a handoff on project ${handoff.projectId}`),
+      );
+
+      for (const entry of handoff.items ?? []) {
+        assertUuid(entry.itemId, 'handoff.items[].itemId');
+        assertNonEmpty(entry.section, 'handoff.items[].section');
+        await this.rows(
+          `INSERT INTO handoff_item (workspace_id, handoff_id, item_id, section)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (handoff_id, item_id) DO NOTHING`,
+          [this.scope.workspaceId, created.id, entry.itemId, entry.section],
+        );
+      }
+
+      return created;
+    });
+  }
+
+  async listHandoffItems(handoffId: Uuid): Promise<readonly HandoffItem[]> {
+    assertUuid(handoffId, 'handoffId');
+    const rows = await this.rows(
+      `SELECT handoff_item.section AS handoff_section, ${CONTEXT_ITEM_COLUMNS}
+         FROM handoff_item
+         JOIN context_item
+           ON context_item.workspace_id = handoff_item.workspace_id
+          AND context_item.id = handoff_item.item_id
+        WHERE handoff_item.workspace_id = $1 AND handoff_item.handoff_id = $2
+        ORDER BY handoff_item.section, context_item.asserted_at DESC`,
+      [this.scope.workspaceId, handoffId],
     );
-    return toHandoff(expectOne(rows, `creating a handoff on project ${handoff.projectId}`));
+    return rows.map((row) => ({
+      section: String(row.handoff_section),
+      item: toContextItem(row),
+    }));
   }
 
   async receiveHandoff(id: Uuid, receivedBy: Uuid): Promise<Handoff> {

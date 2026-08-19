@@ -183,6 +183,11 @@ export interface CheckpointWriteResult {
   readonly conflicts: readonly Conflict[];
 }
 
+export interface NewHandoffItem {
+  readonly itemId: Uuid;
+  readonly section: string;
+}
+
 export interface NewHandoff {
   readonly id?: Uuid;
   readonly projectId: Uuid;
@@ -190,6 +195,12 @@ export interface NewHandoff {
   readonly toActor?: Uuid | null;
   readonly nextAction: string;
   readonly rendered: string;
+  readonly items?: readonly NewHandoffItem[];
+}
+
+export interface HandoffItem {
+  readonly section: string;
+  readonly item: ContextItem;
 }
 
 export interface NewConflict {
@@ -238,6 +249,7 @@ export interface ScopedStore {
   receiveHandoff(id: Uuid, receivedBy: Uuid): Promise<Handoff>;
   getHandoff(id: Uuid): Promise<Handoff | null>;
   listOpenHandoffs(projectId: Uuid, limit?: number): Promise<readonly Handoff[]>;
+  listHandoffItems(handoffId: Uuid): Promise<readonly HandoffItem[]>;
 
   recordConflict(conflict: NewConflict): Promise<Conflict>;
   listOpenConflicts(projectId: Uuid): Promise<readonly Conflict[]>;

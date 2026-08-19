@@ -19,6 +19,7 @@ interface HandoffSection {
   readonly render: (item: ContextItem, input: RenderHandoffInput) => string;
 }
 
+const NEXT_ACTION_HEADING = 'Next action';
 const META_SEPARATOR = ' · ';
 const BODY_INDENT = '  ';
 const OPEN_RECIPIENT = 'open';
@@ -117,7 +118,7 @@ const supersededRecently = (item: ContextItem, input: RenderHandoffInput): boole
 
 const SECTIONS: readonly HandoffSection[] = [
   {
-    heading: 'Next action',
+    heading: NEXT_ACTION_HEADING,
     empty: '',
     includes: () => false,
     render: () => '',
@@ -164,6 +165,18 @@ export const HANDOFF_SECTION_HEADINGS: readonly string[] = SECTIONS.map(
   (section) => section.heading,
 );
 
+export function handoffSectionFor(item: ContextItem, input: RenderHandoffInput): string | null {
+  for (const section of SECTIONS) {
+    if (section.heading === NEXT_ACTION_HEADING) {
+      continue;
+    }
+    if (section.includes(item, input)) {
+      return section.heading;
+    }
+  }
+  return null;
+}
+
 function renderHeader(input: RenderHandoffInput): string {
   const from = `${inlineText(input.from.displayName)} (${input.from.kind})`;
   const to =
@@ -197,7 +210,7 @@ export function renderHandoff(input: RenderHandoffInput): string {
   const blocks = [renderHeader(input)];
 
   for (const section of SECTIONS) {
-    if (section.heading === 'Next action') {
+    if (section.heading === NEXT_ACTION_HEADING) {
       blocks.push([`## ${section.heading}`, nextAction].join('\n'));
       continue;
     }

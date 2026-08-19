@@ -1,6 +1,6 @@
 import type { Actor, ContextItem, Handoff, Uuid } from '../domain/types.js';
 import type { ScopedStore } from '../store/adapter/types.js';
-import { renderHandoff } from './render.js';
+import { handoffSectionFor, renderHandoff } from './render.js';
 
 export const DEFAULT_SUPERSEDED_WINDOW_DAYS = 30;
 export const DEFAULT_ITEM_LIMIT = 500;
@@ -80,7 +80,7 @@ export async function assembleHandoff(
     ...items.map((item) => item.assertedBy),
   ]);
 
-  const rendered = renderHandoff({
+  const renderInput = {
     project,
     from,
     to,
@@ -89,6 +89,13 @@ export async function assembleHandoff(
     items,
     actors,
     supersededSince,
+  };
+
+  const rendered = renderHandoff(renderInput);
+
+  const included = items.flatMap((item) => {
+    const section = handoffSectionFor(item, renderInput);
+    return section === null ? [] : [{ itemId: item.id, section }];
   });
 
   const handoff = await store.createHandoff({
@@ -97,7 +104,8 @@ export async function assembleHandoff(
     toActor: toActorId,
     nextAction: input.nextAction.trim(),
     rendered,
+    items: included,
   });
 
-  return { handoff, itemIds: items.map((item) => item.id) };
+  return { handoff, itemIds: included.map((entry) => entry.itemId) };
 }
