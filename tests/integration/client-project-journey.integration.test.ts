@@ -20,6 +20,8 @@ import {
 import type { AccountContext } from '../../apps/web/src/server/store/account-store.js';
 import type { MembershipStore } from '../../apps/web/src/server/store/postgres-membership-store.js';
 import { PostgresMembershipStore } from '../../apps/web/src/server/store/postgres-membership-store.js';
+import type { PlanStore } from '../../apps/web/src/server/store/postgres-plan-store.js';
+import { PostgresPlanStore } from '../../apps/web/src/server/store/postgres-plan-store.js';
 import { PostgresProjectStore } from '../../apps/web/src/server/store/postgres-project-store.js';
 import type {
   PostgresConnectionSource,
@@ -195,6 +197,7 @@ interface JourneyFixture {
   readonly adapter: PostgresStoreAdapter;
   readonly projects: PostgresProjectStore;
   readonly memberships: MembershipStore;
+  readonly plans: PlanStore;
 }
 
 let schemaCounter = 0;
@@ -218,6 +221,7 @@ async function withJourney(run: (fixture: JourneyFixture) => Promise<void>): Pro
       adapter: new PostgresStoreAdapter(source),
       projects: new PostgresProjectStore(source),
       memberships: new PostgresMembershipStore(source),
+      plans: new PostgresPlanStore(source),
     });
   } finally {
     await source.close();
@@ -232,9 +236,16 @@ const runInit = (
   memberships: MembershipStore,
   scope: WorkspaceScope,
   slug: string,
+  plans: PlanStore = {
+    projectUsage: () => Promise.resolve({ plan: 'team', activeProjects: 0, slugs: [] }),
+  },
 ) =>
   adapter.withScope(scope, (store) =>
-    handleCreateProject(store, { slug, displayName: 'Checkout', repoUrl: null }, { memberships }),
+    handleCreateProject(
+      store,
+      { slug, displayName: 'Checkout', repoUrl: null },
+      { memberships, plans },
+    ),
   );
 
 const refusal = async (attempt: Promise<unknown>): Promise<unknown> =>
@@ -421,6 +432,53 @@ describe.skipIf(connectionString === undefined)(
 
         expect(await slugsVisibleTo(projects, ACCOUNT_LEAD_A)).toEqual([REPO_SLUG]);
         expect(await slugsVisibleTo(projects, ACCOUNT_LEAD_B)).toEqual([REPO_SLUG]);
+      });
+    });
+
+    it('stops a solo workspace at one project, reading the plan from Postgres', async () => {
+      await withJourney(async ({ adapter, projects, memberships, plans }) => {
+        const first = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG, plans);
+        expect(first.created).toBe(true);
+
+        const denied = await refusal(
+          runInit(adapter, memberships, SCOPE_LEAD_A, 'invoicing', plans),
+        );
+
+        expect(denied).toBeInstanceOf(ApiRequestError);
+        expect((denied as ApiRequestError).code).toBe('forbidden');
+        expect((denied as ApiRequestError).message).toContain('the solo plan includes 1 project');
+        expect((denied as ApiRequestError).message).toContain(`"${REPO_SLUG}"`);
+
+        expect(await slugsVisibleTo(projects, ACCOUNT_LEAD_A)).toEqual([REPO_SLUG]);
+      });
+    });
+
+    it('counts only this workspace, so a full solo workspace never blocks another', async () => {
+      await withJourney(async ({ adapter, memberships, plans }) => {
+        await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG, plans);
+
+        const globex = await runInit(adapter, memberships, SCOPE_LEAD_B, REPO_SLUG, plans);
+
+        expect(globex.created).toBe(true);
+        expect(globex.project.workspaceId).toBe(WORKSPACE_B);
+      });
+    });
+
+    it('frees the solo slot when the only project is archived', async () => {
+      await withJourney(async ({ adapter, projects, memberships, plans }) => {
+        const first = await runInit(adapter, memberships, SCOPE_LEAD_A, REPO_SLUG, plans);
+
+        await archiveProject({
+          account: ACCOUNT_LEAD_A,
+          projectId: first.project.id,
+          expectedSlug: REPO_SLUG,
+          store: projects,
+        });
+
+        const second = await runInit(adapter, memberships, SCOPE_LEAD_A, 'invoicing', plans);
+
+        expect(second.created).toBe(true);
+        expect(second.project.slug).toBe('invoicing');
       });
     });
 

@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { describeProjectLimit, projectLimit } from './billing/limits.js';
 import type { AccountContext } from './store/account-store.js';
 import {
   type ManagedProject,
@@ -93,6 +94,21 @@ export const createProject = async ({
       'invalid_slug',
       `A repository binding must be lower-case letters, digits, and single hyphens, at most ${MAX_SLUG_LENGTH} characters — received "${slug}"`,
     );
+  }
+
+  if (account.membership.role === 'lead') {
+    const active = await store.listProjects(account, { includeArchived: false });
+    const decision = projectLimit(account.workspace.plan, active.length);
+    if (!decision.allowed) {
+      throw new ProjectControlError(
+        'forbidden',
+        describeProjectLimit(
+          decision,
+          normalizedSlug,
+          active.map((project) => project.slug),
+        ),
+      );
+    }
   }
 
   return store.createProject(account, {

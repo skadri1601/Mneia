@@ -1,6 +1,7 @@
-import type { NewProject, Project, ScopedStore, TeamRole } from '@mneia/core';
+import type { NewProject, Project, ScopedStore, TeamRole, WorkspacePlan } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
 import type { MembershipStore } from '../store/postgres-membership-store.js';
+import type { PlanStore } from '../store/postgres-plan-store.js';
 import { ApiRequestError, handleCreateProject } from './handlers.js';
 
 const WORKSPACE = '22222222-2222-4222-8222-222222222222';
@@ -52,7 +53,12 @@ const asRole = (role: TeamRole | null): MembershipStore => ({
   defaultTeamRole: () => Promise.resolve(role),
 });
 
-const lead = { memberships: asRole('lead') };
+const onPlan = (plan: WorkspacePlan, slugs: readonly string[] = []): PlanStore => ({
+  projectUsage: () => Promise.resolve({ plan, activeProjects: slugs.length, slugs }),
+});
+
+const team = onPlan('team');
+const lead = { plans: team, memberships: asRole('lead') };
 
 describe('handleCreateProject', () => {
   it('creates the project when the slug is free, and says it created it', async () => {
@@ -99,10 +105,64 @@ describe('handleCreateProject', () => {
     );
   });
 
+  it('refuses a second solo project server-side, so the CLI cannot route around §14', async () => {
+    const sink = harness([null]);
+
+    const denied = await handleCreateProject(sink.store, input, {
+      plans: onPlan('solo', ['checkout']),
+      memberships: asRole('lead'),
+    }).then(
+      () => null,
+      (cause: unknown) => cause,
+    );
+
+    expect(denied).toBeInstanceOf(ApiRequestError);
+    expect((denied as ApiRequestError).code).toBe('forbidden');
+    expect((denied as ApiRequestError).message).toContain('the solo plan includes 1 project');
+    expect((denied as ApiRequestError).message).toContain('"checkout"');
+    expect(sink.created).toEqual([]);
+  });
+
+  it('allows the first solo project', async () => {
+    const sink = harness([null]);
+
+    const result = await handleCreateProject(sink.store, input, {
+      plans: onPlan('solo', []),
+      memberships: asRole('lead'),
+    });
+
+    expect(result.created).toBe(true);
+    expect(sink.created).toHaveLength(1);
+  });
+
+  it('does not cap a team workspace', async () => {
+    const sink = harness([null]);
+
+    const result = await handleCreateProject(sink.store, input, {
+      plans: onPlan('team', ['checkout', 'ledger', 'search']),
+      memberships: asRole('lead'),
+    });
+
+    expect(result.created).toBe(true);
+  });
+
+  it('lets a solo workspace re-attach to the project it already has', async () => {
+    const sink = harness([project({ slug: 'checkout' })]);
+
+    const result = await handleCreateProject(sink.store, input, {
+      plans: onPlan('solo', ['checkout']),
+      memberships: asRole('lead'),
+    });
+
+    expect(result.created).toBe(false);
+    expect(sink.created).toEqual([]);
+  });
+
   it('refuses a member creating a project, so the CLI cannot route around the lead-only rule', async () => {
     const sink = harness([null]);
 
     const denied = await handleCreateProject(sink.store, input, {
+      plans: team,
       memberships: asRole('member'),
     }).then(
       () => null,
@@ -118,6 +178,7 @@ describe('handleCreateProject', () => {
     const sink = harness([project()]);
 
     const result = await handleCreateProject(sink.store, input, {
+      plans: team,
       memberships: asRole('member'),
     });
 
@@ -130,6 +191,7 @@ describe('handleCreateProject', () => {
     const sink = harness([null]);
 
     const denied = await handleCreateProject(sink.store, input, {
+      plans: team,
       memberships: asRole(null),
     }).then(
       () => null,

@@ -65,12 +65,19 @@ const PROJECT: ManagedProject = {
   createdAt: new Date('2026-08-01T01:00:00.000Z'),
 };
 
+const managedProject = (overrides: Partial<ManagedProject> = {}): ManagedProject => ({
+  ...PROJECT,
+  ...overrides,
+});
+
 const projectStore = () => {
   const listProjects = vi.fn<ProjectControlStore['listProjects']>();
   const getProject = vi.fn<ProjectControlStore['getProject']>();
   const createProject = vi.fn<ProjectControlStore['createProject']>();
   const renameProject = vi.fn<ProjectControlStore['renameProject']>();
   const archiveProject = vi.fn<ProjectControlStore['archiveProject']>();
+
+  listProjects.mockResolvedValue([]);
 
   return {
     store: {
@@ -195,6 +202,53 @@ describe('createProject', () => {
       createProject({ account: ACCOUNT, slug: 'analytical-engine', displayName: '   ', store }),
     ).rejects.toMatchObject({ code: 'invalid_display_name' });
     expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('refuses a second project on a solo workspace, the same as the API path does', async () => {
+    const { store, createProject: persist, listProjects: existing } = projectStore();
+    existing.mockResolvedValue([managedProject({ slug: 'checkout' })]);
+
+    await expect(
+      createProject({
+        account: ACCOUNT,
+        slug: 'analytical-engine',
+        displayName: 'Analytical Engine',
+        store,
+      }),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+    expect(persist).not.toHaveBeenCalled();
+  });
+
+  it('counts only active projects, so archiving one frees the solo slot', async () => {
+    const { store, createProject: persist, listProjects: existing } = projectStore();
+    existing.mockResolvedValue([]);
+
+    await createProject({
+      account: ACCOUNT,
+      slug: 'analytical-engine',
+      displayName: 'Analytical Engine',
+      store,
+    });
+
+    expect(existing).toHaveBeenCalledWith(ACCOUNT, { includeArchived: false });
+    expect(persist).toHaveBeenCalled();
+  });
+
+  it('does not cap a team workspace', async () => {
+    const { store, createProject: persist, listProjects: existing } = projectStore();
+    existing.mockResolvedValue([
+      managedProject({ slug: 'checkout' }),
+      managedProject({ slug: 'ledger' }),
+    ]);
+
+    await createProject({
+      account: { ...ACCOUNT, workspace: { ...ACCOUNT.workspace, plan: 'team' } },
+      slug: 'analytical-engine',
+      displayName: 'Analytical Engine',
+      store,
+    });
+
+    expect(persist).toHaveBeenCalled();
   });
 });
 
