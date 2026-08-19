@@ -15,13 +15,13 @@ const INTEROP_SOURCES = ['AGENTS.md:%', 'CLAUDE.md:%', '.cursor/rules%'];
 
 const args = process.argv.slice(2);
 const apply = args.includes('--apply');
-const valueOf = (flag) => {
+const flagValue = (flag) => {
   const index = args.indexOf(flag);
   return index === -1 ? undefined : args[index + 1];
 };
 
-const workspace = valueOf('--workspace');
-const only = (valueOf('--only') ?? '')
+const workspace = flagValue('--workspace');
+const only = (flagValue('--only') ?? '')
   .split(',')
   .map((value) => value.trim())
   .filter((value) => value !== '');
