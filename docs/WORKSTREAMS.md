@@ -388,3 +388,52 @@ not close one with the other.
 - **MNE-240** — production capture is **proved working**. Ticket stays In Progress: source maps,
   `apps/web`, and the guarded probe route are all unmet, and each needs a production deploy, which
   `CLAUDE.md` says to ask about first.
+
+---
+
+**Updated 2026-08-19 by lane B, after MNE-240 shipped.**
+
+### 🔴 `apps/web` has no Sentry DSN in production
+
+`/api/health` now reports it, and it reads `"errorReporting": "no_dsn"`. **Every unhandled 500 in the
+product API has gone to no Sentry project, no log, and no alert** — `/api/v1/rehydrate`,
+`/api/v1/checkpoint`, all of it, for as long as `apps/web` has been deployed.
+
+Not new behaviour, newly *visible*. `deploy/web.env.example` has described the symptom since MNE-86:
+*"mneia_rehydrate returned 500 with an empty body for eleven days on the only project holding real
+items, and it was found by hand rather than reported."* This is the cause.
+
+**Founder action, one variable:** `SENTRY_DSN` in `/etc/mneia/web.env`, or better as a repository
+secret passed by `deploy-web.yml` — the MNE-265 shape, so a redeploy cannot overwrite it. Same DSN as
+`apps/site`; events separate by `environment` and `runtime`.
+
+Until then, do not read "no errors in Sentry from `apps/web`" as good news. It is not evidence.
+
+### What shipped
+
+- **`upload_source_maps: true`** on the site Worker (#142). Cloudflare now remaps the `worker.js:61375`
+  frames in Workers Logs and Tail Workers. **Sentry-side maps still need `SENTRY_AUTH_TOKEN` set in
+  the Cloudflare Workers Builds environment** — the site does not build in Actions, so a repository
+  secret will not reach it.
+- **`POST /api/error-probe`**, armed only by `MNEIA_ERROR_PROBE_TOKEN`, 404 otherwise. For confirming
+  delivery once the DSN exists.
+- **The §14 solo project limit** (#143, open): 1 project, enforced on *both* creation paths, with
+  archiving freeing the slot. §14's **30-day history** limit is deliberately not built — see below.
+
+### Open for a ruling: where the 30-day history limit applies
+
+§14 gives solo "30-day history" against team's "unlimited history". Two things make this a ruling
+rather than a patch:
+
+- `mneia status` shares `listContextItems` with `mneia log`, so a naive cap hides a 40-day-old
+  **disputed** item from a solo user, which is not what "history" means.
+- Capping the **slice** path at all collides with **standing rule 2** — load-bearing constraints
+  appear regardless of filter or budget — and that rule outranks the ticket.
+
+Lane B's reading: cap the timeline only, leave `rehydrate` untouched. Not built on that assumption.
+
+### Also worth knowing
+
+`/api/health` reports `"billing": "not_configured"` — `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID` and
+`STRIPE_WEBHOOK_SECRET` are not all set, so `/billing` returns 503 and no workspace can subscribe.
+Not lane B's to fix, but it bears on MNE-180 and the $24/seat question.
