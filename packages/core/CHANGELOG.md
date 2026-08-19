@@ -1,5 +1,14 @@
 # @mneia/core
 
+## 0.6.0
+
+### Minor Changes
+
+- 8835fd8: `mneia handoff` freezes a receivable artifact and `mneia pickup` receives one, or lists the open handoffs when given no id. Both were refused with "ships in M2" until now.
+- 1b90804: A handoff now records the item set it was rendered from. `handoff_item` gets its first writer, `listHandoffItems` reads it back with the section each item landed in, and the CLI surfaces the frozen artifact alongside where those items stand today.
+- 974d555: Render the handoff artifact. `renderHandoff` produces the §10.3 eight-section markdown from real project state, with one provenance line format used by every item, and a Superseded Recently block that carries why each item went.
+- 23760fe: Assemble and store a handoff. `assembleHandoff` builds the artifact from project state and writes it; the remote store's three `createHandoff` / `receiveHandoff` / `getHandoff` refusals are replaced by real calls against the hosted API.
+
 ## 0.5.0
 
 ## 0.4.0
