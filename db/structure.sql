@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 31
+-- schema version: 32
 
 -- extensions
 
@@ -731,7 +731,7 @@ ALTER TABLE workspace ADD CONSTRAINT workspace_created_at_not_null NOT NULL crea
 ALTER TABLE workspace ADD CONSTRAINT workspace_display_name_not_null NOT NULL display_name;
 ALTER TABLE workspace ADD CONSTRAINT workspace_id_not_null NOT NULL id;
 ALTER TABLE workspace ADD CONSTRAINT workspace_pkey PRIMARY KEY (id);
-ALTER TABLE workspace ADD CONSTRAINT workspace_plan_check CHECK ((plan = ANY (ARRAY['solo'::text, 'team'::text, 'enterprise'::text])));
+ALTER TABLE workspace ADD CONSTRAINT workspace_plan_check CHECK ((plan = ANY (ARRAY['solo'::text, 'pro'::text, 'team'::text, 'enterprise'::text])));
 ALTER TABLE workspace ADD CONSTRAINT workspace_plan_not_null NOT NULL plan;
 ALTER TABLE workspace ADD CONSTRAINT workspace_region_is_not_blank CHECK (((region IS NULL) OR (region <> ''::text)));
 ALTER TABLE workspace ADD CONSTRAINT workspace_retention_days_is_positive CHECK (((retention_days IS NULL) OR (retention_days > 0)));
