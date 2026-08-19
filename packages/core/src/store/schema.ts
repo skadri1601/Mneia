@@ -35,7 +35,7 @@ export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
 export const teamRoleForWorkspaceRole = (role: WorkspaceRole): TeamRole =>
   role === 'member' ? 'member' : 'lead';
 
-export const WORKSPACE_PLANS = ['solo', 'team', 'enterprise'] as const;
+export const WORKSPACE_PLANS = ['solo', 'pro', 'team', 'enterprise'] as const;
 export type WorkspacePlan = (typeof WORKSPACE_PLANS)[number];
 
 export const BILLING_STATUSES = ['active', 'trialing', 'past_due', 'canceled'] as const;

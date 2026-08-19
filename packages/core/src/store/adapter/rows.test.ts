@@ -347,7 +347,7 @@ describe('toWorkspace', () => {
 
   it('rejects an unknown workspace plan', () => {
     expect(() => toWorkspace({ ...workspaceRow(), plan: 'starter' })).toThrow(
-      /expected column "plan" to be one of \[solo, team, enterprise\]/,
+      /expected column "plan" to be one of \[solo, pro, team, enterprise\]/,
     );
   });
 

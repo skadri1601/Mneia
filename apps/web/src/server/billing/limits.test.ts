@@ -1,11 +1,19 @@
+import { WORKSPACE_PLANS } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
 import { describeProjectLimit, planLimits, projectLimit } from './limits.js';
 
 describe('planLimits', () => {
-  it('caps solo at one project and leaves the paid plans uncapped', () => {
+  it('caps solo at one project and leaves every paid plan uncapped', () => {
     expect(planLimits('solo').projects).toBe(1);
+    expect(planLimits('pro').projects).toBeNull();
     expect(planLimits('team').projects).toBeNull();
     expect(planLimits('enterprise').projects).toBeNull();
+  });
+
+  it('has an entry for every plan, so a new tier cannot ship without limits', () => {
+    for (const plan of WORKSPACE_PLANS) {
+      expect(planLimits(plan)).toBeDefined();
+    }
   });
 });
 
@@ -23,6 +31,8 @@ describe('projectLimit', () => {
   });
 
   it('never refuses a paid plan, however many projects it has', () => {
+    expect(projectLimit('pro', 0)).toEqual({ allowed: true });
+    expect(projectLimit('pro', 500)).toEqual({ allowed: true });
     expect(projectLimit('team', 0)).toEqual({ allowed: true });
     expect(projectLimit('team', 500)).toEqual({ allowed: true });
     expect(projectLimit('enterprise', 5_000)).toEqual({ allowed: true });
