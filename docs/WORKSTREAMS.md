@@ -437,3 +437,48 @@ Lane B's reading: cap the timeline only, leave `rehydrate` untouched. Not built 
 `/api/health` reports `"billing": "not_configured"` — `STRIPE_SECRET_KEY`, `STRIPE_PRICE_ID` and
 `STRIPE_WEBHOOK_SECRET` are not all set, so `/billing` returns 503 and no workspace can subscribe.
 Not lane B's to fix, but it bears on MNE-180 and the $24/seat question.
+
+---
+
+## Migration 0032 announced — lane B, 2026-08-19
+
+Per §5: **lane A rebase on `main` once this lands**, or `pnpm db:snapshot --check` fails your PR.
+
+`0032-workspace-plan-pro` widens `workspace_plan_check` to admit `'pro'`. Additive only — the
+currently deployed build never writes `'pro'`, so migrate-then-deploy is safe and the MNE-254 gate
+is satisfied. Nothing backfills; every existing workspace stays on the plan it has.
+
+### Why a fourth tier
+
+Founder ruling 2026-08-19. §14's table has solo → team → enterprise, and the gap is the paid
+*single* developer. Two problems it fixes at once:
+
+- **`checkout.ts:71` refuses team checkout below two accepted members, so a solo dev cannot upgrade
+  at all today.** Pro is the tier they can actually buy.
+- **Promos.** Granting capacity by setting `plan = 'team'` also opens seats, invitations, and team
+  scope — a much bigger door than intended, and it corrupts revenue reporting. Pro is single-seat by
+  construction, so a promo grants room without any of that and stays visible as a promo.
+
+This **supersedes** the nullable-override-columns proposal from earlier today. No
+`project_limit` / `history_days` columns are being added; the tier carries the limits.
+
+### The one that will bite
+
+`seats.ts:103` reads `plan === 'enterprise' ? 'enterprise' : teamEntitled ? 'team' : 'solo'`.
+**Any Stripe webhook touching a Pro workspace silently downgrades it to solo.** Pro needs the same
+stickiness enterprise already has, and that is part of this change rather than a follow-up.
+
+### Going live
+
+The founder opened signup on 2026-08-19 and removed the Clerk dashboard restriction. No code gated
+it — `middleware.ts` is plain Clerk and `admission.ts` is the approve flow, not a gate.
+
+Two consequences with dates, neither of them code:
+
+- **5 waitlist signups exist, all `pending`**, collected 2026-08-01 to 2026-08-06. They were promised
+  exactly one email — *"telling you when access opens"* — and that is now due. `pnpm waitlist:notify`
+  previews; only `--send` reaches a person.
+- `legal.ts:380` publishes *"Until you unsubscribe or access opens, then deleted within 30 days"*, so
+  those addresses must be gone by **2026-09-18**. **No purge exists** — migration `0023` created
+  `waitlist_signup_purge_idx` for it and nothing was ever written against it. Same for
+  `context_item.purge_after`.
