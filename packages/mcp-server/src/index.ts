@@ -37,12 +37,12 @@ export {
   TELEMETRY_ON_VALUES,
   TOKEN_ENV_VAR,
 } from './config.js';
-export type { ErasedToolDefinition, M1ToolName, ToolListing } from './registry.js';
+export type { ErasedToolDefinition, ShippedToolName, ToolListing } from './registry.js';
 export {
   DEFERRED_TOOL_MILESTONES,
   findToolDefinition,
   isToolDefinition,
-  M1_TOOL_NAMES,
+  SHIPPED_TOOL_NAMES,
   ToolRegistrationError,
   ToolRegistry,
   toolFailure,

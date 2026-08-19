@@ -5,7 +5,7 @@ import {
   DEFERRED_TOOL_MILESTONES,
   findToolDefinition,
   isToolDefinition,
-  M1_TOOL_NAMES,
+  SHIPPED_TOOL_NAMES,
   ToolRegistrationError,
   ToolRegistry,
 } from './registry.js';
@@ -68,8 +68,8 @@ function stubTool(name: string, options: StubOptions = {}): ErasedToolDefinition
   };
 }
 
-function allM1Tools(): readonly ErasedToolDefinition[] {
-  return M1_TOOL_NAMES.map((name) => stubTool(name));
+function allShippedTools(): readonly ErasedToolDefinition[] {
+  return SHIPPED_TOOL_NAMES.map((name) => stubTool(name));
 }
 
 function textOf(result: ToolResult): string {
@@ -97,16 +97,18 @@ function errorCodeOf(result: ToolResult): string {
 }
 
 describe('ToolRegistry registration', () => {
-  it('lists exactly the M1 tool surface, in shipping order', () => {
-    const registry = new ToolRegistry(allM1Tools());
+  it('lists exactly the shipped tool surface, in shipping order', () => {
+    const registry = new ToolRegistry(allShippedTools());
 
     expect(registry.list().map((listing) => listing.name)).toEqual([
       'mneia_rehydrate',
       'mneia_assert',
       'mneia_checkpoint',
       'mneia_search',
+      'mneia_handoff_create',
+      'mneia_handoff_receive',
     ]);
-    expect(registry.size).toBe(4);
+    expect(registry.size).toBe(6);
   });
 
   it('carries the title, description, and input schema through to the listing', () => {
@@ -168,7 +170,7 @@ describe('ToolRegistry dispatch', () => {
   });
 
   it('refuses an unregistered name without needing a context', () => {
-    const registry = new ToolRegistry(allM1Tools());
+    const registry = new ToolRegistry(allShippedTools());
 
     expect(registry.refuse('mneia_rehydrate')).toBeNull();
 
@@ -181,7 +183,7 @@ describe('ToolRegistry dispatch', () => {
   });
 
   it('returns a structured error rather than throwing for an unknown tool name', async () => {
-    const registry = new ToolRegistry(allM1Tools());
+    const registry = new ToolRegistry(allShippedTools());
 
     const result = await registry.dispatch('query', {}, CONTEXT);
 
@@ -192,13 +194,13 @@ describe('ToolRegistry dispatch', () => {
   });
 
   it('names the milestone when the agent calls a tool that has not shipped', async () => {
-    const registry = new ToolRegistry(allM1Tools());
+    const registry = new ToolRegistry(allShippedTools());
 
-    const result = await registry.dispatch('mneia_handoff_create', {}, CONTEXT);
+    const result = await registry.dispatch('mneia_conflicts', {}, CONTEXT);
 
     expect(result.isError).toBe(true);
     expect(errorCodeOf(result)).toBe('tool_not_available');
-    expect(textOf(result)).toContain('M2');
+    expect(textOf(result)).toContain('M4');
   });
 
   it('says so when an M1 tool exists but this server did not load it', async () => {

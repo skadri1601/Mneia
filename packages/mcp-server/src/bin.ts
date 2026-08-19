@@ -40,6 +40,7 @@ import { createSliceLog } from './slices.js';
 import { PoolConnectionSource } from './store.js';
 import { assertTool } from './tools/assert.js';
 import { checkpointTool } from './tools/checkpoint.js';
+import { handoffCreateTool, handoffReceiveTool } from './tools/handoff.js';
 import { rehydrateTool } from './tools/rehydrate.js';
 import { searchTool } from './tools/search.js';
 import type { ToolContext } from './tools/types.js';
@@ -125,7 +126,15 @@ async function resolveTools(logger: ServerLogger): Promise<readonly ErasedToolDe
   const available = pending.filter(
     (definition): definition is ErasedToolDefinition => definition !== null,
   );
-  return [rehydrateTool, assertTool, checkpointTool, searchTool, ...available];
+  return [
+    rehydrateTool,
+    assertTool,
+    checkpointTool,
+    searchTool,
+    handoffCreateTool,
+    handoffReceiveTool,
+    ...available,
+  ];
 }
 
 function createTelemetry(config: ServerConfig, logger: ServerLogger): TelemetryEmitter {
