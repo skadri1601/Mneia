@@ -307,3 +307,56 @@ deliberately — *"re-reads the whole window when the watermark is not in this t
 is skipped"* — trading cost for losslessness. Changing it is a **ruling**, not a patch: refuse the
 upload, or keep re-reading and refuse only to move the watermark backwards. **Founder's call**, and
 it needs one before either lane touches `propose.ts`.
+
+---
+
+**Added 2026-08-19 by lane B, from B0.** Three findings, none of them lane A's problem, none fixed.
+
+### `apps/site` is throwing an unhandled rejection in production ~275 times a day
+
+`CompileError: WebAssembly.compile(): Wasm code generation disallowed by embedder` — **4,723
+occurrences since 2026-08-02, still firing.** Sentry [JAVASCRIPT-NEXTJS-3], event
+`f8a140332cb046e08bec2d556311d41d`, `environment: production`, `runtime.name: cloudflare`,
+`release: 3214441`.
+
+**Confirmed deployed, not a `wrangler dev` artifact.** MNE-240's description attributes an older
+instance of this issue to `wrangler dev`, and `server_name: localhost` looks the same either way — so
+Sentry alone could not settle it. Cloudflare's own Workers observability for the deployed worker
+`mneia` shows the identical error with identical frames, and the `c (worker.js:NNNNN)` offset tracks
+the deployed bundle across deploys (`61120` → `61352` → `61375`).
+
+Cloudflare forbids runtime `WebAssembly.compile()`; wasm must be a declared module import, and
+`apps/site/wrangler.jsonc` declares no wasm binding. Nothing in `apps/site/src` references
+`WebAssembly`, so it is a bundled dependency. **Hypothesis, unproven:** the event carries Node SDK
+tags (`auto.node.onunhandledrejection`, `os: Linux`, `arch: x64`) from a `cloudflare` runtime, and
+`apps/site` depends on `@sentry/nextjs` — the Node build — where the Worker wants `@sentry/cloudflare`.
+
+`Users Impacted: 0`, so probably not user-visible. But it is loud enough to bury a real error.
+
+### We cannot debug production errors, because no source maps are uploaded
+
+Every frame in that event is a minified bundle offset. Not one names a file in `apps/site/src`.
+This is why MNE-240's clause says *"a stack trace that names first-party frames"* — that half is
+**not met**, and it is the highest-value item left on the ticket. Capture works; debugging does not.
+
+### `26765d9` fixes a production 500 and is not merged
+
+`fix/mne-86-rehydrate-500` carries the fix for `POST /api/v1/rehydrate` returning HTTP 500 with an
+empty body on `apps/web` — `gpt-tokenizer` resolving to `MODULE_NOT_FOUND` under `next build
+--output standalone`. Pushed, **not on `main`, not deployed.** It is MNE-86's, so it is the founder's
+dogfood branch rather than either lane's, but it should not sit there unnoticed.
+
+**Not the same bug as the wasm one above.** Different app, different runtime, different failure. Do
+not close one with the other.
+
+### Lane B status
+
+- **MNE-79** — `docs/CLIENTS.md` re-verified against published 0.5.0 in `a804180`. **Cursor moved
+  from "Not checked" to registered with all four tools discovered.** Clause still unmet: no tool call
+  driven in Cursor or Codex, both blocked on account limits, Codex's clearing **2026-08-23**.
+  Separate finding in that file: **our documented `npx -y @mneia/mcp-server` config exceeds Claude
+  Code's 30s MCP startup timeout on a cold cache**, half of it because the server makes a network
+  round trip before serving its first frame.
+- **MNE-240** — production capture is **proved working**. Ticket stays In Progress: source maps,
+  `apps/web`, and the guarded probe route are all unmet, and each needs a production deploy, which
+  `CLAUDE.md` says to ask about first.
