@@ -12,9 +12,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
-const { handleCreateHandoff, handleGetHandoff, handleReceiveHandoff } = await import(
-  './handoff.js'
-);
+const { handleCreateHandoff, handleGetHandoff, handleListHandoffItems, handleReceiveHandoff } =
+  await import('./handoff.js');
 
 const WORKSPACE = '22222222-2222-4222-8222-222222222222';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
@@ -103,6 +102,7 @@ const harness = (overrides: Partial<ScopedStore> = {}) => {
     ),
     receiveHandoff: vi.fn(async () => handoff({ receivedAt: NOW, toActor: SENDER })),
     getHandoff: vi.fn(async () => handoff()),
+    listHandoffItems: vi.fn(async () => [{ section: 'Constraints (do not violate)', item: ITEM }]),
     ...overrides,
   } as unknown as ScopedStore;
 
@@ -228,5 +228,25 @@ describe('handleGetHandoff', () => {
     const { handoff: found } = await handleGetHandoff(store, HANDOFF_ID);
 
     expect(found).toBeNull();
+  });
+});
+
+describe('handleListHandoffItems', () => {
+  it('returns the items the artifact was built from, with the section each landed in', async () => {
+    const { store } = harness();
+
+    const { items } = await handleListHandoffItems(store, HANDOFF_ID);
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.section).toBe('Constraints (do not violate)');
+    expect(items[0]?.item.id).toBe(ITEM.id);
+  });
+
+  it('refuses a handoff this workspace cannot see, rather than returning an empty set', async () => {
+    const { store } = harness({ getHandoff: vi.fn(async () => null) });
+
+    await expect(handleListHandoffItems(store, HANDOFF_ID)).rejects.toMatchObject({
+      code: 'not_found',
+    });
   });
 });

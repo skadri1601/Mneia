@@ -1042,6 +1042,36 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
     });
   });
 
+  it('records the item set behind a handoff, and reads it back with its sections', async () => {
+    await withAdapter(async (adapter) => {
+      const item = await adapter.withScope(SCOPE_A, async (store) =>
+        store.insertContextItem(newItem(PROJECT_A, ACTOR_A, 'No downtime window')),
+      );
+
+      const created = await adapter.withScope(SCOPE_A, async (store) =>
+        store.createHandoff({
+          projectId: PROJECT_A,
+          fromActor: ACTOR_A,
+          nextAction: 'Wire the retry path to the new idempotency key',
+          rendered: '# Handoff: acme',
+          items: [{ itemId: item.id, section: 'Constraints (do not violate)' }],
+        }),
+      );
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const recorded = await store.listHandoffItems(created.id);
+        expect(recorded).toHaveLength(1);
+        expect(recorded[0]?.section).toBe('Constraints (do not violate)');
+        expect(recorded[0]?.item.id).toBe(item.id);
+        expect(recorded[0]?.item.title).toBe('No downtime window');
+      });
+
+      await adapter.withScope(SCOPE_B, async (store) => {
+        expect(await store.listHandoffItems(created.id)).toHaveLength(0);
+      });
+    });
+  });
+
   it('refuses arguments that are not UUIDs before they reach SQL', async () => {
     await withAdapter(async (adapter) => {
       await adapter.withScope(SCOPE_A, async (store) => {

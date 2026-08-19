@@ -24,6 +24,7 @@ const READS = [
   'listCheckpoints',
   'getHandoff',
   'listOpenHandoffs',
+  'listHandoffItems',
   'listOpenConflicts',
 ] as const;
 

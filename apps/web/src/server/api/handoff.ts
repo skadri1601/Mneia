@@ -1,6 +1,7 @@
 import 'server-only';
 
 import type {
+  ContextItemWire,
   CreateHandoffWire,
   Handoff,
   HandoffWire,
@@ -11,7 +12,13 @@ import type {
   TelemetryEvent,
   Uuid,
 } from '@mneia/core';
-import { assembleHandoff, encodeHandoff, resolveProject, StoreError } from '@mneia/core';
+import {
+  assembleHandoff,
+  encodeContextItem,
+  encodeHandoff,
+  resolveProject,
+  StoreError,
+} from '@mneia/core';
 import { ApiRequestError } from './handlers.js';
 
 export interface HandoffDependencies {
@@ -127,4 +134,22 @@ export const handleListOpenHandoffs = async (
     ...(input.limit === undefined ? [] : [input.limit]),
   );
   return { handoffs: handoffs.map(encodeHandoff) };
+};
+
+export const handleListHandoffItems = async (
+  store: ScopedStore,
+  handoffId: Uuid,
+): Promise<{ items: readonly { section: string; item: ContextItemWire }[] }> => {
+  const handoff = await store.getHandoff(handoffId);
+  if (handoff === null) {
+    throw new ApiRequestError(
+      'not_found',
+      `expected handoff ${handoffId} to be visible in this workspace; found none`,
+    );
+  }
+
+  const items = await store.listHandoffItems(handoffId);
+  return {
+    items: items.map((entry) => ({ section: entry.section, item: encodeContextItem(entry.item) })),
+  };
 };
