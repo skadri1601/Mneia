@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -5,8 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { CliError } from './command.js';
 import {
   applyGeneratedSection,
+  assertGeneratedSectionUnedited,
+  digestOf,
   extractConstraints,
   FENCE_BEGIN,
+  FENCE_BEGIN_PREFIX,
+  fenceBeginFor,
   FENCE_END,
   type GeneratedSectionInput,
   importConstraints,
@@ -41,7 +46,7 @@ async function write(relativePath: string, text: string): Promise<string> {
 }
 
 function fenced(body: string): string {
-  return `${FENCE_BEGIN}\n${body}\n${FENCE_END}`;
+  return `${fenceBeginFor(body)}\n${body}\n${FENCE_END}`;
 }
 
 describe('the generated section fence', () => {
@@ -50,7 +55,7 @@ describe('the generated section fence', () => {
     const next = applyGeneratedSection(existing, 'generated body', 'AGENTS.md');
 
     expect(next.startsWith(existing)).toBe(true);
-    expect(next).toContain(FENCE_BEGIN);
+    expect(next).toContain(FENCE_BEGIN_PREFIX);
     expect(next).toContain(FENCE_END);
     expect(next.slice(existing.length).trim()).toBe(fenced('generated body'));
   });
@@ -89,7 +94,7 @@ describe('the generated section fence', () => {
 
     expect(twice).toBe(once);
     expect(thrice).toBe(once);
-    expect(twice.split(FENCE_BEGIN)).toHaveLength(2);
+    expect(twice.split(FENCE_BEGIN_PREFIX)).toHaveLength(2);
     expect(twice.split(FENCE_END)).toHaveLength(2);
   });
 
@@ -154,6 +159,95 @@ describe('the generated section fence', () => {
     await expect(writeGeneratedSection(path, 'second body')).resolves.toBe('updated');
     await expect(writeGeneratedSection(path, 'second body')).resolves.toBe('unchanged');
     await expect(readFile(path, 'utf8')).resolves.toContain('second body');
+  });
+});
+
+describe('hand edits inside the fence', () => {
+  const HUMAN_PREFIX = '# Our repo\n\nHand written intro.\n\n';
+  const HUMAN_SUFFIX = '\n\n## Human written outro\n\nStill here.\n';
+
+  function repoWithSection(body: string): string {
+    return `${HUMAN_PREFIX}${fenced(body)}${HUMAN_SUFFIX}`;
+  }
+
+  it('stamps the begin marker with a digest of the body it wrote', () => {
+    const text = applyGeneratedSection('', 'generated body', 'AGENTS.md');
+
+    expect(text).toContain(`sha=${digestOf('generated body')}`);
+    expect(() => assertGeneratedSectionUnedited(text, 'AGENTS.md')).not.toThrow();
+  });
+
+  it('detects a hand edit inside the fence rather than silently overwriting it', () => {
+    const edited = repoWithSection('generated body').replace(
+      'generated body',
+      'generated body, plus a line a human added',
+    );
+
+    expect(() => assertGeneratedSectionUnedited(edited, 'AGENTS.md')).toThrowError(CliError);
+    try {
+      assertGeneratedSectionUnedited(edited, 'AGENTS.md');
+      expect.unreachable('expected a CliError');
+    } catch (error) {
+      expect(error).toBeInstanceOf(CliError);
+      expect((error as CliError).message).toContain('hand edits inside');
+      expect((error as CliError).fix).toContain('--force');
+    }
+  });
+
+  it('accepts an untouched section, and one whose surrounding human text changed', () => {
+    const text = repoWithSection('generated body');
+    expect(() => assertGeneratedSectionUnedited(text, 'AGENTS.md')).not.toThrow();
+
+    const editedOutside = text
+      .replace('Hand written intro.', 'Hand written intro, revised.')
+      .replace('Still here.', 'Still here, and edited.');
+    expect(() => assertGeneratedSectionUnedited(editedOutside, 'AGENTS.md')).not.toThrow();
+  });
+
+  it('does not accuse a legacy section written before digests existed', () => {
+    const legacy = `${HUMAN_PREFIX}${FENCE_BEGIN}\nwritten by an older mneia\n${FENCE_END}${HUMAN_SUFFIX}`;
+
+    expect(() => assertGeneratedSectionUnedited(legacy, 'AGENTS.md')).not.toThrow();
+  });
+
+  it('upgrades a legacy section to a stamped one on the next write', () => {
+    const legacy = `${HUMAN_PREFIX}${FENCE_BEGIN}\nwritten by an older mneia\n${FENCE_END}${HUMAN_SUFFIX}`;
+    const next = applyGeneratedSection(legacy, 'fresh body', 'AGENTS.md');
+
+    expect(next).toBe(repoWithSection('fresh body'));
+    expect(next).toContain(`sha=${digestOf('fresh body')}`);
+    expect(() => assertGeneratedSectionUnedited(next, 'AGENTS.md')).not.toThrow();
+  });
+
+  it('round-trips import, write back, and re-import with no duplicates or drift', async () => {
+    await write('AGENTS.md', '# Our repo\n\n- Never commit secrets to the repository\n');
+
+    const first = await importConstraints(root);
+    expect(first.constraints).toHaveLength(1);
+
+    const body = renderGeneratedSection({ ...SECTION, constraintsImported: 1 });
+    const path = join(root, 'AGENTS.md');
+    await expect(writeGeneratedSection(path, body)).resolves.toBe('updated');
+
+    const second = await importConstraints(root);
+    expect(second.constraints).toEqual(first.constraints);
+
+    await expect(writeGeneratedSection(path, body)).resolves.toBe('unchanged');
+
+    const third = await importConstraints(root);
+    expect(third.constraints).toEqual(first.constraints);
+    expect(() => assertGeneratedSectionUnedited(readFileSync(path, 'utf8'), path)).not.toThrow();
+  });
+
+  it('refuses the write when the file on disk has an edited section', async () => {
+    const path = await write(
+      'AGENTS.md',
+      repoWithSection('generated body').replace('generated body', 'a human rewrote this'),
+    );
+    const before = await readFile(path, 'utf8');
+
+    expect(() => assertGeneratedSectionUnedited(before, path)).toThrowError(CliError);
+    await expect(readFile(path, 'utf8')).resolves.toBe(before);
   });
 });
 
@@ -301,7 +395,7 @@ describe('the generated section body', () => {
     expect(body).toContain('`acme/checkout`');
     expect(body).toContain('https://api.mneia.dev');
     expect(body).toContain('3 constraints were imported from AGENTS.md.');
-    expect(body).not.toContain(FENCE_BEGIN);
+    expect(body).not.toContain(FENCE_BEGIN_PREFIX);
     expect(body).not.toContain(FENCE_END);
   });
 
