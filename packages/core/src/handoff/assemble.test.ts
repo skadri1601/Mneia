@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Actor, ContextItem, Handoff, Project, Uuid } from '../domain/types.js';
 import type { NewHandoff, ScopedStore } from '../store/adapter/types.js';
-import { assembleHandoff, DEFAULT_SUPERSEDED_WINDOW_DAYS } from './assemble.js';
+import {
+  assembleHandoff,
+  DEFAULT_SUPERSEDED_WINDOW_DAYS,
+  HANDOFF_SUPERSEDED_LIMIT,
+} from './assemble.js';
 
 const id = (prefix: string): Uuid => `${prefix}-1111-4111-8111-111111111111`;
 
@@ -157,10 +161,33 @@ describe('assembleHandoff', () => {
       now: NOW,
     });
 
-    expect(filters[0]).toMatchObject({
+    expect(filters).toContainEqual(
+      expect.objectContaining({
+        projectId: PROJECT_ID,
+        statuses: ['superseded'],
+        limit: HANDOFF_SUPERSEDED_LIMIT,
+      }),
+    );
+  });
+
+  it('asks for every load-bearing constraint separately, so standing rule 2 survives the candidate limit', async () => {
+    const { store, filters } = storeStub();
+
+    await assembleHandoff(store, {
       projectId: PROJECT_ID,
-      statuses: ['active', 'disputed', 'superseded'],
+      nextAction: NEXT_ACTION,
+      now: NOW,
+      itemLimit: 1,
     });
+
+    expect(filters).toContainEqual(
+      expect.objectContaining({
+        projectId: PROJECT_ID,
+        kinds: ['constraint'],
+        statuses: ['active'],
+        loadBearing: true,
+      }),
+    );
   });
 
   it('windows the superseded block on the default when none is given', async () => {
@@ -283,5 +310,122 @@ describe('assembleHandoff', () => {
     await expect(
       assembleHandoff(store, { projectId: PROJECT_ID, nextAction: NEXT_ACTION, now: NOW }),
     ).rejects.toThrow(/the token identifies an actor that has been removed/);
+  });
+  const filteredStore = (items: readonly ContextItem[]) => {
+    const created: NewHandoff[] = [];
+    const actors = new Map<Uuid, Actor>([
+      [HUMAN, SAAD],
+      [AGENT, CLAUDE],
+    ]);
+
+    const store = {
+      scope: { workspaceId: WORKSPACE, actorId: HUMAN },
+      getProject: vi.fn(async () => PROJECT),
+      getActor: vi.fn(async (actorId: Uuid) => actors.get(actorId) ?? null),
+      listContextItems: vi.fn(
+        async (filter: {
+          statuses?: readonly string[];
+          kinds?: readonly string[];
+          loadBearing?: boolean;
+          limit?: number;
+        }) => {
+          const matched = items.filter(
+            (item) =>
+              (filter.statuses === undefined || filter.statuses.includes(item.status)) &&
+              (filter.kinds === undefined || filter.kinds.includes(item.kind)) &&
+              (filter.loadBearing === undefined || item.loadBearing === filter.loadBearing),
+          );
+          return filter.limit === undefined ? matched : matched.slice(0, filter.limit);
+        },
+      ),
+      createHandoff: vi.fn(async (handoff: NewHandoff): Promise<Handoff> => {
+        created.push(handoff);
+        return {
+          id: id('hand0ff0'),
+          workspaceId: WORKSPACE,
+          projectId: handoff.projectId,
+          fromActor: handoff.fromActor,
+          toActor: handoff.toActor ?? null,
+          createdAt: NOW,
+          receivedAt: null,
+          nextAction: handoff.nextAction,
+          rendered: handoff.rendered,
+        };
+      }),
+    } as unknown as ScopedStore;
+
+    return { store, created };
+  };
+
+  const crowd = (count: number): readonly ContextItem[] =>
+    Array.from({ length: count }, (_unused, index) =>
+      contextItem({
+        id: id(`fact${String(index).padStart(4, '0')}`),
+        kind: 'fact',
+        title: `Recorded fact number ${index}`,
+        body: 'x '.repeat(120).trim(),
+        loadBearing: false,
+      }),
+    );
+
+  it('packs under a token budget instead of rendering everything the store holds', async () => {
+    const { store } = filteredStore(crowd(60));
+
+    const { handoff, droppedItemIds } = await assembleHandoff(store, {
+      projectId: PROJECT_ID,
+      nextAction: NEXT_ACTION,
+      now: NOW,
+      tokenBudget: 400,
+    });
+
+    expect(droppedItemIds.length).toBeGreaterThan(0);
+    expect(handoff.rendered).toContain('more not shown');
+    expect(handoff.rendered.split('\n').length).toBeLessThan(60);
+  });
+
+  it('keeps every active load-bearing constraint under budget pressure, because standing rule 2 outranks the budget', async () => {
+    const binding = contextItem({
+      id: id('b1nd1ng0'),
+      kind: 'constraint',
+      title: 'Never auto-supersede a human-confirmed item',
+      loadBearing: true,
+    });
+    const { store, created } = filteredStore([binding, ...crowd(60)]);
+
+    const { handoff, mandatoryItemIds } = await assembleHandoff(store, {
+      projectId: PROJECT_ID,
+      nextAction: NEXT_ACTION,
+      now: NOW,
+      tokenBudget: 1,
+    });
+
+    expect(mandatoryItemIds).toContain(binding.id);
+    expect(handoff.rendered).toContain('Never auto-supersede a human-confirmed item');
+    expect(created[0]?.items).toContainEqual({
+      itemId: binding.id,
+      section: 'Constraints (do not violate)',
+    });
+  });
+
+  it('bounds the superseded block on its own, so a burst of supersedes cannot crowd out the constraints', async () => {
+    const superseded = Array.from({ length: 20 }, (_unused, index) =>
+      contextItem({
+        id: id(`0ld${String(index).padStart(5, '0')}`),
+        kind: 'decision',
+        status: 'superseded',
+        title: `Abandoned approach ${index}`,
+        validTo: new Date(NOW.getTime() - 1000),
+        loadBearing: false,
+      }),
+    );
+    const { store, created } = filteredStore(superseded);
+
+    await assembleHandoff(store, {
+      projectId: PROJECT_ID,
+      nextAction: NEXT_ACTION,
+      now: NOW,
+    });
+
+    expect(created[0]?.items).toHaveLength(HANDOFF_SUPERSEDED_LIMIT);
   });
 });

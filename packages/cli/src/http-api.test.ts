@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { DEFAULT_MAX_CHARS, readTrajectoryFile, reduceTrajectory } from '@mneia/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectConfig } from './config.js';
-import { MAX_UPLOAD_BYTES, httpCheckpointApi, uploadableFrom } from './http-api.js';
+import { MAX_UPLOAD_BYTES, httpCheckpointApi, httpInitApi, uploadableFrom } from './http-api.js';
 
 const WORKSPACE_ID = '00000000-0000-4000-8000-000000000001';
 const PROJECT_ID = '00000000-0000-4000-8000-000000000002';
@@ -223,5 +223,115 @@ describe('httpCheckpointApi.propose over a session larger than one request', () 
     expect(reduced.droppedTurns).toBe(0);
     expect(reduced.truncatedTurns).toBe(1);
     expect(reduced.trajectory.turns[0]?.text.length).toBeLessThan(50_000);
+  });
+});
+
+describe('httpInitApi imports constraints without conferring authority on them', () => {
+  interface WrittenItem {
+    readonly item: { readonly title: string; readonly loadBearing: boolean };
+  }
+
+  function fakeAttachServer(): { readonly items: WrittenItem[] } {
+    const items: WrittenItem[] = [];
+
+    vi.stubGlobal('fetch', (url: string, init?: { body?: string }) => {
+      const json = (payload: unknown, status = 200): Response =>
+        new Response(JSON.stringify(payload), {
+          status,
+          headers: { 'content-type': 'application/json' },
+        });
+
+      if (url.endsWith('/api/me')) {
+        return Promise.resolve(
+          json({
+            actor: { id: ACTOR_ID, display_name: 'Ada', kind: 'human' },
+            workspace: { id: WORKSPACE_ID, slug: 'acme', display_name: 'Acme' },
+            team: { id: '00000000-0000-4000-8000-000000000004', display_name: 'Core' },
+          }),
+        );
+      }
+
+      if (url.includes('/api/v1/projects')) {
+        return Promise.resolve(
+          json({
+            project: {
+              id: PROJECT_ID,
+              workspaceId: WORKSPACE_ID,
+              teamId: null,
+              slug: 'checkout',
+              repoUrl: null,
+              createdAt: '2026-08-01T00:00:00.000Z',
+            },
+          }),
+        );
+      }
+
+      const body = JSON.parse(init?.body ?? '{}') as { items?: readonly WrittenItem[] };
+      items.push(...(body.items ?? []));
+
+      return Promise.resolve(
+        json({
+          result: {
+            checkpoint: {
+              id: '00000000-0000-4000-8000-000000000005',
+              workspaceId: WORKSPACE_ID,
+              projectId: PROJECT_ID,
+              sessionId: null,
+              actorId: ACTOR_ID,
+              trigger: 'manual',
+              summary: null,
+              createdAt: '2026-08-01T00:00:00.000Z',
+            },
+            items: [],
+            written: (body.items ?? []).map((entry, index) => ({
+              id: `00000000-0000-4000-8000-00000000010${index}`,
+              workspaceId: WORKSPACE_ID,
+              projectId: PROJECT_ID,
+              kind: 'constraint',
+              title: entry.item.title,
+              body: null,
+              status: 'active',
+              assertedBy: ACTOR_ID,
+              assertedAt: '2026-08-01T00:00:00.000Z',
+              sourceSessionId: null,
+              sourceRef: 'AGENTS.md:12',
+              confidence: 0.5,
+              humanConfirmed: true,
+              loadBearing: entry.item.loadBearing,
+              lastVerifiedAt: null,
+              decayAfter: null,
+              validFrom: '2026-08-01T00:00:00.000Z',
+              validTo: null,
+              supersedesId: null,
+              supersededById: null,
+              accessScope: 'project',
+              supersedeReason: null,
+              embedding: null,
+              embeddingModel: null,
+            })),
+            superseded: [],
+          },
+        }),
+      );
+    });
+
+    return { items };
+  }
+
+  it('writes a scraped bullet as not load-bearing, because a file scrape does not make a rule binding', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const server = fakeAttachServer();
+
+    await httpInitApi.attach({
+      workspace: 'acme',
+      project: 'checkout',
+      endpoint: config.endpoint,
+      token: 'test-token',
+      repoRoot: config.repoRoot,
+      constraints: [{ title: 'Never commit secrets', body: null, sourceRef: 'AGENTS.md:12' }],
+    });
+
+    expect(server.items).toHaveLength(1);
+    expect(server.items[0]?.item.loadBearing).toBe(false);
   });
 });

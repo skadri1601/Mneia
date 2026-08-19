@@ -1,9 +1,22 @@
-import type { Actor, ContextItem, Handoff, Uuid } from '../domain/types.js';
+import type { Actor, Embedding, Handoff, Uuid } from '../domain/types.js';
+import { mergeCandidates } from '../rehydrate/assemble.js';
+import { DEFAULT_KIND_QUOTAS, packSlice } from '../rehydrate/pack.js';
+import { DEFAULT_SCORING_WEIGHTS, scoreItems } from '../rehydrate/score.js';
 import type { ScopedStore } from '../store/adapter/types.js';
+import type { ItemKind, ItemStatus } from '../store/schema.js';
 import { handoffSectionFor, renderHandoff } from './render.js';
 
 export const DEFAULT_SUPERSEDED_WINDOW_DAYS = 30;
 export const DEFAULT_ITEM_LIMIT = 500;
+export const DEFAULT_HANDOFF_TOKEN_BUDGET = 3000;
+export const MANDATORY_ITEM_LIMIT = 1000;
+export const HANDOFF_SUPERSEDED_LIMIT = 5;
+
+const LIVE_STATUSES: readonly ItemStatus[] = ['active', 'disputed'];
+const ACTIVE_STATUSES: readonly ItemStatus[] = ['active'];
+const SUPERSEDED_STATUSES: readonly ItemStatus[] = ['superseded'];
+const MANDATORY_KINDS: readonly ItemKind[] = ['constraint'];
+const SUPERSEDED_KINDS: readonly ItemKind[] = ['decision', 'constraint'];
 
 export interface AssembleHandoffInput {
   readonly projectId: Uuid;
@@ -11,12 +24,16 @@ export interface AssembleHandoffInput {
   readonly nextAction: string;
   readonly supersededWindowDays?: number;
   readonly itemLimit?: number;
+  readonly tokenBudget?: number;
+  readonly nextActionEmbedding?: Embedding | null | undefined;
   readonly now: Date;
 }
 
 export interface AssembledHandoff {
   readonly handoff: Handoff;
   readonly itemIds: readonly Uuid[];
+  readonly mandatoryItemIds: readonly Uuid[];
+  readonly droppedItemIds: readonly Uuid[];
 }
 
 const dayMs = 24 * 60 * 60 * 1000;
@@ -67,12 +84,46 @@ export async function assembleHandoff(
 
   const windowDays = input.supersededWindowDays ?? DEFAULT_SUPERSEDED_WINDOW_DAYS;
   const supersededSince = new Date(input.now.getTime() - windowDays * dayMs);
+  const tokenBudget = input.tokenBudget ?? DEFAULT_HANDOFF_TOKEN_BUDGET;
 
-  const items: readonly ContextItem[] = await store.listContextItems({
-    projectId: input.projectId,
-    statuses: ['active', 'disputed', 'superseded'],
-    limit: input.itemLimit ?? DEFAULT_ITEM_LIMIT,
+  const [live, mandatory, superseded] = await Promise.all([
+    store.listContextItems({
+      projectId: input.projectId,
+      statuses: LIVE_STATUSES,
+      limit: input.itemLimit ?? DEFAULT_ITEM_LIMIT,
+    }),
+    store.listContextItems({
+      projectId: input.projectId,
+      kinds: MANDATORY_KINDS,
+      statuses: ACTIVE_STATUSES,
+      loadBearing: true,
+      limit: MANDATORY_ITEM_LIMIT,
+    }),
+    store.listContextItems({
+      projectId: input.projectId,
+      kinds: SUPERSEDED_KINDS,
+      statuses: SUPERSEDED_STATUSES,
+      limit: HANDOFF_SUPERSEDED_LIMIT,
+    }),
+  ]);
+
+  const scored = scoreItems({
+    items: mergeCandidates(mandatory, live),
+    taskEmbedding: input.nextActionEmbedding ?? null,
+    now: input.now,
+    weights: DEFAULT_SCORING_WEIGHTS,
   });
+
+  const packed = packSlice({ scored, tokenBudget, quotas: DEFAULT_KIND_QUOTAS });
+
+  const inWindow = superseded.filter(
+    (item) => item.validTo === null || item.validTo.getTime() >= supersededSince.getTime(),
+  );
+
+  const items = mergeCandidates(
+    packed.items.map((entry) => entry.item),
+    inWindow,
+  );
 
   const actors = await resolveActors(store, [
     from.id,
@@ -89,6 +140,11 @@ export async function assembleHandoff(
     items,
     actors,
     supersededSince,
+    budget: {
+      tokensUsed: packed.tokensUsed,
+      tokenBudget: packed.tokenBudget,
+      omitted: packed.droppedItemIds.length,
+    },
   };
 
   const rendered = renderHandoff(renderInput);
@@ -107,5 +163,10 @@ export async function assembleHandoff(
     items: included,
   });
 
-  return { handoff, itemIds: included.map((entry) => entry.itemId) };
+  return {
+    handoff,
+    itemIds: included.map((entry) => entry.itemId),
+    mandatoryItemIds: packed.mandatoryItemIds,
+    droppedItemIds: packed.droppedItemIds,
+  };
 }

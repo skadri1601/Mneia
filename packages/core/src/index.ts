@@ -86,10 +86,12 @@ export type {
 export type { AssembledHandoff, AssembleHandoffInput } from './handoff/assemble.js';
 export {
   assembleHandoff,
+  DEFAULT_HANDOFF_TOKEN_BUDGET,
   DEFAULT_ITEM_LIMIT,
   DEFAULT_SUPERSEDED_WINDOW_DAYS,
+  HANDOFF_SUPERSEDED_LIMIT,
 } from './handoff/assemble.js';
-export type { RenderHandoffInput } from './handoff/render.js';
+export type { HandoffBudget, RenderHandoffInput } from './handoff/render.js';
 export { HANDOFF_SECTION_HEADINGS, provenanceLine, renderHandoff } from './handoff/render.js';
 export type {
   SupersedeBlockedOutcome,

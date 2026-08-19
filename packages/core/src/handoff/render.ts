@@ -1,6 +1,12 @@
 import type { Actor, ContextItem, Project, Uuid } from '../domain/types.js';
 import type { ItemKind } from '../store/schema.js';
 
+export interface HandoffBudget {
+  readonly tokensUsed: number;
+  readonly tokenBudget: number;
+  readonly omitted: number;
+}
+
 export interface RenderHandoffInput {
   readonly project: Project;
   readonly from: Actor;
@@ -10,6 +16,7 @@ export interface RenderHandoffInput {
   readonly items: readonly ContextItem[];
   readonly actors: ReadonlyMap<Uuid, Actor>;
   readonly supersededSince: Date;
+  readonly budget?: HandoffBudget | undefined;
 }
 
 interface HandoffSection {
@@ -177,18 +184,36 @@ export function handoffSectionFor(item: ContextItem, input: RenderHandoffInput):
   return null;
 }
 
+function budgetLine(budget: HandoffBudget, itemCount: number): string {
+  const meta = [
+    itemCount === 1 ? '1 item' : `${itemCount} items`,
+    `${budget.tokensUsed}/${budget.tokenBudget} tokens`,
+  ];
+
+  if (budget.omitted > 0) {
+    meta.push(budget.omitted === 1 ? '1 more not shown' : `${budget.omitted} more not shown`);
+  }
+
+  return meta.join(META_SEPARATOR);
+}
+
 function renderHeader(input: RenderHandoffInput): string {
   const from = `${inlineText(input.from.displayName)} (${input.from.kind})`;
   const to =
     input.to === null ? OPEN_RECIPIENT : `${inlineText(input.to.displayName)} (${input.to.kind})`;
 
-  return [
+  const lines = [
     `# Handoff: ${inlineText(input.project.slug)}`,
     `From: ${from}${META_SEPARATOR}${utcMinute(input.createdAt)}`,
     `To: ${to}`,
-  ].join('\n');
-}
+  ];
 
+  if (input.budget !== undefined) {
+    lines.push(budgetLine(input.budget, input.items.length));
+  }
+
+  return lines.join('\n');
+}
 export function renderHandoff(input: RenderHandoffInput): string {
   assertValidDate(input.createdAt, 'renderHandoff createdAt');
   assertValidDate(input.supersededSince, 'renderHandoff supersededSince');
