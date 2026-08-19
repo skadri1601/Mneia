@@ -115,6 +115,24 @@ agreed before writing code.** They are the places where a wrong turn is expensiv
 
 Single-ticket work with a clear *Done when* clause: just build it.
 
+## Session memory
+
+Ruled by the founder 2026-08-19, and written up in full in `AGENTS.md` §"Session memory — use the
+product, the way a customer does". The short version, because it binds you too:
+
+**Mneia carries context between sessions on this repo.** Rehydrate before you plan, assert decisions
+and constraints as they land, checkpoint at the end, and hand work over with a Mneia handoff. Not a
+markdown file — `docs/HANDOFF.md` was deleted in `2d78c62` precisely because a handoff product whose
+own team writes handoff files is not working.
+
+**Use the surfaces a customer has.** You may not have the MCP server configured; the `mneia` CLI is
+the customer path and it is enough — `mneia brief`, `mneia checkpoint`, `mneia handoff`, `mneia pickup`.
+What you may not do is `curl` the API, open `psql` against the store, or read `handoff.rendered` out
+of Postgres. Those shortcuts step over the code path a paying user cannot step over.
+
+**If the product cannot do it, that is the finding.** File it and say so. Do not route around it —
+the next customer to hit that surface will not have database credentials.
+
 ## Linear
 
 **Linear is the source of truth for status**, team `Mneia`, prefix `MNE`. Every unit of work starts

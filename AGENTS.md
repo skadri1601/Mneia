@@ -344,6 +344,42 @@ A work-in-progress commit that admits what it is can be picked up. An uncommitte
 worktree can switch it under you between one command and the next. Re-check `git branch --show-current`
 immediately before you commit, and stage explicit paths rather than `git add -A`.
 
+## Session memory — use the product, the way a customer does
+
+Ruled by the founder 2026-08-19. **Mneia carries context between sessions on this repo. Not a
+markdown file, not a pasted summary, not the conversation you hope survives compaction.**
+`docs/HANDOFF.md` was deleted in `2d78c62` for exactly this reason: writing a handoff file in the
+repository of a handoff product is an admission the product does not work.
+
+| Boundary | Do this |
+|---|---|
+| Session starts | `mneia_rehydrate`, or `mneia brief` — before planning, before writing code |
+| A decision, constraint, or open question lands | `mneia_assert` at the moment it happens, not at the end |
+| Session or day ends | `mneia_checkpoint`, or `mneia checkpoint` |
+| Work changes hands | `mneia_handoff_create` / `mneia handoff`, picked up with `mneia_handoff_receive` / `mneia pickup` |
+
+**Reach the product only through the surfaces a customer has** — the MCP tools or the `mneia` CLI.
+Not `curl` against `/api/v1/*`, not a `psql` session against the store, not reading `handoff.rendered`
+out of Postgres because it is faster. Those shortcuts work, and that is the problem: every one of
+them steps over the exact code path a paying user cannot step over, and the bug hides in the step
+you skipped.
+
+**When the product cannot do the thing, that is the finding — not an obstacle to route around.**
+File it and say so plainly. Reaching past a broken surface to finish your task converts a reportable
+defect into a private workaround, and the next customer to hit it will not have your database
+credentials.
+
+This is not ceremony. Receiving one handoff on 2026-08-19 surfaced two defects inside a minute: the
+artifact carried ~88 items where §10.3's example carries thirty, because `assembleHandoff` has
+neither ranking nor a budget; and its Constraints section was full of doc fragments, because the
+interop importer writes every markdown bullet as a load-bearing constraint. Neither was visible from
+reading the code. Both were obvious the moment the artifact had to be *used*.
+
+Two exceptions, and they are narrow. A **schema migration** goes through `pnpm db:migrate`, which is
+an operator tool with no customer equivalent. A **one-off data repair** goes through a reviewed
+script under `scripts/`, using the same scoped store the application uses, so RLS still applies —
+never ad-hoc SQL. Anything else that wants to bypass the product needs the founder's ruling first.
+
 ## Working agreement
 
 - **Linear is the source of truth for status.** Every unit of work starts by moving a ticket to
