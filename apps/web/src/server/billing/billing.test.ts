@@ -195,6 +195,44 @@ describe('stateAfterSubscription', () => {
     expect(next.billingStatus).toBe('canceled');
   });
 
+  it.each(['canceled', 'unpaid', 'incomplete'])(
+    'never silently downgrades a Pro workspace to solo on a %s webhook',
+    (subscriptionStatus) => {
+      const next = stateAfterSubscription({
+        current: { ...current, plan: 'pro' },
+        subscriptionStatus,
+        seats: 1,
+        customerRef: 'cus_1',
+      });
+
+      expect(next.plan).toBe('pro');
+      expect(next.seatsPurchased).toBeNull();
+    },
+  );
+
+  it('still promotes a Pro workspace that buys a team subscription', () => {
+    const next = stateAfterSubscription({
+      current: { ...current, plan: 'pro' },
+      subscriptionStatus: 'active',
+      seats: 3,
+      customerRef: 'cus_1',
+    });
+
+    expect(next.plan).toBe('team');
+    expect(next.seatsPurchased).toBe(3);
+  });
+
+  it('keeps enterprise sticky, as it already was', () => {
+    const next = stateAfterSubscription({
+      current: { ...current, plan: 'enterprise' },
+      subscriptionStatus: 'canceled',
+      seats: 4,
+      customerRef: 'cus_1',
+    });
+
+    expect(next.plan).toBe('enterprise');
+  });
+
   it.each(['unpaid', 'incomplete'])(
     'records a retryable failed-payment Stripe status without Team entitlement',
     (subscriptionStatus) => {

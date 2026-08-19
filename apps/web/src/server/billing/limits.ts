@@ -6,6 +6,7 @@ export interface PlanLimits {
 
 const LIMITS: Record<WorkspacePlan, PlanLimits> = {
   solo: { projects: 1 },
+  pro: { projects: null },
   team: { projects: null },
   enterprise: { projects: null },
 };

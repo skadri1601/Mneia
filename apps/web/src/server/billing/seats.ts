@@ -95,12 +95,21 @@ export interface UpgradeRequest {
   readonly customerRef: string;
 }
 
+const NOT_GOVERNED_BY_TEAM_SUBSCRIPTION: readonly WorkspacePlan[] = ['pro', 'enterprise'];
+
+const planAfterSubscription = (current: WorkspacePlan, teamEntitled: boolean): WorkspacePlan => {
+  if (teamEntitled) {
+    return current === 'enterprise' ? 'enterprise' : 'team';
+  }
+  return NOT_GOVERNED_BY_TEAM_SUBSCRIPTION.includes(current) ? current : 'solo';
+};
+
 export const stateAfterSubscription = (request: UpgradeRequest): BillingState => {
   const status = billingStatusFor(request.subscriptionStatus);
   const teamEntitled = stripeStatusHasTeamEntitlement(request.subscriptionStatus);
 
   return {
-    plan: request.current.plan === 'enterprise' ? 'enterprise' : teamEntitled ? 'team' : 'solo',
+    plan: planAfterSubscription(request.current.plan, teamEntitled),
     billingStatus: status,
     seatsPurchased: teamEntitled ? request.seats : null,
     billingCustomerRef: request.customerRef,
