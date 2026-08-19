@@ -135,6 +135,7 @@ jobs:
           IMAGE: ${{ needs.build.outputs.image }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
           MNEIA_INVITE_FROM: ${{ vars.MNEIA_INVITE_FROM }}
           MNEIA_APP_ORIGIN: ${{ vars.MNEIA_APP_ORIGIN }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
@@ -147,6 +148,7 @@ jobs:
              && export MNEIA_WEB_IMAGE='${IMAGE}' \
              && export OPENAI_API_KEY='${OPENAI_API_KEY}' \
              && export ANTHROPIC_API_KEY='${ANTHROPIC_API_KEY}' \
+             && export SENTRY_DSN='${SENTRY_DSN}' \
              && export MNEIA_INVITE_FROM='${MNEIA_INVITE_FROM}' \
              && export MNEIA_APP_ORIGIN='${MNEIA_APP_ORIGIN}' \
              && export STRIPE_SECRET_KEY='${STRIPE_SECRET_KEY}' \
