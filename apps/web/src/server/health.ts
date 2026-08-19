@@ -44,10 +44,13 @@ export interface HealthReport {
   readonly extractionFallback: ModelHealth;
   readonly embeddings: ModelHealth;
   readonly billing: BillingHealth;
+  readonly errorReporting: ErrorReportingHealth;
   readonly detail?: string;
 }
 
 export type BillingHealth = 'configured' | 'not_configured';
+
+export type ErrorReportingHealth = 'configured' | 'no_dsn';
 
 const keyed = (value: string | undefined): ModelHealth =>
   value !== undefined && value.trim().length > 0 ? 'configured' : 'no_key';
@@ -70,6 +73,16 @@ export const inspectBillingPosture = (env: EnvLike = process.env): BillingHealth
   )
     ? 'configured'
     : 'not_configured';
+
+export const inspectErrorReportingPosture = (env: EnvLike = process.env): ErrorReportingHealth =>
+  env.SENTRY_DSN !== undefined && env.SENTRY_DSN.trim().length > 0 ? 'configured' : 'no_dsn';
+
+export const describeErrorReportingPosture = (
+  errorReporting: ErrorReportingHealth,
+): string | null =>
+  errorReporting === 'configured'
+    ? null
+    : 'SENTRY_DSN is unset, so every unhandled error on this deployment is lost silently and nothing reports that it happened';
 
 export const describeBillingPosture = (billing: BillingHealth): string | null =>
   billing === 'configured'
@@ -241,6 +254,8 @@ export const checkHealth = async (
   const modelDetail = describeModelPosture(models);
   const billing = inspectBillingPosture(env);
   const billingDetail = describeBillingPosture(billing);
+  const errorReporting = inspectErrorReportingPosture(env);
+  const errorReportingDetail = describeErrorReportingPosture(errorReporting);
   const plan = planTelemetry(env);
   const postureDetail = describeTelemetryPosture(plan);
   let session: PostgresSession | undefined;
@@ -272,6 +287,7 @@ export const checkHealth = async (
       telemetryDetail,
       modelDetail,
       billingDetail,
+      errorReportingDetail,
     ].filter((part): part is string => part !== undefined && part !== null);
 
     const report: HealthReport = {
@@ -283,6 +299,7 @@ export const checkHealth = async (
       telemetry,
       ...models,
       billing,
+      errorReporting,
     };
 
     return combined.length === 0 ? report : { ...report, detail: combined.join('; ') };
@@ -296,6 +313,7 @@ export const checkHealth = async (
       telemetry: plan.posture,
       ...models,
       billing,
+      errorReporting,
       detail: describe(error),
     };
   } finally {
