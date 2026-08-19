@@ -23,6 +23,9 @@ const STRIPE_KEYS = {
   STRIPE_PRICE_ID: 'price_x',
   STRIPE_WEBHOOK_SECRET: 'whsec_x',
 };
+const SENTRY_KEYS = { SENTRY_DSN: 'https://key@o1.ingest.sentry.io/1' };
+const NO_SENTRY_DETAIL =
+  'SENTRY_DSN is unset, so every unhandled error on this deployment is lost silently and nothing reports that it happened';
 const NO_BILLING_DETAIL =
   'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /billing returns 503 and no workspace can subscribe — set the three repository secrets and re-run the deploy';
 const NO_MODELS = {
@@ -118,7 +121,8 @@ describe('checkHealth', () => {
       ...CURRENT_SCHEMA,
       ...NO_MODELS,
       billing: 'not_configured',
-      detail: `${NO_MODEL_DETAIL}; ${NO_BILLING_DETAIL}`,
+      errorReporting: 'no_dsn',
+      detail: `${NO_MODEL_DETAIL}; ${NO_BILLING_DETAIL}; ${NO_SENTRY_DETAIL}`,
     });
     expect(session.statements.at(0)).toBe('SELECT 1');
   });
@@ -261,7 +265,7 @@ describe('model posture', () => {
     const report = await checkHealth(
       sourceOf(session),
       noEscapeHatch,
-      { ...BOTH_KEYS, ...STRIPE_KEYS },
+      { ...BOTH_KEYS, ...STRIPE_KEYS, ...SENTRY_KEYS },
       noDelivery,
     );
 
@@ -274,6 +278,7 @@ describe('model posture', () => {
       extractionFallback: 'configured',
       embeddings: 'configured',
       billing: 'configured',
+      errorReporting: 'configured',
     });
   });
 
@@ -297,6 +302,40 @@ describe('model posture', () => {
     const report = await checkHealth(sourceOf(session), noEscapeHatch, BOTH_KEYS, noDelivery);
 
     expect(report.billing).toBe('not_configured');
+    expect(report.status).toBe('ok');
+  });
+
+  it('reports errorReporting no_dsn when SENTRY_DSN is unset or blank', async () => {
+    const session = new RecordingSession();
+
+    for (const env of [BOTH_KEYS, { ...BOTH_KEYS, SENTRY_DSN: '   ' }]) {
+      const report = await checkHealth(sourceOf(session), noEscapeHatch, env, noDelivery);
+
+      expect(report.errorReporting).toBe('no_dsn');
+      expect(report.detail).toContain('lost silently');
+    }
+  });
+
+  it('reports errorReporting configured once SENTRY_DSN is set', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(
+      sourceOf(session),
+      noEscapeHatch,
+      { ...BOTH_KEYS, ...SENTRY_KEYS },
+      noDelivery,
+    );
+
+    expect(report.errorReporting).toBe('configured');
+    expect(report.detail ?? '').not.toContain('lost silently');
+  });
+
+  it('does not degrade status for a missing DSN, because the app still serves', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, BOTH_KEYS, noDelivery);
+
+    expect(report.errorReporting).toBe('no_dsn');
     expect(report.status).toBe('ok');
   });
 });
