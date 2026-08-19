@@ -32,6 +32,12 @@ import type {
   ProposeRequest,
   ReviewedCandidate,
 } from './commands/checkpoint.js';
+import type {
+  CreateHandoffRequest,
+  HandoffApi,
+  ListOpenHandoffsRequest,
+  PickupRequest,
+} from './commands/handoff.js';
 import type { AttachRequest, AttachResult, InitApi } from './commands/init.js';
 import type { LogApi, LogPage, LogRequest } from './commands/log.js';
 import type { StatusApi, StatusReport, StatusRequest } from './commands/status.js';
@@ -181,6 +187,30 @@ export const httpBriefApi: BriefApi = {
       task: request.task,
       tokenBudget: request.tokenBudget,
     });
+  },
+};
+
+export const httpHandoffApi: HandoffApi = {
+  async create(request: CreateHandoffRequest) {
+    const { store } = await connect(request.config);
+    await requireProject(store, request.config, 'handoff');
+    return store.handoff({
+      project: request.config.project,
+      nextAction: request.nextAction,
+      toActor: request.toActor,
+      ...(request.supersededWindowDays === undefined
+        ? {}
+        : { supersededWindowDays: request.supersededWindowDays }),
+    });
+  },
+  async receive(request: PickupRequest) {
+    const { store } = await connect(request.config);
+    return store.receiveHandoff(request.id, store.scope.actorId);
+  },
+  async listOpen(request: ListOpenHandoffsRequest) {
+    const { store } = await connect(request.config);
+    const project = await requireProject(store, request.config, 'pickup');
+    return store.listOpenHandoffs(project.id);
   },
 };
 

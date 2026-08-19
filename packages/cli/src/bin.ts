@@ -3,9 +3,11 @@ import { VERSION } from '@mneia/core';
 import type { CommandDefinition, CommandIo } from './command.js';
 import { briefCommand } from './commands/brief.js';
 import { checkpointCommand } from './commands/checkpoint.js';
+import { handoffCommand } from './commands/handoff.js';
 import { initCommand } from './commands/init.js';
 import { logCommand } from './commands/log.js';
 import { loginCommand } from './commands/login.js';
+import { pickupCommand } from './commands/pickup.js';
 import { statusCommand } from './commands/status.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { route } from './router.js';
@@ -29,6 +31,8 @@ const io: CommandIo = {
 const commands: readonly CommandDefinition[] = [
   initCommand,
   briefCommand,
+  handoffCommand,
+  pickupCommand,
   checkpointCommand,
   logCommand,
   statusCommand,
