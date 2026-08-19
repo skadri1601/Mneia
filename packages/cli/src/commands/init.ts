@@ -15,6 +15,7 @@ import { httpInitApi } from '../http-api.js';
 import {
   AGENTS_FILE,
   assertFenceIntact,
+  assertGeneratedSectionUnedited,
   type ImportedConstraint,
   importConstraints,
   readTextFile,
@@ -390,7 +391,12 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
       const imported = await importConstraints(repoRoot);
 
       const agentsPath = join(repoRoot, AGENTS_FILE);
-      assertFenceIntact((await readTextFile(agentsPath)) ?? '', agentsPath);
+      const agentsText = (await readTextFile(agentsPath)) ?? '';
+      if (force) {
+        assertFenceIntact(agentsText, agentsPath);
+      } else {
+        assertGeneratedSectionUnedited(agentsText, agentsPath);
+      }
 
       const token = await deps.resolveToken(invocation.io.env);
       const attach = await callApi(endpoint, () =>

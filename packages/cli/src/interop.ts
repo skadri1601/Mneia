@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Stats } from 'node:fs';
 import { readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
@@ -5,6 +6,21 @@ import { CliError } from './command.js';
 
 export const FENCE_BEGIN = '<!-- mneia:begin -->';
 export const FENCE_END = '<!-- mneia:end -->';
+
+export const FENCE_BEGIN_PREFIX = '<!-- mneia:begin';
+
+const DIGEST_LENGTH = 16;
+const FENCE_BEGIN_PATTERN = new RegExp(
+  `${FENCE_BEGIN_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?: sha=([0-9a-f]{${DIGEST_LENGTH}}))? -->`,
+);
+
+export function digestOf(body: string): string {
+  return createHash('sha256').update(body.trim(), 'utf8').digest('hex').slice(0, DIGEST_LENGTH);
+}
+
+export function fenceBeginFor(body: string): string {
+  return `${FENCE_BEGIN_PREFIX} sha=${digestOf(body)} -->`;
+}
 
 export const AGENTS_FILE = 'AGENTS.md';
 export const CLAUDE_FILE = 'CLAUDE.md';
@@ -194,7 +210,7 @@ function isIgnoredLine(line: string, state: ScanState): boolean {
     state.inGenerated = !line.includes(FENCE_END);
     return true;
   }
-  if (line.includes(FENCE_BEGIN)) {
+  if (line.includes(FENCE_BEGIN_PREFIX)) {
     state.inGenerated = !line.includes(FENCE_END);
     return true;
   }
@@ -349,7 +365,7 @@ function corruptedFence(path: string, detail: string): CliError {
 }
 
 export function assertFenceIntact(text: string, path: string): void {
-  const begins = countOccurrences(text, FENCE_BEGIN);
+  const begins = countOccurrences(text, FENCE_BEGIN_PREFIX);
   const ends = countOccurrences(text, FENCE_END);
 
   if (begins === 0 && ends === 0) {
@@ -367,9 +383,57 @@ export function assertFenceIntact(text: string, path: string): void {
   if (begins === 0) {
     throw corruptedFence(path, `the ${FENCE_END} marker has no matching ${FENCE_BEGIN}`);
   }
-  if (text.indexOf(FENCE_END) < text.indexOf(FENCE_BEGIN)) {
+  if (text.indexOf(FENCE_END) < text.indexOf(FENCE_BEGIN_PREFIX)) {
     throw corruptedFence(path, 'the end marker comes before the begin marker');
   }
+  if (FENCE_BEGIN_PATTERN.exec(text) === null) {
+    throw corruptedFence(
+      path,
+      `the begin marker is not ${FENCE_BEGIN} and does not carry a readable sha= stamp`,
+    );
+  }
+}
+
+interface FenceLocation {
+  readonly beginStart: number;
+  readonly beginEnd: number;
+  readonly endStart: number;
+  readonly digest: string | null;
+  readonly body: string;
+}
+
+function locateFence(text: string): FenceLocation | null {
+  const match = FENCE_BEGIN_PATTERN.exec(text);
+  const endStart = text.indexOf(FENCE_END);
+  if (match === null || endStart < 0) {
+    return null;
+  }
+  const beginEnd = match.index + match[0].length;
+  return {
+    beginStart: match.index,
+    beginEnd,
+    endStart,
+    digest: match[1] ?? null,
+    body: text.slice(beginEnd, endStart).trim(),
+  };
+}
+
+export function assertGeneratedSectionUnedited(text: string, path: string): void {
+  assertFenceIntact(text, path);
+
+  const fence = locateFence(text);
+  if (fence === null || fence.digest === null) {
+    return;
+  }
+  if (digestOf(fence.body) === fence.digest) {
+    return;
+  }
+
+  throw new CliError(
+    'failed',
+    `${path} has hand edits inside the Mneia generated section, and the next write would discard them`,
+    `move what you want to keep outside the ${FENCE_BEGIN_PREFIX} ... ${FENCE_END} markers, or run mneia init --force to discard them`,
+  );
 }
 
 function separatorFor(existing: string): string {
@@ -380,7 +444,7 @@ function separatorFor(existing: string): string {
 }
 
 export function applyGeneratedSection(existing: string, body: string, path: string): string {
-  if (body.includes(FENCE_BEGIN) || body.includes(FENCE_END)) {
+  if (body.includes(FENCE_BEGIN_PREFIX) || body.includes(FENCE_END)) {
     throw new CliError(
       'failed',
       'refusing to write a generated section whose body contains a Mneia fence marker',
@@ -390,17 +454,17 @@ export function applyGeneratedSection(existing: string, body: string, path: stri
 
   assertFenceIntact(existing, path);
 
-  const fenced = `${FENCE_BEGIN}\n${body.trim()}\n${FENCE_END}`;
-  const start = existing.indexOf(FENCE_BEGIN);
+  const trimmed = body.trim();
+  const fenced = `${fenceBeginFor(trimmed)}\n${trimmed}\n${FENCE_END}`;
+  const fence = locateFence(existing);
 
-  if (start < 0) {
+  if (fence === null) {
     return existing.length === 0
       ? `${fenced}\n`
       : `${existing}${separatorFor(existing)}${fenced}\n`;
   }
 
-  const end = existing.indexOf(FENCE_END);
-  return `${existing.slice(0, start)}${fenced}${existing.slice(end + FENCE_END.length)}`;
+  return `${existing.slice(0, fence.beginStart)}${fenced}${existing.slice(fence.endStart + FENCE_END.length)}`;
 }
 
 export async function writeGeneratedSection(path: string, body: string): Promise<WriteBackResult> {

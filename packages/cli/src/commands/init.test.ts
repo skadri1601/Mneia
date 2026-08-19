@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CommandIo } from '../command.js';
 import { EXIT_AUTH, EXIT_FAILED, EXIT_NETWORK, EXIT_OK, EXIT_USAGE } from '../command.js';
 import { loadProjectConfig, resolveToken } from '../config.js';
-import { FENCE_BEGIN, FENCE_END } from '../interop.js';
+import { FENCE_BEGIN, FENCE_BEGIN_PREFIX, FENCE_END } from '../interop.js';
 import { route } from '../router.js';
 import { type AttachRequest, createInitCommand, type InitApi } from './init.js';
 
@@ -155,7 +155,7 @@ describe('mneia init', () => {
       'This repo is already bound to the Mneia project acme/checkout.',
     );
     expect(second.stdout).toContain('generated section already current');
-    expect(occurrences(agentsAfterSecond, FENCE_BEGIN)).toBe(1);
+    expect(occurrences(agentsAfterSecond, FENCE_BEGIN_PREFIX)).toBe(1);
     expect(occurrences(agentsAfterSecond, FENCE_END)).toBe(1);
     expect(agentsAfterSecond.startsWith('# Our repo\n\n- A human rule we care about\n')).toBe(true);
   });
@@ -168,7 +168,7 @@ describe('mneia init', () => {
 
     const agents = await readFile(join(root, 'AGENTS.md'), 'utf8');
 
-    expect(agents.startsWith(FENCE_BEGIN)).toBe(true);
+    expect(agents.startsWith(FENCE_BEGIN_PREFIX)).toBe(true);
     expect(agents).toContain('mneia brief');
   });
 
@@ -180,7 +180,7 @@ describe('mneia init', () => {
     const agents = await readFile(join(root, 'AGENTS.md'), 'utf8');
 
     expect(agents.startsWith(original)).toBe(true);
-    expect(agents).toContain(FENCE_BEGIN);
+    expect(agents).toContain(FENCE_BEGIN_PREFIX);
   });
 
   it('imports constraints from AGENTS.md, CLAUDE.md, and .cursor/rules', async () => {
