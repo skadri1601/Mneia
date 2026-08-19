@@ -1,7 +1,7 @@
 import type { CommandDefinition, CommandIo } from './command.js';
 import { CliError, EXIT_FAILED, EXIT_OK, EXIT_USAGE } from './command.js';
 
-export const M1_COMMAND_NAMES = [
+export const SHIPPED_COMMAND_NAMES = [
   'init',
   'brief',
   'checkpoint',
@@ -9,15 +9,15 @@ export const M1_COMMAND_NAMES = [
   'status',
   'login',
   'whoami',
+  'handoff',
+  'pickup',
 ] as const;
 
-export type M1CommandName = (typeof M1_COMMAND_NAMES)[number];
+export type ShippedCommandName = (typeof SHIPPED_COMMAND_NAMES)[number];
 
-const M1_COMMAND_SET: ReadonlySet<string> = new Set(M1_COMMAND_NAMES);
+const SHIPPED_COMMAND_SET: ReadonlySet<string> = new Set(SHIPPED_COMMAND_NAMES);
 
 const LATER_SURFACE_REASONS: Readonly<Record<string, string>> = {
-  handoff: 'handoff ships in M2',
-  pickup: 'pickup ships in M2',
   conflicts: 'conflicts ships in M4',
   sync: 'there is no sync - every mneia command is an authenticated API call',
 };
@@ -154,9 +154,9 @@ export function assertRegistrableCommands(commands: readonly CommandDefinition[]
   const seen = new Set<string>();
 
   for (const command of commands) {
-    if (!M1_COMMAND_SET.has(command.name)) {
+    if (!SHIPPED_COMMAND_SET.has(command.name)) {
       throw new Error(
-        `command "${command.name}" is outside the M1 CLI surface (${M1_COMMAND_NAMES.join(', ')}); do not register a command ahead of its milestone`,
+        `command "${command.name}" is outside the shipped CLI surface (${SHIPPED_COMMAND_NAMES.join(', ')}); do not register a command ahead of its milestone`,
       );
     }
     if (seen.has(command.name)) {

@@ -674,3 +674,10 @@ export const ReceiveHandoffWireSchema = z.object({
 });
 
 export type ReceiveHandoffWire = z.infer<typeof ReceiveHandoffWireSchema>;
+
+export const ListOpenHandoffsWireSchema = z.object({
+  project: z.string().min(1),
+  limit: z.number().int().min(1).max(MAX_ITEM_LIMIT).optional(),
+});
+
+export type ListOpenHandoffsWire = z.infer<typeof ListOpenHandoffsWireSchema>;

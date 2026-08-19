@@ -4,6 +4,7 @@ import type {
   CreateHandoffWire,
   Handoff,
   HandoffWire,
+  ListOpenHandoffsWire,
   ReceiveHandoffWire,
   ScopedStore,
   TelemetryEmitter,
@@ -107,4 +108,23 @@ export const handleGetHandoff = async (
 ): Promise<{ handoff: HandoffWire | null }> => {
   const handoff = await store.getHandoff(id);
   return { handoff: handoff === null ? null : encodeHandoff(handoff) };
+};
+
+export const handleListOpenHandoffs = async (
+  store: ScopedStore,
+  input: ListOpenHandoffsWire,
+): Promise<{ handoffs: readonly HandoffWire[] }> => {
+  const project = await resolveProject(store, input.project);
+  if (project === null) {
+    throw new ApiRequestError(
+      'not_found',
+      `expected project "${input.project}" to name a project visible in this workspace; found none — check the slug with mneia status`,
+    );
+  }
+
+  const handoffs = await store.listOpenHandoffs(
+    project.id,
+    ...(input.limit === undefined ? [] : [input.limit]),
+  );
+  return { handoffs: handoffs.map(encodeHandoff) };
 };

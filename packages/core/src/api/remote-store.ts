@@ -52,6 +52,7 @@ const ContextItemsEnvelope = z.object({ items: z.array(ContextItemWireSchema) })
 const CheckpointWriteEnvelope = z.object({ result: CheckpointWriteResultWireSchema });
 const SliceEnvelope = z.object({ slice: SliceWireSchema });
 const HandoffEnvelope = z.object({ handoff: HandoffWireSchema });
+const HandoffsEnvelope = z.object({ handoffs: z.array(HandoffWireSchema) });
 const NullableHandoffEnvelope = z.object({ handoff: nullable(HandoffWireSchema) });
 
 export interface RemoteStoreOptions {
@@ -258,6 +259,13 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
         NullableHandoffEnvelope,
       );
       return handoff === null ? null : decodeHandoff(handoff);
+    },
+    async listOpenHandoffs(projectId: Uuid, limit?: number): Promise<readonly Handoff[]> {
+      const { handoffs } = await transport.request('/api/v1/handoff/open', HandoffsEnvelope, {
+        project: projectId,
+        ...(limit === undefined ? {} : { limit }),
+      });
+      return handoffs.map(decodeHandoff);
     },
     async handoff(request: RemoteCreateHandoffRequest): Promise<Handoff> {
       const { handoff } = await transport.request('/api/v1/handoff', HandoffEnvelope, {

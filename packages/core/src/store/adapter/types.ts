@@ -237,6 +237,7 @@ export interface ScopedStore {
   createHandoff(handoff: NewHandoff): Promise<Handoff>;
   receiveHandoff(id: Uuid, receivedBy: Uuid): Promise<Handoff>;
   getHandoff(id: Uuid): Promise<Handoff | null>;
+  listOpenHandoffs(projectId: Uuid, limit?: number): Promise<readonly Handoff[]>;
 
   recordConflict(conflict: NewConflict): Promise<Conflict>;
   listOpenConflicts(projectId: Uuid): Promise<readonly Conflict[]>;

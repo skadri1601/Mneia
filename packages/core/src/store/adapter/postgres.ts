@@ -1417,6 +1417,19 @@ class PostgresScopedStore implements ReviewCapableStore {
     return row === undefined ? null : toHandoff(row);
   }
 
+  async listOpenHandoffs(projectId: Uuid, limit?: number): Promise<readonly Handoff[]> {
+    assertUuid(projectId, 'projectId');
+    const rows = await this.rows(
+      `SELECT ${HANDOFF_COLUMNS}
+         FROM handoff
+        WHERE workspace_id = $1 AND project_id = $2 AND received_at IS NULL
+        ORDER BY created_at DESC, id DESC
+        LIMIT $3`,
+      [this.scope.workspaceId, projectId, resolveLimit(limit, 'limit')],
+    );
+    return rows.map(toHandoff);
+  }
+
   async recordConflict(conflict: NewConflict): Promise<Conflict> {
     assertUuid(conflict.projectId, 'conflict.projectId');
     assertUuid(conflict.itemA, 'conflict.itemA');
