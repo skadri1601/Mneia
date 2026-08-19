@@ -99,6 +99,34 @@ does not share `.env` — copy it in yourself, it is gitignored and it is what `
 `packages/mcp-server/src/tools/handoff*.ts` · `packages/mcp-server/src/tools/registry.ts` ·
 `apps/web/src/app/api/v1/handoff/**`
 
+> ## Lane A status — 2026-08-19
+>
+> **A1, A2, A4 and A6 are done and merged.** MNE-89, 90, 91, 93, 94, 95 are `Done`; five PRs —
+> #135 renderer, #136 assembly and API, #139 CLI, #140 MCP tools, #141 the site correction.
+> Handoff now runs end to end: `mneia handoff` / `mneia pickup`, `mneia_handoff_create` /
+> `mneia_handoff_receive`, three API routes, and `listOpenHandoffs`. **No `unsupported(..., 'M2')`
+> stubs remain in `remote-store.ts`.**
+>
+> **What is left in lane A**, in the order it is worth doing:
+>
+> 1. **MNE-92's other half — the live link.** Freeze is real and tested. The navigation from a frozen
+>    artifact to the current state of its items is not built, and #141 removed the claim from the
+>    published page rather than leave it false.
+> 2. **MNE-96 — `handoff.time_to_first_action`.** Deliberately not wired. The event carries `elapsedMs`
+>    and the honest reading is receipt → the receiver's *first action*, which nothing records. Emitting
+>    create-to-receive under that name would put a number in the arbitration dataset that does not mean
+>    what the name says. **Define "first action" before wiring it.**
+> 3. **MNE-97 — format spec v0.** Standing rule 8 keeps it internal. It goes in `docs/`, never on
+>    `apps/site`.
+>
+> **Two findings neither lane has been told to fix**, both about MNE-51's coverage scan:
+>
+> - Its `SURFACES` list is `packages/cli/src/commands`, so the CLI's `.receiveHandoff(` call in
+>   `http-api.ts` is **outside the scan**. It passes by file placement, not by being correct.
+> - `EXEMPT_CALLS` in `coverage.test.ts` now carries one file-scoped exemption, for the MCP tool:
+>   the hosted API emits `handoff.received`, so emitting client-side too would double-count the
+>   arbitration dataset. Read that entry before adding another.
+
 ### A1 — MNE-89, MNE-91 · The renderer and the provenance line
 `handoff.rendered` is a required, non-empty column with nothing to populate it. Build to **§10.3's
 worked example**, not to taste: header, **Next action**, State, Constraints, Decisions and why, Open
