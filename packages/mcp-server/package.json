@@ -1,6 +1,6 @@
 {
   "name": "@mneia/mcp-server",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "MCP server exposing Mneia to Claude Code, Cursor, Codex, and any MCP client.",
   "keywords": [
     "mneia",
