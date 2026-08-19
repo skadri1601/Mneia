@@ -5,7 +5,7 @@ export const HANDOFF_DOC: DocPage = {
   name: 'Handoff',
   title: 'Handoff',
   description:
-    'The handoff artifact: its sections, the superseded-recently block, freeze semantics and the live link, directed and open handoffs, receiving one, and the measurement that proves it works.',
+    'The handoff artifact: its sections, the superseded-recently block, freeze semantics, directed and open handoffs, and what receiving one records.',
   eyebrow: 'Operations',
   heading: 'The artifact you receive, not a store you query.',
   lead: 'A handoff is produced at the moment work stops and consumed at the moment it resumes. Everything else in Mneia exists to make this object accurate.',
@@ -67,7 +67,7 @@ export const HANDOFF_DOC: DocPage = {
             'Nothing else is blocking.',
             '',
             '## Constraints (do not violate)',
-            '- [human · confirmed 2026-07-14] No downtime window. Cutover must be online.',
+            '- [human · Saad · confirmed 2026-07-14] No downtime window. Cutover must be online.',
             '- [agent · claude-code · unconfirmed] Stripe webhook ordering is not guaranteed.',
             '',
             '## Superseded recently (do not re-propose)',
@@ -109,21 +109,21 @@ export const HANDOFF_DOC: DocPage = {
     },
     {
       id: 'freeze',
-      heading: 'Frozen prose, live link',
+      heading: 'Frozen prose, and the items behind it',
       blocks: [
         {
           kind: 'text',
           paragraphs: [
             'The rendered markdown is frozen at creation. What the sender wrote is what the receiver reads, whatever happens to the project afterwards — an artifact that rewrites itself is not receivable, because the two people can no longer be sure they read the same thing.',
-            'Alongside it, the item set is stored as data rather than only as prose. That is what backs the live link: the receiver can move from the frozen document to the current state of any item in it and see what has changed since.',
+            'Alongside it, the items the artifact was built from are stored as data rather than only as prose. The frozen render is the record of what was communicated; the item set is what lets the current state of any line in it be established separately.',
           ],
         },
         {
           kind: 'bullets',
           items: [
             'The frozen render is the record of what was communicated.',
-            'The item links are the route to what is true now.',
-            'Both are needed. Either alone is a worse object.',
+            'The item set is what makes the render reproducible and auditable rather than opaque prose.',
+            'Both are kept. Either alone is a worse object.',
           ],
         },
       ],
@@ -135,21 +135,21 @@ export const HANDOFF_DOC: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'A handoff can name a recipient or leave it open. A directed handoff goes to one person and appears in their inbox. An open handoff names nobody and may be picked up by whoever takes the work — which is the shape that fits the end of a day, a rotation, or work being put down without a decision about who resumes it.',
-            'Both are received the same way. Receiving marks the handoff, records who took it, and starts the clock described below.',
+            'A handoff can name a recipient or leave it open. A directed handoff goes to one person, and only that person can receive it. An open handoff names nobody and may be picked up by whoever takes the work — which is the shape that fits the end of a day, a rotation, or work being put down without a decision about who resumes it.',
+            'Both are received the same way, and receiving records who took it. Open handoffs on a project can be listed, so the receiver can find what is waiting rather than needing to be told an identifier.',
           ],
         },
       ],
     },
     {
       id: 'measurement',
-      heading: 'Does it actually reduce pickup cost',
+      heading: 'The claim this has to answer',
       blocks: [
         {
           kind: 'text',
           paragraphs: [
-            'The product claim is that receiving a handoff is cheaper than reconstructing context, so the gap between receiving one and taking the first real action on the work is measured directly.',
-            'It is measured across humans as well as within one person, because the two are different problems. Picking up your own work from yesterday is a memory problem; picking up a colleague’s is a transfer problem, and only the second one tests the claim.',
+            'The product claim is that receiving a handoff is cheaper than reconstructing context. The number that settles it is the gap between receiving one and taking the first real action on the work.',
+            'That gap has to be read across people as well as within one person, because the two are different problems. Picking up your own work from yesterday is a memory problem; picking up a colleague’s is a transfer problem, and only the second one tests the claim.',
           ],
         },
         {
