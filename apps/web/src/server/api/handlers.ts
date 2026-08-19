@@ -29,7 +29,9 @@ import {
   encodeSlice,
   resolveProject,
 } from '@mneia/core';
+import { describeProjectLimit, projectLimit } from '../billing/limits.js';
 import type { MembershipStore } from '../store/postgres-membership-store.js';
+import type { PlanStore } from '../store/postgres-plan-store.js';
 
 export class ApiRequestError extends Error {
   readonly code: ApiErrorCode;
@@ -67,6 +69,7 @@ export const handleGetProject = async (
 
 export interface CreateProjectDeps {
   readonly memberships: MembershipStore;
+  readonly plans: PlanStore;
 }
 
 export const handleCreateProject = async (
@@ -85,6 +88,12 @@ export const handleCreateProject = async (
       'forbidden',
       `only a workspace lead can create a project, and this token belongs to a ${role ?? 'non-member'} — no project named "${input.slug}" exists yet. Ask a lead to create it, then run mneia init again to attach to it.`,
     );
+  }
+
+  const usage = await deps.plans.projectUsage(store.scope);
+  const decision = projectLimit(usage.plan, usage.activeProjects);
+  if (!decision.allowed) {
+    throw new ApiRequestError('forbidden', describeProjectLimit(decision, input.slug, usage.slugs));
   }
 
   try {
