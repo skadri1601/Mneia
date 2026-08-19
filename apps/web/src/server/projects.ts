@@ -96,17 +96,19 @@ export const createProject = async ({
     );
   }
 
-  const active = await store.listProjects(account, { includeArchived: false });
-  const decision = projectLimit(account.workspace.plan, active.length);
-  if (!decision.allowed) {
-    throw new ProjectControlError(
-      'forbidden',
-      describeProjectLimit(
-        decision,
-        normalizedSlug,
-        active.map((project) => project.slug),
-      ),
-    );
+  if (account.membership.role === 'lead') {
+    const active = await store.listProjects(account, { includeArchived: false });
+    const decision = projectLimit(account.workspace.plan, active.length);
+    if (!decision.allowed) {
+      throw new ProjectControlError(
+        'forbidden',
+        describeProjectLimit(
+          decision,
+          normalizedSlug,
+          active.map((project) => project.slug),
+        ),
+      );
+    }
   }
 
   return store.createProject(account, {
