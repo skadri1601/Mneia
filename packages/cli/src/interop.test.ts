@@ -415,3 +415,39 @@ describe('the generated section body', () => {
     expect(() => applyGeneratedSection('', body, 'AGENTS.md')).not.toThrow();
   });
 });
+
+describe('term definitions are not constraints', () => {
+  const titlesOf = (lines: readonly string[]): readonly string[] =>
+    extractConstraints({ path: 'AGENTS.md', text: lines.join('\n') }).map(
+      (constraint) => constraint.title,
+    );
+
+  it('skips the definition rows that a doc bullet list is made of', () => {
+    expect(
+      titlesOf([
+        '- **Rehydrate** — assemble the minimal high-signal context slice for the next task',
+        '- **Checkpoint** — capture decisions, constraints, and open questions at a boundary',
+        '- **Sentry** — production errors. Pull and triage them directly.',
+        '- **Vercel** — deploys, build logs, runtime errors, rollbacks.',
+        '- `pnpm build` — tsc --build across packages',
+      ]),
+    ).toEqual([]);
+  });
+
+  it('keeps a rule whose subject happens to be bolded, because the clause is normative', () => {
+    expect(
+      titlesOf([
+        '- **Do not charge for the individual tier.** §14.',
+        '- **A ticket is Done only when its own Done when clause is satisfied** — not when the code is written',
+        '- **Secrets** — never commit them, in any file',
+        '- **Never commit secrets**, .env files, or user content',
+      ]).length,
+    ).toBe(4);
+  });
+
+  it('keeps an ordinary bullet that carries no bold lead at all', () => {
+    expect(
+      titlesOf(['- Match the conventions of surrounding code before introducing new ones.']),
+    ).toEqual(['Match the conventions of surrounding code before introducing new ones.']);
+  });
+});

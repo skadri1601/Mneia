@@ -164,7 +164,7 @@ export const httpInitApi: InitApi = {
                   title: constraint.title,
                   body: constraint.body,
                   sourceRef: constraint.sourceRef,
-                  loadBearing: true,
+                  loadBearing: false,
                 },
               })),
             })

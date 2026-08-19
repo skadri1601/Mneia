@@ -37,6 +37,11 @@ const BULLET = /^ {0,3}(?:[-*+]|\d{1,9}[.)])\s+(.*)$/;
 const CODE_FENCE = /^ {0,3}(```|~~~)/;
 const FRONTMATTER_DELIMITER = /^---\s*$/;
 const HAS_WORD_CHARACTER = /[A-Za-z0-9]/;
+const TERM_DEFINITION = /^(?:\*\*([^*]+)\*\*|`([^`]+)`)\s*[—–:-]\s+\S/;
+const NORMATIVE =
+  /(?:\b(?:never|must|always|cannot|shall|required|forbidden|only)\b|\bdo not\b|\bdon't\b|\bmay not\b)/i;
+const SENTENCE_END = /[.!?]$/;
+const MAX_TERM_WORDS = 4;
 
 export interface InteropSource {
   readonly path: string;
@@ -152,6 +157,8 @@ export async function readInteropSources(repoRoot: string): Promise<readonly Int
   return sources;
 }
 
+const WHITESPACE_RUN = /\s+/;
+
 function normalizeWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
@@ -169,9 +176,29 @@ interface PendingItem {
   readonly indent: number;
 }
 
+export function isTermDefinition(text: string): boolean {
+  const match = TERM_DEFINITION.exec(text.trimStart());
+  if (match === null) {
+    return false;
+  }
+
+  const term = (match[1] ?? match[2] ?? '').trim();
+  if (term === '' || SENTENCE_END.test(term)) {
+    return false;
+  }
+  if (term.split(WHITESPACE_RUN).length > MAX_TERM_WORDS) {
+    return false;
+  }
+
+  return !NORMATIVE.test(text);
+}
+
 function toConstraint(pending: PendingItem, path: string): ImportedConstraint | null {
   const text = pending.lines.join('\n').trim();
   if (text.length < MIN_CONSTRAINT_LENGTH || !HAS_WORD_CHARACTER.test(text)) {
+    return null;
+  }
+  if (isTermDefinition(text)) {
     return null;
   }
 
