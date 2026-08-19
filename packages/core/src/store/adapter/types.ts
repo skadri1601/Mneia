@@ -153,6 +153,17 @@ export interface ReviewPendingItemsResult {
   readonly outcomes: readonly ContextItemReviewOutcome[];
 }
 
+export interface RetireContextItemInput {
+  readonly projectId: Uuid;
+  readonly itemId: Uuid;
+  readonly reason: string;
+}
+
+export interface RetireContextItemResult {
+  readonly checkpoint: Checkpoint;
+  readonly item: ContextItem;
+}
+
 export interface NewCheckpoint {
   readonly id?: Uuid;
   readonly projectId: Uuid;
@@ -240,6 +251,7 @@ export interface ScopedStore {
   insertContextItem(item: NewContextItem): Promise<ContextItem>;
   supersedeContextItem(previousId: Uuid, replacement: NewContextItem): Promise<ContextItem>;
   confirmContextItem(input: ConfirmContextItemInput): Promise<ContextItem>;
+  retireContextItem(input: RetireContextItemInput): Promise<RetireContextItemResult>;
 
   writeCheckpoint(write: CheckpointWrite): Promise<CheckpointWriteResult>;
   getCheckpoint(id: Uuid): Promise<Checkpoint | null>;
