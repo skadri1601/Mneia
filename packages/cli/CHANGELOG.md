@@ -1,5 +1,11 @@
 # @mneia/cli
 
+## 0.7.1
+
+### Patch Changes
+
+- @mneia/core@0.7.1
+
 ## 0.7.0
 
 ### Minor Changes
