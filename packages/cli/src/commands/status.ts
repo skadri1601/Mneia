@@ -36,6 +36,11 @@ export interface StaleItem {
   readonly overdueMs: number;
 }
 
+export interface DisputedItem {
+  readonly item: ContextItem;
+  readonly ageMs: number;
+}
+
 export interface UnansweredItem {
   readonly item: ContextItem;
   readonly ageMs: number;
@@ -43,7 +48,7 @@ export interface UnansweredItem {
 
 export interface StatusSections {
   readonly stale: readonly StaleItem[];
-  readonly disputed: readonly ContextItem[];
+  readonly disputed: readonly DisputedItem[];
   readonly unanswered: readonly UnansweredItem[];
   readonly reviewed: number;
 }
@@ -111,10 +116,15 @@ function staleItemOf(item: ContextItem, now: Date): StaleItem | null {
   return { item, window, overdueMs };
 }
 
-const byAssertedNewest = (left: ContextItem, right: ContextItem): number => {
-  const delta = right.assertedAt.getTime() - left.assertedAt.getTime();
-  return delta !== 0 ? delta : left.id.localeCompare(right.id);
-};
+function sortDisputed(items: readonly DisputedItem[]): readonly DisputedItem[] {
+  return [...items].sort((left, right) => {
+    if (left.item.loadBearing !== right.item.loadBearing) {
+      return left.item.loadBearing ? -1 : 1;
+    }
+    const delta = right.ageMs - left.ageMs;
+    return delta !== 0 ? delta : left.item.id.localeCompare(right.item.id);
+  });
+}
 
 function sortStale(items: readonly StaleItem[]): readonly StaleItem[] {
   return [...items].sort((left, right) => {
@@ -126,9 +136,12 @@ function sortStale(items: readonly StaleItem[]): readonly StaleItem[] {
   });
 }
 
+const ageSince = (item: ContextItem, now: Date): number =>
+  Math.max(0, now.getTime() - item.assertedAt.getTime());
+
 export function classifyStatus(items: readonly ContextItem[], now: Date): StatusSections {
   const stale: StaleItem[] = [];
-  const disputed: ContextItem[] = [];
+  const disputed: DisputedItem[] = [];
   const unanswered: UnansweredItem[] = [];
 
   for (const item of items) {
@@ -137,16 +150,16 @@ export function classifyStatus(items: readonly ContextItem[], now: Date): Status
       stale.push(staleItem);
     }
     if (item.status === 'disputed') {
-      disputed.push(item);
+      disputed.push({ item, ageMs: ageSince(item, now) });
     }
     if (item.kind === 'open_question' && item.status === 'active') {
-      unanswered.push({ item, ageMs: Math.max(0, now.getTime() - item.assertedAt.getTime()) });
+      unanswered.push({ item, ageMs: ageSince(item, now) });
     }
   }
 
   return {
     stale: sortStale(stale),
-    disputed: [...disputed].sort(byAssertedNewest),
+    disputed: sortDisputed(disputed),
     unanswered: [...unanswered].sort(
       (left, right) => right.ageMs - left.ageMs || left.item.id.localeCompare(right.item.id),
     ),
@@ -205,8 +218,11 @@ function staleBlock(stale: StaleItem, shortIds: ReadonlyMap<Uuid, string>): stri
   return [titleLine(stale.item, shortIds), `    ${detail}`].join('\n');
 }
 
-function disputedBlock(item: ContextItem, shortIds: ReadonlyMap<Uuid, string>): string {
-  return [titleLine(item, shortIds), `    asserted ${utcDate(item.assertedAt)}`].join('\n');
+function disputedBlock(entry: DisputedItem, shortIds: ReadonlyMap<Uuid, string>): string {
+  return [
+    titleLine(entry.item, shortIds),
+    `    unresolved · ${describeDuration(entry.ageMs)} old · asserted ${utcDate(entry.item.assertedAt)}`,
+  ].join('\n');
 }
 
 function unansweredBlock(entry: UnansweredItem, shortIds: ReadonlyMap<Uuid, string>): string {
@@ -256,7 +272,7 @@ function renderHuman(report: StatusReport, config: ProjectConfig, now: Date): st
     ),
     ...section(
       `disputed (${sections.disputed.length}) — conflicting assertions; a human decides`,
-      sections.disputed.map((item) => disputedBlock(item, shortIds)),
+      sections.disputed.map((entry) => disputedBlock(entry, shortIds)),
     ),
     ...section(
       `unanswered (${sections.unanswered.length}) — open questions with no answer yet`,
@@ -284,7 +300,7 @@ interface StatusJsonStale extends StatusJsonItem {
   readonly overdueMs: number;
 }
 
-interface StatusJsonUnanswered extends StatusJsonItem {
+interface StatusJsonAged extends StatusJsonItem {
   readonly ageMs: number;
 }
 
@@ -311,7 +327,7 @@ function toJsonStale(stale: StaleItem): StatusJsonStale {
   };
 }
 
-function toJsonUnanswered(entry: UnansweredItem): StatusJsonUnanswered {
+function toJsonAged(entry: DisputedItem | UnansweredItem): StatusJsonAged {
   return { ...toJsonItem(entry.item), ageMs: entry.ageMs };
 }
 
@@ -329,8 +345,8 @@ function renderJson(report: StatusReport, config: ProjectConfig, now: Date): str
       reviewed: sections.reviewed,
     },
     stale: sections.stale.map(toJsonStale),
-    disputed: sections.disputed.map(toJsonItem),
-    unanswered: sections.unanswered.map(toJsonUnanswered),
+    disputed: sections.disputed.map(toJsonAged),
+    unanswered: sections.unanswered.map(toJsonAged),
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
 }
