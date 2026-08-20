@@ -103,12 +103,13 @@ describe('ToolRegistry registration', () => {
     expect(registry.list().map((listing) => listing.name)).toEqual([
       'mneia_rehydrate',
       'mneia_assert',
+      'mneia_retire',
       'mneia_checkpoint',
       'mneia_search',
       'mneia_handoff_create',
       'mneia_handoff_receive',
     ]);
-    expect(registry.size).toBe(6);
+    expect(registry.size).toBe(7);
   });
 
   it('carries the title, description, and input schema through to the listing', () => {

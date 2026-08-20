@@ -13,7 +13,7 @@ Tools are `mneia_*`. Shipping order matters — do not build ahead of the milest
 
 | Milestone | Tools |
 |---|---|
-| M1 | `mneia_rehydrate`, `mneia_assert`, `mneia_checkpoint`, `mneia_search` |
+| M1 | `mneia_rehydrate`, `mneia_assert`, `mneia_retire`, `mneia_checkpoint`, `mneia_search` |
 | M2 | `mneia_handoff_create`, `mneia_handoff_receive` |
 | M4 | `mneia_conflicts` |
 

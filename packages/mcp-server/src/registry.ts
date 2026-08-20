@@ -5,6 +5,7 @@ export type ErasedToolDefinition = ToolDefinition<unknown>;
 export const SHIPPED_TOOL_NAMES = [
   'mneia_rehydrate',
   'mneia_assert',
+  'mneia_retire',
   'mneia_checkpoint',
   'mneia_search',
   'mneia_handoff_create',
