@@ -381,11 +381,17 @@ File it and say so plainly. Reaching past a broken surface to finish your task c
 defect into a private workaround, and the next customer to hit it will not have your database
 credentials.
 
-This is not ceremony. Receiving one handoff on 2026-08-19 surfaced two defects inside a minute: the
-artifact carried ~88 items where §10.3's example carries thirty, because `assembleHandoff` has
-neither ranking nor a budget; and its Constraints section was full of doc fragments, because the
-interop importer writes every markdown bullet as a load-bearing constraint. Neither was visible from
-reading the code. Both were obvious the moment the artifact had to be *used*.
+This is not ceremony. Receiving one handoff on 2026-08-19 surfaced a defect inside a minute: its
+Constraints section was full of doc fragments, because the interop importer (MNE-98) writes every
+markdown bullet as a load-bearing constraint, and `isMandatoryItem` admits those ahead of the budget.
+That was not visible from reading the code. It was obvious the moment the artifact had to be *used*.
+
+**Two claims that sat here for a day were wrong, so do not carry them forward.** `assembleHandoff`
+does have ranking and a budget — `assemble.ts` calls `scoreItems` then `packSlice` with a
+3000-token budget and kind quotas. And §10.3 sets no item count; its example carries about thirteen.
+The 2026-08-20 repair demoted eleven scraped fragments in production and measured the result through
+`mneia handoff`: 47 items → 43, because the artifact is **token-bound, not item-bound** and the packer
+refills from the queue. Shortening it is a product decision about length, not a bug fix — see MNE-98.
 
 Two exceptions, and they are narrow. A **schema migration** goes through `pnpm db:migrate`, which is
 an operator tool with no customer equivalent. A **one-off data repair** goes through a reviewed
