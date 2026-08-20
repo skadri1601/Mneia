@@ -39,9 +39,10 @@ billing (MNE-26) into it, so it covers the core loop, the hosted API, the full w
 Stripe. `ROADMAP.md` §M1 is the checklist; check it for which milestone a thing belongs to before
 assuming an implementation is missing.
 
-Most of the loop is real and deployed. `packages/core/src/store/` is at schema version 31, the CLI
-ships seven commands plus an interactive session, the MCP server ships four tools, and extraction
-runs against real sessions in production.
+Most of the loop is real and deployed. `packages/core/src/store/` is at schema version 32, the CLI
+ships nine commands plus an interactive session, the MCP server ships seven tools, and extraction
+runs against real sessions in production. Counts drift — read `packages/cli/src/bin.ts` and
+`SHIPPED_TOOL_NAMES` in `packages/mcp-server/src/registry.ts` rather than trusting this sentence.
 
 **The core tables exist. Multi-tenancy is ruled.** §11.2 Q3 closed on 2026-07-31 (MNE-172): shared
 schema, `workspace_id` on every row, Postgres RLS mandatory — see `vision.md` §11.3. Migrations
@@ -150,9 +151,11 @@ permanent. `workflow_dispatch` remains only to re-run a failed publish.
 
 Do not "trigger a release". There is nothing to trigger — merge the version PR.
 
-**Check the registry, never a package.json.** `npm view @mneia/cli version` was `0.4.0` on
-2026-08-18, with no changesets pending. That habit caught real drift twice; keep it. Note that a
-version number alone is not proof of contents — see the tarball check below.
+**Check the registry, never a package.json.** `npm view @mneia/cli version` was `0.7.1` on
+2026-08-19, ahead of the `0.7.0` in the working tree — which is the normal state between a feature
+merge and the version PR. That habit caught real drift twice; keep it. Note that a version number
+alone is not proof of contents, nor that the package runs: `@mneia/mcp-server@0.7.0` published
+unable to start at all. See the tarball check below.
 
 ## The version scale
 

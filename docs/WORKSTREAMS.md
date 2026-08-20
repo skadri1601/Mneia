@@ -283,7 +283,8 @@ only behaviour inside `init`. If B needs a router change, say so here first.
   `db-migration` skill, run `pnpm db:snapshot`, and commit `db/structure.sql` in the same commit.
   The other lane rebases on `main` after it lands, or `pnpm db:snapshot --check` fails its PR.
 
-  Production is on **schema version 31** (`0031-session-provenance`). **Next free version is `0032`.**
+  Production is on **schema version 32** (`0032-workspace-plan-pro`), confirmed against
+  `/api/health` on 2026-08-19 (`expected: 32, applied: 32`). **Next free version is `0033`.**
 
 - 🔴 **Your migration must be safe to apply while the OLD code is still running.** Not advice — the
   only ordering the pipeline permits. `deploy-web.yml`'s `ship` job **refuses to deploy a build whose
@@ -293,6 +294,10 @@ only behaviour inside `init`. If B needs a router change, say so here first.
 
   `0030` broke this and deadlocked the deploy for half an hour on 2026-08-16. **Write the additive
   half and the enforcing half as separate migrations** — backfill in `n`, constrain in `n+1`.
+
+  **Automation raised the stakes rather than lowering them.** Since MNE-254 shipped
+  `migrate-production.yml`, `deploy-web` applies the migration itself before the gate, so merging is
+  what puts it on production — there is no longer a manual step in which to notice the problem.
 
 - **Stay in your worktree.** Do not `git checkout` another lane's branch; git will refuse, which is
   the guardrail working. Rebase on `origin/main` rather than merging between lane branches.

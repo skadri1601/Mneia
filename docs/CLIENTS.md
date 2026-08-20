@@ -8,6 +8,14 @@ MCP client" that has only ever been run in one is the single-vendor product we a
 
 Last verified **2026-08-19** against `@mneia/mcp-server` **0.5.0**, protocol `2025-06-18`.
 
+> **The surface has moved since that run and this file has not been re-verified.** The registry is
+> at **0.7.1**, which advertises **seven** tools, not four: `mneia_handoff_create` and
+> `mneia_handoff_receive` left `DEFERRED_TOOL_MILESTONES` and `mneia_retire` was added. Only
+> `mneia_conflicts` is still deferred (M4). Every observation below is true of 0.5.0 and is
+> **not** evidence about 0.7.1 — re-run the matrix before citing it. Note also that
+> `@mneia/mcp-server@0.7.0` published unable to start at all, which is exactly the kind of
+> regression a stale matrix hides.
+
 **Verified against the published registry tarball**, installed into an empty directory with plain
 `npm install @mneia/mcp-server@0.5.0` — not the workspace build, and not a locally packed tarball.
 That is the strongest available check because it is byte-for-byte what `npx -y @mneia/mcp-server`
@@ -79,13 +87,16 @@ so this half is client-independent:
 | `resources/list`, `prompts/list` | `-32601` method not found — correct, they are not advertised |
 | `outputSchema` on tools | **Still not published.** Structured output arrives as `structuredContent` without a declared schema |
 
-### The four tools are four on purpose
+### The advertised tools are a subset of the bundle, on purpose
 
-`dist/registry.js` also contains `mneia_handoff_create`, `mneia_handoff_receive`, and
-`mneia_conflicts`. **They are not advertised, and that is deliberate** — they sit in a
-`DEFERRED_TOOL_MILESTONES` map tagged `M2`, `M2`, and `M4`. A live `tools/list` returns four.
+**At 0.5.0** `dist/registry.js` also contained `mneia_handoff_create`, `mneia_handoff_receive`, and
+`mneia_conflicts`, none of them advertised — they sat in a `DEFERRED_TOOL_MILESTONES` map tagged
+`M2`, `M2`, and `M4`, so a live `tools/list` returned four. **At 0.7.1 the two handoff tools have
+shipped and `mneia_retire` has been added, so `tools/list` returns seven; only `mneia_conflicts`
+is still deferred.**
 
-Grepping the bundle for tool names suggests seven and is wrong. Drive a session.
+The durable point survives the version change: grepping the bundle for tool names counts the
+deferred ones too and overstates the surface. Drive a session, or read `SHIPPED_TOOL_NAMES`.
 
 ### The token budget is a soft target under a hard floor
 

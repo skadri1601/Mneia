@@ -17,7 +17,7 @@ Binary is `mneia`. Config lives in `.mneia/` in the repo.
 
 Do not build ahead of the milestone. §12.2 has the full intended surface.
 
-## The interactive session is not an eighth command
+## The interactive session is not another command
 
 Bare `mneia` on a TTY opens a REPL (`session.ts`), dispatched from `bin.ts` before `route()`. It is
 deliberately **not** registered as a command, so the M1 guard in `router.ts` keeps meaning what it

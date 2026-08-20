@@ -219,7 +219,7 @@ existing top-level object:
 
 Absolute path, and your own checkout — same reason as the other user-scoped clients.
 
-Confirm with `/mcp` inside the CLI; it should list `mneia` with four tools.
+Confirm with `/mcp` inside the CLI; it should list `mneia` with seven tools.
 
 > Gemini CLI has never been driven against this server either. Add a row to `docs/CLIENTS.md` when it
 > is, rather than leaving the claim in this file only.
@@ -325,7 +325,7 @@ backstop. §12.1 keeps `mneia_rehydrate` p95 under 300ms, but the hook does not 
 
 ```
 curl -s https://app.mneia.dev/api/health        # rls: enforced, all three model keys configured
-node packages/cli/dist/bin.js --version         # 0.2.0 — the repo build, not a stale global
+node packages/cli/dist/bin.js --version         # the repo build, not a stale global — match it against packages/cli/package.json, not a number written here
 node packages/cli/dist/bin.js whoami            # actor, workspace, team
 node packages/cli/dist/bin.js status            # which project this repo is bound to
 node packages/cli/dist/bin.js brief "verifying the dogfood instrument"

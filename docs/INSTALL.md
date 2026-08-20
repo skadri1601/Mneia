@@ -71,8 +71,11 @@ codex mcp add mneia --env MNEIA_TOKEN=<token> -- npx -y @mneia/mcp-server
 **Cursor** — same JSON shape as Claude Code, in Cursor's MCP settings. Note `CLIENTS.md` records this
 as documented-but-not-run.
 
-Restart the client. It should list four tools: `mneia_rehydrate`, `mneia_assert`, `mneia_checkpoint`,
-`mneia_search`.
+Restart the client. It should list seven tools: `mneia_rehydrate`, `mneia_assert`, `mneia_retire`,
+`mneia_checkpoint`, `mneia_search`, `mneia_handoff_create`, `mneia_handoff_receive`.
+
+Fewer than seven, or a server that will not start at all, means the build is older than the tool
+list — `@mneia/mcp-server@0.7.0` shipped unable to start. Pin a version at or above `0.7.1`.
 
 ## 4. Prove the loop — about one minute
 
