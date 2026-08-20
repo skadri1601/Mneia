@@ -56,16 +56,16 @@ resolution, and permissions — which a single-user memory product cannot bolt o
 | | |
 |---|---|
 | Hosted API | Live at `app.mneia.dev` — checkpoints, rehydrate, items, projects, sessions, actors |
-| CLI | `init` `login` `whoami` `status` `log` `checkpoint` `brief`, plus an interactive session when run bare in a terminal |
-| MCP tools | `mneia_rehydrate` `mneia_checkpoint` `mneia_search` `mneia_assert` |
+| CLI | `init` `login` `whoami` `status` `log` `checkpoint` `brief` `handoff` `pickup`, plus an interactive session when run bare in a terminal |
+| MCP tools | `mneia_rehydrate` `mneia_checkpoint` `mneia_search` `mneia_assert` `mneia_retire` `mneia_handoff_create` `mneia_handoff_receive` |
 | Auth | Browser device flow; `MNEIA_TOKEN` for CI |
 | Tenancy | `workspace_id` on every row, Postgres row-level security enforced and asserted at connection time |
 | Workspaces | Invite a colleague by email; they land in the inviting workspace |
-| **npm** | **Published.** `@mneia/cli`, `@mneia/mcp-server`, and `@mneia/core` are live at `0.2.0`. |
+| **npm** | **Published.** `@mneia/cli`, `@mneia/mcp-server`, and `@mneia/core` are live at `0.7.1`. |
 | Billing | Code complete, **not switched on** — `/api/health` reports `billing: not_configured` and nothing is charged |
 
-`handoff`, `pickup`, and `conflicts` are named but not shipped — running one names the milestone it
-lands in rather than failing as an unknown command.
+`handoff` and `pickup` have since shipped. `conflicts` is still named but not shipped — running it
+names the milestone it lands in rather than failing as an unknown command.
 
 For the reasoning behind any of it, read [`vision.md`](./vision.md); for the plan,
 [`ROADMAP.md`](./ROADMAP.md).

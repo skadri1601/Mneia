@@ -237,6 +237,23 @@ MNEIA_WEB_IMAGE=ghcr.io/<owner>/<repo>/web:<previous-sha> docker compose up -d
 
 ## Migrations
 
-Nothing migrates production automatically, and that is deliberate. Applying is a considered
-`pnpm db:migrate` against the production `DATABASE_URL` — **the privileged one**, not `mneia_app` —
-and `CLAUDE.md` requires asking first, every time.
+**Merging a migration to `main` applies it to production.** `.github/workflows/migrate-production.yml`
+runs `pnpm db:migrate` against production, and `deploy-web` calls it as a job that `ship` depends on,
+so one run does **migrate → gate → deploy** and a failed migration stops the deploy instead of
+shipping against a schema the build cannot satisfy (MNE-254). It resolves the connection string from
+the Neon API at run time, so no second copy of the production credential is stored anywhere; it
+connects as the privileged `neondb_owner`, not `mneia_app`.
+
+It is dispatchable on its own — `gh workflow run migrate-production.yml` — which is the first thing
+to reach for when production is behind, because it needs no credential on your machine.
+`deploy-web`'s `skip_migrate` input exists for recovering an outage when the Neon API is unreachable.
+
+**Applying a migration is delegated; deploying is not.** As of the founder's ruling on 2026-08-19,
+`CLAUDE.md` tells an agent to migrate production without asking and to report the version before and
+after. Deploying to production is still ask-first, every time — which is why migrating is a separate,
+separately dispatchable workflow.
+
+A migration must still be safe under the code currently running, because the gate permits only
+migrate-then-deploy: backfill in one migration, constrain in the next. `pnpm db:migrate` by hand
+against the production `DATABASE_URL` remains the fallback for when the workflow cannot run, and is
+still the only way to migrate anything that is not production.

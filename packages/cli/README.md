@@ -60,12 +60,14 @@ rehydration is not empty.
 | `mneia brief "<task>" [--budget <tokens>]` | Print the rehydrated context slice for a stated task. |
 | `mneia log [--limit <count>] [--since <duration\|date>]` | Show the decision history for this project, newest first. |
 | `mneia status` | Show what is stale, disputed, or unanswered in this project. |
+| `mneia handoff [--to <actor-id>] [--window <days>]` | Freeze a receivable handoff artifact for whoever picks the work up next. |
+| `mneia pickup [<handoff-id>]` | Receive a handoff, or list the open ones when no id is given. |
 
 `--help` on any command prints its full usage. `--json` makes the output machine-readable. `mneia
 --version` prints the version.
 
-`handoff`, `pickup`, and `conflicts` are named but not yet shipped; running one tells you which
-release it lands in rather than failing with an unknown-command error.
+`conflicts` is named but not yet shipped; running it tells you which release it lands in rather than
+failing with an unknown-command error.
 
 ## The interactive session
 
@@ -74,7 +76,7 @@ Run `mneia` with no arguments in a terminal and it opens a session instead of ex
 ```
 $ mneia
 
-  █▄   ▄█   mneia  v0.4.0
+  █▄   ▄█   mneia  v0.7.1
   █ ▀▄▀ █   Ada Lovelace · example-co
   █     █   ~/code/api  ·  api
 
@@ -84,7 +86,7 @@ $ mneia
 ```
 
 Anything you type that does not start with `/` is rehydrated as a task, because that is the thing
-you do most. Commands are the same seven, prefixed with a slash and taking the same flags —
+you do most. Commands are the same nine, prefixed with a slash and taking the same flags —
 `/status --json`, `/log --limit 5`, `/checkpoint -m "chose the token bucket"`.
 
 Typing `/` opens a menu of every command, and each further character narrows it. The arrow keys move
@@ -145,7 +147,7 @@ Read the [privacy policy](https://mneia.dev/privacy) for what is kept and for ho
 
 ## Stability
 
-`0.1.x`. The command surface will move before `1.0` — pin an exact version in CI if a change to the
+`0.x`. The command surface will move before `1.0` — pin an exact version in CI if a change to the
 output shape would break you.
 
 ## See also

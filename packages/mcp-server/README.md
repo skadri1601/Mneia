@@ -34,7 +34,7 @@ claude mcp add mneia --env MNEIA_TOKEN=<your token> -- npx -y @mneia/mcp-server
 Get the token by installing [`@mneia/cli`](https://www.npmjs.com/package/@mneia/cli) and running
 `mneia login`; it is written to `~/.mneia/credentials`.
 
-Confirm the client picked it up — in Claude Code, `/mcp` should list `mneia` as connected with four
+Confirm the client picked it up — in Claude Code, `/mcp` should list `mneia` as connected with seven
 tools. Then ask the agent to rehydrate; on a fresh project it will say there is nothing stored yet
 rather than erroring, which is how you tell "connected and empty" from "not connected".
 
@@ -49,6 +49,9 @@ The server speaks MCP over stdio. Run it from a client, not by hand — `mneia-m
 | `mneia_checkpoint` | At a task or day boundary. Records a batch of extracted items as one atomic checkpoint. |
 | `mneia_assert` | The moment a single decision, constraint, or open question is settled mid-session. |
 | `mneia_search` | When you already know what you are looking for — not as a substitute for rehydrate. |
+| `mneia_retire` | An item was never right, or has stopped being true, and nothing replaces it. A correction, not a deletion: the row stays and the reason is recorded. Only a human actor may retire. |
+| `mneia_handoff_create` | Work is stopping and somebody else will resume it. Freezes a receivable artifact; the rendered markdown is fixed at that moment, the item links stay live. |
+| `mneia_handoff_receive` | Resuming work somebody handed over. Call it before rehydrating — the handoff says what the sender thought mattered, the slice says what the store thinks matters now. |
 
 Two rules are enforced by the server, not left to the agent:
 
