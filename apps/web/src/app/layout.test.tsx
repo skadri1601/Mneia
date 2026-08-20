@@ -53,7 +53,8 @@ test('wraps the app in ClerkProvider', () => {
 test('gives every page a wordmark that leads back to the workspace', () => {
   const markup = render();
 
-  expect(markup).toContain('Mneia');
+  expect(markup).toContain('aria-label="MNEIA"');
+  expect(markup).toContain('>NEIA</span>');
   expect(markup).toContain('href="/projects"');
 });
 

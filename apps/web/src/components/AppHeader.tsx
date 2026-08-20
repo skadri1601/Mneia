@@ -9,7 +9,7 @@ import { ProjectMenuToggle } from './project-workspace/ProjectMenuProvider.js';
 const BRAND = (
   <>
     <MneiaLetter className={styles.mark} />
-    <span className={styles.wordmark}>Mneia</span>
+    <span>NEIA</span>
   </>
 );
 
@@ -30,13 +30,13 @@ export function AppHeader() {
         <SignedIn>
           <div className={styles.identity}>
             <ProjectMenuToggle />
-            <Link className={styles.brand} href="/projects">
+            <Link aria-label="MNEIA" className={styles.brand} href="/projects">
               {BRAND}
             </Link>
           </div>
         </SignedIn>
         <SignedOut>
-          <a className={styles.brand} href={MARKETING_SITE_URL}>
+          <a aria-label="MNEIA" className={styles.brand} href={MARKETING_SITE_URL}>
             {BRAND}
           </a>
         </SignedOut>
