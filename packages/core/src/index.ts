@@ -178,6 +178,8 @@ export type {
   NewProject,
   PendingReviewFilter,
   PendingReviewItem,
+  RetireContextItemInput,
+  RetireContextItemResult,
   ReviewCapableStore,
   ReviewPendingItemsInput,
   ReviewPendingItemsResult,

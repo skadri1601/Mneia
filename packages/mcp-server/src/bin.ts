@@ -38,6 +38,7 @@ import { createWriteSessionResolver } from './session-provenance.js';
 import type { SliceLog } from './slices.js';
 import { createSliceLog } from './slices.js';
 import { PoolConnectionSource } from './store.js';
+import { retireTool } from './tools/retire.js';
 import { assertTool } from './tools/assert.js';
 import { checkpointTool } from './tools/checkpoint.js';
 import { handoffCreateTool, handoffReceiveTool } from './tools/handoff.js';
@@ -129,6 +130,7 @@ async function resolveTools(logger: ServerLogger): Promise<readonly ErasedToolDe
   return [
     rehydrateTool,
     assertTool,
+    retireTool,
     checkpointTool,
     searchTool,
     handoffCreateTool,

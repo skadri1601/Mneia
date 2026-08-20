@@ -356,6 +356,14 @@ export const CheckpointItemWireSchema = z.object({
 
 export type CheckpointItemWire = z.infer<typeof CheckpointItemWireSchema>;
 
+export const RetireContextItemWireSchema = z.object({
+  projectId: uuid,
+  itemId: uuid,
+  reason: z.string().min(1).max(1000),
+});
+
+export type RetireContextItemWire = z.infer<typeof RetireContextItemWireSchema>;
+
 export const encodeCheckpointItem = (item: CheckpointItem): CheckpointItemWire => ({
   workspaceId: item.workspaceId,
   checkpointId: item.checkpointId,

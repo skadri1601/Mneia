@@ -1042,6 +1042,81 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
     });
   });
 
+  it('retires an item only for a human actor, and takes it out of every future slice', async () => {
+    await withAdapter(async (adapter) => {
+      const item = await adapter.withScope(SCOPE_A, async (store) =>
+        store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, '**Vercel** — deploys, build logs, runtime errors'),
+          kind: 'constraint',
+          loadBearing: true,
+        }),
+      );
+
+      await adapter.withScope(SCOPE_AGENT_A, async (store) => {
+        await expect(
+          store.retireContextItem({
+            projectId: PROJECT_A,
+            itemId: item.id,
+            reason: 'a table row, never a rule',
+          }),
+        ).rejects.toThrow(/to be of kind "human"; received "agent"/);
+      });
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const untouched = await store.getContextItem(item.id);
+        expect(untouched?.status).toBe('active');
+
+        const { checkpoint, item: retired } = await store.retireContextItem({
+          projectId: PROJECT_A,
+          itemId: item.id,
+          reason: 'a table row from CLAUDE.md, never a rule',
+        });
+
+        expect(retired.status).toBe('retired');
+        expect(retired.validTo).not.toBeNull();
+        expect(checkpoint.summary).toBe('Retired: a table row from CLAUDE.md, never a rule');
+        expect(retired.title).toBe('**Vercel** — deploys, build logs, runtime errors');
+        expect(checkpoint.projectId).toBe(PROJECT_A);
+
+        const active = await store.listContextItems({
+          projectId: PROJECT_A,
+          statuses: ['active'],
+          limit: 100,
+        });
+        expect(active.map((entry) => entry.id)).not.toContain(item.id);
+
+        const loadBearing = await store.listContextItems({
+          projectId: PROJECT_A,
+          kinds: ['constraint'],
+          statuses: ['active'],
+          loadBearing: true,
+          limit: 100,
+        });
+        expect(loadBearing.map((entry) => entry.id)).not.toContain(item.id);
+      });
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        await expect(
+          store.retireContextItem({
+            projectId: PROJECT_A,
+            itemId: item.id,
+            reason: 'twice',
+          }),
+        ).rejects.toThrow(/already out of every slice/);
+      });
+
+      await adapter.withScope(SCOPE_B, async (store) => {
+        await expect(
+          store.retireContextItem({
+            projectId: PROJECT_A,
+            itemId: item.id,
+            reason: 'from another workspace',
+          }),
+        ).rejects.toThrow(/found none/);
+      });
+    });
+  });
+
   it('records the item set behind a handoff, and reads it back with its sections', async () => {
     await withAdapter(async (adapter) => {
       const item = await adapter.withScope(SCOPE_A, async (store) =>

@@ -33,6 +33,7 @@ const WRITES: Readonly<Record<string, readonly string[]>> = {
   insertContextItem: ['checkpoint.item_extracted'],
   supersedeContextItem: ['item.superseded'],
   confirmContextItem: ['checkpoint.item_confirmed'],
+  retireContextItem: ['checkpoint.item_rejected'],
   createHandoff: ['handoff.created'],
   assembleHandoff: ['handoff.created'],
   receiveHandoff: ['handoff.received'],
@@ -49,6 +50,8 @@ const EXEMPT: Readonly<Record<string, string>> = {
 };
 
 const EXEMPT_CALLS: Readonly<Record<string, string>> = {
+  'packages/mcp-server/src/tools/retire.ts::retireContextItem':
+    'hosted client, not the write path — apps/web/src/server/api/handlers.ts emits checkpoint.item_rejected when the API serves this call, and emitting here as well would double-count the correction signal §17 calls the core dataset',
   'packages/mcp-server/src/tools/handoff.ts::receiveHandoff':
     'hosted client, not the write path — apps/web/src/server/api/handoff.ts emits handoff.received when the API serves this call, and emitting here as well would double-count the arbitration dataset',
 };

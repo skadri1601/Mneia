@@ -63,6 +63,8 @@ import type {
   PendingReviewItem,
   RehydrationCandidateGroups,
   RehydrationCandidateRequest,
+  RetireContextItemInput,
+  RetireContextItemResult,
   ReviewCapableStore,
   ReviewPendingItemsInput,
   ReviewPendingItemsResult,
@@ -978,6 +980,81 @@ class PostgresScopedStore implements ReviewCapableStore {
         );
       }
       return toContextItem(row);
+    });
+  }
+
+  async retireContextItem(input: RetireContextItemInput): Promise<RetireContextItemResult> {
+    assertUuid(input.projectId, 'input.projectId');
+    assertUuid(input.itemId, 'input.itemId');
+    assertNonEmpty(input.reason, 'input.reason');
+
+    return this.atomic(`retiring context item ${input.itemId}`, async () => {
+      const actor = await this.assertingActor();
+      if (actor.kind !== 'human') {
+        throw new StoreError(
+          'invalid_argument',
+          `expected the retiring actor ${actor.id} to be of kind "human"; received "${actor.kind}". Only a human retires a stored item — an agent doing so would let it overrule a human (vision.md §10.1). Open the scope with a human actor.`,
+        );
+      }
+
+      const existingRows = await this.rows(
+        `SELECT ${CONTEXT_ITEM_COLUMNS}
+           FROM context_item
+          WHERE workspace_id = $1 AND id = $2 AND project_id = $3
+          FOR UPDATE`,
+        [this.scope.workspaceId, input.itemId, input.projectId],
+      );
+      const existing = existingRows[0];
+      if (existing === undefined) {
+        throw new StoreError(
+          'not_found',
+          `expected context item ${input.itemId} on project ${input.projectId} in workspace ${this.scope.workspaceId} to retire; found none — check the id with mneia log`,
+        );
+      }
+
+      const status = toEnum(existing, 'status', ITEM_STATUSES);
+      if (status !== 'active' && status !== 'disputed') {
+        throw new StoreError(
+          'invalid_argument',
+          `expected context item ${input.itemId} to be active or disputed to retire it; its status is "${status}" — a retired or superseded item is already out of every slice`,
+        );
+      }
+
+      const checkpointRow = expectOne(
+        await this.rows(
+          `INSERT INTO checkpoint (id, workspace_id, project_id, session_id, actor_id, "trigger", summary)
+           VALUES (gen_random_uuid(), $1, $2, NULL, $3, $4, $5)
+           RETURNING ${CHECKPOINT_COLUMNS}`,
+          [
+            this.scope.workspaceId,
+            input.projectId,
+            this.scope.actorId,
+            REVIEW_TRIGGER,
+            `Retired: ${input.reason}`,
+          ],
+        ),
+        `opening the retirement checkpoint for project ${input.projectId}`,
+      );
+      const checkpoint = toCheckpoint(checkpointRow);
+
+      const retiredRows = await this.rows(
+        `UPDATE context_item
+            SET status = 'retired',
+                valid_to = COALESCE(valid_to, now()),
+                last_verified_at = now()
+          WHERE workspace_id = $1 AND id = $2
+          RETURNING ${CONTEXT_ITEM_COLUMNS}`,
+        [this.scope.workspaceId, input.itemId],
+      );
+      const retired = expectOne(retiredRows, `retiring context item ${input.itemId}`);
+
+      await this.rows(
+        `INSERT INTO checkpoint_item (workspace_id, checkpoint_id, item_id, action)
+         VALUES ($1, $2, $3, 'rejected')`,
+        [this.scope.workspaceId, checkpoint.id, input.itemId],
+      );
+
+      return { checkpoint, item: toContextItem(retired) };
     });
   }
 

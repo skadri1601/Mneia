@@ -19,6 +19,8 @@ import type {
   HandoffItem,
   NewContextItem,
   NewProject,
+  RetireContextItemInput,
+  RetireContextItemResult,
   ScopedStore,
   SessionClientProvenance,
   WorkspaceScope,
@@ -26,9 +28,11 @@ import type {
 import { ApiError, type HttpTransport } from './http.js';
 import {
   ActorWireSchema,
+  CheckpointWireSchema,
   CheckpointWriteResultWireSchema,
   ContextItemWireSchema,
   decodeActor,
+  decodeCheckpoint,
   decodeCheckpointWriteResult,
   decodeContextItem,
   decodeHandoff,
@@ -51,6 +55,10 @@ const SessionEnvelope = z.object({ session: SessionWireSchema });
 const ContextItemEnvelope = z.object({ item: nullable(ContextItemWireSchema) });
 const ContextItemsEnvelope = z.object({ items: z.array(ContextItemWireSchema) });
 const CheckpointWriteEnvelope = z.object({ result: CheckpointWriteResultWireSchema });
+const RetiredItemEnvelope = z.object({
+  checkpoint: CheckpointWireSchema,
+  item: ContextItemWireSchema,
+});
 const SliceEnvelope = z.object({ slice: SliceWireSchema });
 const HandoffEnvelope = z.object({ handoff: HandoffWireSchema });
 const HandoffsEnvelope = z.object({ handoffs: z.array(HandoffWireSchema) });
@@ -181,6 +189,15 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
         ContextItemEnvelope,
       );
       return item === null ? null : decodeContextItem(item);
+    },
+
+    async retireContextItem(input: RetireContextItemInput): Promise<RetireContextItemResult> {
+      const { checkpoint, item } = await transport.request(
+        '/api/v1/items/retire',
+        RetiredItemEnvelope,
+        { projectId: input.projectId, itemId: input.itemId, reason: input.reason },
+      );
+      return { checkpoint: decodeCheckpoint(checkpoint), item: decodeContextItem(item) };
     },
 
     async listContextItems(filter: ContextItemFilter): Promise<readonly ContextItem[]> {

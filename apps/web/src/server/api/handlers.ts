@@ -10,7 +10,9 @@ import type {
   EmbeddingProvider,
   NewProjectWire,
   ProjectWire,
+  CheckpointWire,
   RehydrateRequestWire,
+  RetireContextItemWire,
   ScopedStore,
   SessionWire,
   SliceWire,
@@ -22,6 +24,7 @@ import {
   assembleSlice,
   embeddableText,
   encodeActor,
+  encodeCheckpoint,
   encodeCheckpointWriteResult,
   encodeContextItem,
   encodeProject,
@@ -246,6 +249,34 @@ export const handleRehydrate = async (
   });
 
   return { slice: encodeSlice(slice) };
+};
+
+export const handleRetireItem = async (
+  store: ScopedStore,
+  input: RetireContextItemWire,
+  deps: { readonly telemetry: TelemetryEmitter; readonly now: () => Date },
+): Promise<{ checkpoint: CheckpointWire; item: ContextItemWire }> => {
+  const result = await store.retireContextItem({
+    projectId: input.projectId,
+    itemId: input.itemId,
+    reason: input.reason,
+  });
+
+  await emitQuietly(deps.telemetry, {
+    name: 'checkpoint.item_rejected',
+    workspaceId: store.scope.workspaceId,
+    projectId: input.projectId,
+    actorId: store.scope.actorId,
+    sessionId: null,
+    occurredAt: deps.now(),
+    checkpointId: result.checkpoint.id,
+    itemId: result.item.id,
+  });
+
+  return {
+    checkpoint: encodeCheckpoint(result.checkpoint),
+    item: encodeContextItem(result.item),
+  };
 };
 
 export interface CheckpointDependencies {
