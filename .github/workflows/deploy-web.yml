@@ -19,6 +19,14 @@ on:
           first — this waives the gate that exists to stop MNE-254 happening again.
         type: boolean
         default: false
+      skip_migrate:
+        description: >-
+          Ship without running the migrate job. For recovering an outage when the Neon API is
+          unreachable but the database itself is fine — otherwise a control-plane failure blocks the
+          deploy that would fix things. Production must already be on this build's schema version;
+          the gate below still checks.
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-web
@@ -61,11 +69,17 @@ jobs:
 
   migrate:
     name: migrate production
+    if: ${{ !inputs.skip_migrate }}
     uses: ./.github/workflows/migrate-production.yml
     secrets: inherit
 
   ship:
     needs: [build, migrate]
+    # A failed migration must stop the deploy. A deliberately skipped one must not — that is the
+    # skip_migrate escape hatch, and without this the default needs semantics would swallow it.
+    if: >-
+      ${{ !cancelled() && needs.build.result == 'success'
+      && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') }}
     runs-on: ubuntu-latest
     environment: production
     permissions:
