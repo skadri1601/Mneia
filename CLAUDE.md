@@ -26,8 +26,36 @@ Boundaries on the grant:
 | Commit, push a feature branch, open a PR | Yes, without asking |
 | Merge your own PR to `main` | Only after the founder reviews, unless they say otherwise |
 | Deploy a preview | Yes |
+| Apply a pending migration to production | **Yes, without asking.** See below |
 | Deploy to production | Ask first, every time |
 | `git push --force`, `reset --hard`, branch deletion, history rewriting | Ask first, every time |
+
+### Migrations are yours to apply, and waiting is the failure mode
+
+Ruled by the founder 2026-08-19, narrowing the row above. **When production is behind, migrate it.
+Do not ask, and do not hand the command back — you run it.**
+
+This is not a loosening for its own sake. MNE-254 made the deploy gate fail closed when production's
+schema is older than the build, so an unapplied migration does not sit there harmlessly: it blocks
+every deploy in every lane, including ones that have nothing to do with the schema. An agent that
+stops to ask has converted a thirty-second command into a stalled pipeline for everyone.
+
+The order is fixed and the gate enforces it:
+
+```
+pnpm build          # db:migrate reads dist, not src — a stale build applies the wrong list
+pnpm db:version     # report where production actually is
+pnpm db:migrate     # against the production DATABASE_URL
+pnpm db:version     # confirm CURRENT before re-running the deploy
+gh run rerun <id> --failed
+```
+
+**Report the version before and after.** The grant is to apply migrations, not to be quiet about it.
+
+Two things this does not cover. Deploying to production is still `Ask first, every time` — migrating
+and shipping are separate acts, and only the first is delegated. And a migration must still be safe
+under the code currently running, because the gate permits only migrate-then-deploy: backfill in one
+migration, constrain in the next.
 
 ## Git lanes — which changes need a PR
 

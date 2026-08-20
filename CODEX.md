@@ -49,7 +49,24 @@ Two limits hold regardless:
 | Deploy a preview | Yes |
 | Deploy to production | **Ask first, every time** |
 | `git push --force`, `reset --hard`, branch deletion, history rewriting | **Ask first, every time** |
-| Apply migrations to the production database | **Ask first, every time** |
+| Apply migrations to the production database | **Yes, without asking** — see below |
+
+Migrations were narrowed out of that list on 2026-08-19. **When production is behind, migrate it —
+do not ask, and do not hand the command back.** MNE-254 made the deploy gate fail closed when
+production's schema is older than the build, so an unapplied migration blocks every deploy in every
+lane, not just the one that added it. Stopping to ask turns a thirty-second command into a stalled
+pipeline for everyone.
+
+```
+pnpm build          # db:migrate reads dist, not src
+pnpm db:version     # where production actually is
+pnpm db:migrate     # against the production DATABASE_URL
+pnpm db:version     # confirm CURRENT before re-running the deploy
+```
+
+Report the version before and after. **Deploying to production is still ask-first** — migrating and
+shipping are separate acts and only the first is delegated. A migration must also be safe under the
+code currently running, because the gate permits only migrate-then-deploy.
 
 If your sandbox or approval mode blocks something on this list, that is the harness being cautious,
 not the founder withholding permission. Say what you were trying to do and let them decide — do not
