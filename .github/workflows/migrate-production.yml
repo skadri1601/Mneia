@@ -1,0 +1,83 @@
+name: migrate-production
+
+# Applies pending migrations to the production database. deploy-web calls this before its schema
+# gate, so merging a migration migrates production without anyone typing a command (MNE-254).
+# It is also dispatchable on its own, because migrating and shipping are separate acts: CLAUDE.md
+# delegates the first without asking and requires asking for the second.
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+concurrency:
+  group: migrate-production
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    name: apply pending migrations
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build @mneia/core, because db:migrate reads dist and not src
+        run: pnpm --filter @mneia/core build
+
+      - name: Resolve the production connection string from Neon
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          if [ -z "${NEON_API_KEY}" ] || [ -z "${NEON_PROJECT_ID}" ]; then
+            echo "::error::NEON_API_KEY or NEON_PROJECT_ID is missing, so this job cannot reach production. Refusing to continue rather than reporting a migration that never ran."
+            exit 1
+          fi
+
+          if ! response=$(curl -sS --fail-with-body --max-time 30 \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/connection_uri?database_name=neondb&role_name=neondb_owner&pooled=false"); then
+            echo "::error::the Neon API would not hand back a connection URI for project ${NEON_PROJECT_ID}"
+            exit 1
+          fi
+
+          # pooled=false on purpose: the migration runner holds a session-level pg_advisory_lock
+          # across the whole run, and Neon's pooled endpoint can change server connection between
+          # statements.
+          if ! url=$(node "${GITHUB_WORKSPACE}/scripts/read-neon-connection-uri.mjs" <<< "${response}"); then
+            echo "::error::the Neon API answered with something that is not a connection URI"
+            exit 1
+          fi
+
+          echo "::add-mask::${url}"
+          echo "DATABASE_URL=${url}" >> "$GITHUB_ENV"
+
+      - name: Report where production is before anything is applied
+        run: |
+          set +e
+          pnpm db:version
+          status=$?
+          set -e
+          # 2 is BEHIND, which is the whole reason this job exists. Anything else is a database
+          # that would not answer, and migrating blind is worse than stopping.
+          if [ "${status}" != "0" ] && [ "${status}" != "2" ]; then
+            echo "::error::db:version could not read production (exit ${status}); refusing to migrate blind"
+            exit 1
+          fi
+
+      - name: Apply every pending migration
+        run: pnpm db:migrate
+
+      - name: Confirm production is on the version this checkout expects
+        run: pnpm db:version
