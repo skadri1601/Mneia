@@ -36,6 +36,18 @@ export interface ContextItemFilter {
   readonly withEmbedding?: boolean;
 }
 
+export interface StaleContextItemFilter {
+  readonly projectId: Uuid;
+  readonly asOf?: Date;
+  readonly limit?: number;
+}
+
+export interface StaleContextItem {
+  readonly item: ContextItem;
+  readonly staleSince: Date;
+  readonly staleForMs: IntervalMs;
+}
+
 export interface ContextItemSearch extends ContextItemFilter {
   readonly embedding?: Embedding;
   readonly embeddingModel?: string;
@@ -153,6 +165,22 @@ export interface ReviewPendingItemsResult {
   readonly outcomes: readonly ContextItemReviewOutcome[];
 }
 
+export type ContextItemVerification = 'confirmed' | 'denied';
+
+export interface VerifyContextItemInput {
+  readonly projectId: Uuid;
+  readonly itemId: Uuid;
+  readonly verification: ContextItemVerification;
+  readonly reason?: string | null;
+}
+
+export interface VerifyContextItemResult {
+  readonly checkpoint: Checkpoint;
+  readonly item: ContextItem;
+  readonly verification: ContextItemVerification;
+  readonly previousLastVerifiedAt: Date | null;
+}
+
 export interface RetireContextItemInput {
   readonly projectId: Uuid;
   readonly itemId: Uuid;
@@ -245,12 +273,14 @@ export interface ScopedStore {
   getContextItem(id: Uuid): Promise<ContextItem | null>;
   listContextItems(filter: ContextItemFilter): Promise<readonly ContextItem[]>;
   searchContextItems(search: ContextItemSearch): Promise<readonly ContextItem[]>;
+  listStaleContextItems(filter: StaleContextItemFilter): Promise<readonly StaleContextItem[]>;
   selectRehydrationCandidates?(
     request: RehydrationCandidateRequest,
   ): Promise<RehydrationCandidateGroups>;
   insertContextItem(item: NewContextItem): Promise<ContextItem>;
   supersedeContextItem(previousId: Uuid, replacement: NewContextItem): Promise<ContextItem>;
   confirmContextItem(input: ConfirmContextItemInput): Promise<ContextItem>;
+  verifyContextItem(input: VerifyContextItemInput): Promise<VerifyContextItemResult>;
   retireContextItem(input: RetireContextItemInput): Promise<RetireContextItemResult>;
 
   writeCheckpoint(write: CheckpointWrite): Promise<CheckpointWriteResult>;
