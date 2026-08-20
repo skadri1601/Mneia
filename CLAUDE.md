@@ -40,7 +40,15 @@ schema is older than the build, so an unapplied migration does not sit there har
 every deploy in every lane, including ones that have nothing to do with the schema. An agent that
 stops to ask has converted a thirty-second command into a stalled pipeline for everyone.
 
-The order is fixed and the gate enforces it:
+**Since MNE-254 you should rarely have to.** Merging a migration to `main` now applies it:
+`.github/workflows/migrate-production.yml` runs `pnpm db:migrate` against production, and `deploy-web`
+calls it as a job that `ship` depends on, so the order is migrate → gate → deploy and a failed
+migration stops the deploy instead of shipping against a schema the build cannot satisfy. That
+workflow is also dispatchable on its own — `gh workflow run migrate-production.yml` — which is the
+first thing to reach for when production is behind, because it needs no credential on your machine.
+
+Do it by hand when the workflow cannot run, or when the target is not production. The order is fixed
+and the gate enforces it:
 
 ```
 pnpm build          # db:migrate reads dist, not src — a stale build applies the wrong list
@@ -50,7 +58,8 @@ pnpm db:version     # confirm CURRENT before re-running the deploy
 gh run rerun <id> --failed
 ```
 
-**Report the version before and after.** The grant is to apply migrations, not to be quiet about it.
+**Report the version before and after, whichever route you took.** The grant is to apply migrations,
+not to be quiet about it.
 
 Two things this does not cover. Deploying to production is still `Ask first, every time` — migrating
 and shipping are separate acts, and only the first is delegated. And a migration must still be safe

@@ -57,6 +57,14 @@ production's schema is older than the build, so an unapplied migration blocks ev
 lane, not just the one that added it. Stopping to ask turns a thirty-second command into a stalled
 pipeline for everyone.
 
+**Since MNE-254, merging a migration to `main` applies it for you.**
+`.github/workflows/migrate-production.yml` runs `pnpm db:migrate` against production, and `deploy-web`
+calls it as a job `ship` depends on — migrate, then gate, then deploy. It is dispatchable on its own
+with `gh workflow run migrate-production.yml`, which is the first thing to reach for when production
+is behind, because it needs no credential on your machine.
+
+By hand when that cannot run, or when the target is not production:
+
 ```
 pnpm build          # db:migrate reads dist, not src
 pnpm db:version     # where production actually is

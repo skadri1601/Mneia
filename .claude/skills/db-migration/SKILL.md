@@ -39,6 +39,11 @@ extend the spec through implementation.
 7. **Telemetry.** A new write path needs its §17 event in the same PR — the coverage test (MNE-51)
    will fail otherwise, and that is the test doing its job.
 8. `pnpm test` green before the PR.
+9. **Merging applies it.** `.github/workflows/migrate-production.yml` runs `pnpm db:migrate`
+   against production, and `deploy-web` calls it as a job `ship` depends on, so the order is
+   migrate → gate → deploy. You do not run anything by hand, but the migration must be safe under
+   the code *currently* deployed — the gate permits only migrate-then-deploy. Backfill in one
+   migration, constrain in the next.
 
 ## Things that will bite
 

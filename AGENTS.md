@@ -130,7 +130,7 @@ pnpm typecheck        # tsc --build --force — local only
 pnpm check:tests      # rejects committed .only / .skip / .todo — local only
 pnpm format           # biome format --write
 pnpm lint             # biome check — everything, warnings included
-pnpm db:migrate       # apply pending migrations to DATABASE_URL — local and the Neon workflow
+pnpm db:migrate       # apply pending migrations to DATABASE_URL — local, and both CI migrate paths
 pnpm db:snapshot      # regenerate db/structure.sql from DATABASE_URL — run it with every migration
 pnpm db:snapshot --check  # fail if db/structure.sql and the migrations disagree — CI runs this
 pnpm db:version       # READ-ONLY: report the schema version a database is on, and applies nothing
@@ -235,9 +235,18 @@ Write a migration, run `pnpm db:snapshot`, and commit both in the same commit.
 A PR that **changes a migration** gets its own Neon branch — `.github/workflows/neon_workflow.yml`
 creates `preview/pr-<n>`, applies migrations to it, posts a schema diff to the PR, and deletes the
 branch when the PR closes. It skips fork PRs, which cannot see `NEON_API_KEY`, and since MNE-226 it
-skips every PR that does not change a migration. **That workflow is the only thing that runs
-migrations automatically; nothing migrates production.** Applying to production is a deliberate
-`pnpm db:migrate` against the production `DATABASE_URL`, and `CLAUDE.md` requires asking first.
+skips every PR that does not change a migration.
+
+**Merging a migration to `main` applies it to production** (MNE-254). `.github/workflows/migrate-production.yml` runs
+`pnpm db:migrate` against the production database, and `deploy-web` calls it as a job the ship step
+depends on — so the order is migrate, then gate, then deploy, and a migration that fails stops
+the deploy rather than letting it ship against a schema the build cannot satisfy. It resolves the
+connection string from the Neon API at run time, so no second copy of the production credential is
+stored anywhere.
+
+It is dispatchable on its own from the Actions tab, because migrating and shipping are separate acts:
+only the first is delegated. `pnpm db:migrate` by hand remains the fallback for when the workflow
+cannot run, and it is still the only way to migrate anything that is not production.
 
 The Postgres integration tests under `tests/integration/` need a real engine and **skip themselves
 when `DATABASE_URL` is unset**. They create and drop their own `mne40_*` schemas, so they are safe to

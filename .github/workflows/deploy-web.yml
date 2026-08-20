@@ -59,8 +59,13 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  migrate:
+    name: migrate production
+    uses: ./.github/workflows/migrate-production.yml
+    secrets: inherit
+
   ship:
-    needs: build
+    needs: [build, migrate]
     runs-on: ubuntu-latest
     environment: production
     permissions:
@@ -121,7 +126,7 @@ jobs:
           echo "the production database is at schema version ${applied}"
 
           if [ "${applied}" -lt "${expected}" ]; then
-            echo "::error::production is at schema version ${applied} but this build expects ${expected}. Shipping it would serve code the database cannot satisfy, which is exactly MNE-254. Run 'pnpm db:migrate' against the production DATABASE_URL first, then re-run this workflow."
+            echo "::error::production is at schema version ${applied} but this build expects ${expected}. Shipping it would serve code the database cannot satisfy, which is exactly MNE-254. The migrate job above should already have applied it, so reaching here means that job was skipped or its migration did not take — read its log rather than re-running this one."
             exit 1
           fi
 
@@ -192,7 +197,7 @@ jobs:
 
           schema=$(read_field schema)
           if [ "${schema}" != "current" ]; then
-            echo "::error::schema is \"${schema}\" — this build expects version $(read_field schemaVersion.expected) and the database is at $(read_field schemaVersion.applied). Run 'pnpm db:migrate' against production."
+            echo "::error::schema is \"${schema}\" — this build expects version $(read_field schemaVersion.expected) and the database is at $(read_field schemaVersion.applied). The migrate job should have closed that gap before this deploy ran — read its log."
             failed=1
           fi
 
