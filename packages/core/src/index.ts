@@ -1,4 +1,4 @@
-export const VERSION = '0.7.0';
+export const VERSION = '0.7.1';
 
 export * from './api/index.js';
 export { isStorableText, NULL_BYTE_ERROR } from './domain/text.js';
