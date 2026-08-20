@@ -27,6 +27,7 @@ import {
   hostedReviewQueuePath,
   loadServerConfig,
 } from './config.js';
+import { LINKED_TOOLS } from './linked-tools.js';
 import type { ErasedToolDefinition } from './registry.js';
 import { findToolDefinition, ToolRegistrationError, ToolRegistry } from './registry.js';
 import type { ReviewQueue } from './review-queue.js';
@@ -38,12 +39,6 @@ import { createWriteSessionResolver } from './session-provenance.js';
 import type { SliceLog } from './slices.js';
 import { createSliceLog } from './slices.js';
 import { PoolConnectionSource } from './store.js';
-import { retireTool } from './tools/retire.js';
-import { assertTool } from './tools/assert.js';
-import { checkpointTool } from './tools/checkpoint.js';
-import { handoffCreateTool, handoffReceiveTool } from './tools/handoff.js';
-import { rehydrateTool } from './tools/rehydrate.js';
-import { searchTool } from './tools/search.js';
 import type { ToolContext } from './tools/types.js';
 
 interface PendingTool {
@@ -127,16 +122,7 @@ async function resolveTools(logger: ServerLogger): Promise<readonly ErasedToolDe
   const available = pending.filter(
     (definition): definition is ErasedToolDefinition => definition !== null,
   );
-  return [
-    rehydrateTool,
-    assertTool,
-    retireTool,
-    checkpointTool,
-    searchTool,
-    handoffCreateTool,
-    handoffReceiveTool,
-    ...available,
-  ];
+  return [...LINKED_TOOLS, ...available];
 }
 
 function createTelemetry(config: ServerConfig, logger: ServerLogger): TelemetryEmitter {
