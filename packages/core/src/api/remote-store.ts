@@ -23,6 +23,10 @@ import type {
   RetireContextItemResult,
   ScopedStore,
   SessionClientProvenance,
+  StaleContextItem,
+  StaleContextItemFilter,
+  VerifyContextItemInput,
+  VerifyContextItemResult,
   WorkspaceScope,
 } from '../store/adapter/types.js';
 import { ApiError, type HttpTransport } from './http.js';
@@ -252,6 +256,12 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
     },
     confirmContextItem(_input: ConfirmContextItemInput): Promise<ContextItem> {
       return unsupported('confirmContextItem', 'M2');
+    },
+    listStaleContextItems(_filter: StaleContextItemFilter): Promise<readonly StaleContextItem[]> {
+      return unsupported('listStaleContextItems', 'M3');
+    },
+    verifyContextItem(_input: VerifyContextItemInput): Promise<VerifyContextItemResult> {
+      return unsupported('verifyContextItem', 'M3');
     },
     getCheckpoint(_id: Uuid): Promise<Checkpoint | null> {
       return unsupported('getCheckpoint', 'M2');

@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 32
+-- schema version: 33
 
 -- extensions
 
@@ -299,6 +299,7 @@ ALTER TABLE context_item ADD CONSTRAINT context_item_workspace_id_supersedes_id_
 CREATE INDEX context_item_load_bearing_idx ON public.context_item USING btree (workspace_id, project_id) WHERE ((status = 'active'::item_status) AND load_bearing AND (valid_to IS NULL));
 CREATE INDEX context_item_project_id_status_kind_idx ON public.context_item USING btree (project_id, status, kind);
 CREATE INDEX context_item_purge_idx ON public.context_item USING btree (purge_after) WHERE (purge_after IS NOT NULL);
+CREATE INDEX context_item_verification_due_idx ON public.context_item USING btree (workspace_id, project_id, COALESCE(last_verified_at, asserted_at)) WHERE ((status = 'active'::item_status) AND (valid_to IS NULL) AND (decay_after IS NOT NULL));
 ALTER TABLE context_item ENABLE ROW LEVEL SECURITY;
 ALTER TABLE context_item FORCE ROW LEVEL SECURITY;
 CREATE POLICY context_item_workspace_isolation ON context_item USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
