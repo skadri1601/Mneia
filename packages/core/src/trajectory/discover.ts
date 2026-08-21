@@ -3,12 +3,16 @@ import { createClaudeDesktopReader } from './claude-desktop.js';
 import { createCodexReader } from './codex.js';
 import { createCursorReader } from './cursor.js';
 import {
+  compareByRecency,
   type ListTrajectoriesRequest,
   type Trajectory,
   TrajectoryError,
+  type TrajectoryErrorCode,
   type TrajectoryReader,
   type TrajectorySource,
   type TrajectorySummary,
+  type TrajectoryUnavailable,
+  unavailableFrom,
 } from './types.js';
 import { createWarpReader } from './warp.js';
 
@@ -24,55 +28,81 @@ export function createReaders(): readonly TrajectoryReader[] {
 
 export interface DiscoveredTrajectory extends TrajectorySummary {
   readonly unavailable: string | null;
+  readonly unavailableCode: TrajectoryErrorCode | null;
+}
+
+export interface TrajectoryDiscovery {
+  readonly sessions: readonly TrajectorySummary[];
+  readonly unavailable: readonly TrajectoryUnavailable[];
+}
+
+const identityOf = (summary: TrajectorySummary): string =>
+  `${summary.source}:${summary.sessionRef}`;
+
+function deduplicate(summaries: readonly TrajectorySummary[]): readonly TrajectorySummary[] {
+  const byIdentity = new Map<string, TrajectorySummary>();
+  for (const summary of summaries) {
+    const identity = identityOf(summary);
+    const existing = byIdentity.get(identity);
+    if (existing === undefined || compareByRecency(summary, existing) < 0) {
+      byIdentity.set(identity, summary);
+    }
+  }
+  return [...byIdentity.values()];
+}
+
+export async function discoverTrajectorySessions(
+  request: ListTrajectoriesRequest = {},
+  readers: readonly TrajectoryReader[] = createReaders(),
+): Promise<TrajectoryDiscovery> {
+  const unavailable: TrajectoryUnavailable[] = [];
+  const report = (failure: TrajectoryUnavailable): void => {
+    unavailable.push(failure);
+    request.onUnavailable?.(failure);
+  };
+
+  const listed = await Promise.all(
+    readers.map(async (reader) => {
+      try {
+        return await reader.list({ ...request, limit: undefined, onUnavailable: report });
+      } catch (error) {
+        report(unavailableFrom(reader.source, null, 'unreadable', error));
+        return [] as readonly TrajectorySummary[];
+      }
+    }),
+  );
+
+  const sessions = [...deduplicate(listed.flat())].sort(compareByRecency);
+
+  return {
+    sessions: request.limit === undefined ? sessions : sessions.slice(0, request.limit),
+    unavailable,
+  };
 }
 
 export async function discoverTrajectories(
   request: ListTrajectoriesRequest = {},
   readers: readonly TrajectoryReader[] = createReaders(),
 ): Promise<readonly DiscoveredTrajectory[]> {
-  const found: DiscoveredTrajectory[] = [];
+  const { sessions, unavailable } = await discoverTrajectorySessions(request, readers);
 
-  const listed = await Promise.all(
-    readers.map(async (reader) => {
-      try {
-        return {
-          source: reader.source,
-          summaries: await reader.list({ ...request, limit: undefined }),
-          unavailable: null as string | null,
-        };
-      } catch (error) {
-        return {
-          source: reader.source,
-          summaries: [] as readonly TrajectorySummary[],
-          unavailable: error instanceof Error ? error.message : String(error),
-        };
-      }
-    }),
-  );
+  const available: DiscoveredTrajectory[] = sessions.map((summary) => ({
+    ...summary,
+    unavailable: null,
+    unavailableCode: null,
+  }));
 
-  for (const entry of listed) {
-    for (const summary of entry.summaries) {
-      found.push({ ...summary, unavailable: null });
-    }
-  }
+  const failures: DiscoveredTrajectory[] = unavailable.map((failure) => ({
+    source: failure.source,
+    sessionRef: failure.sessionRef ?? '',
+    cwd: null,
+    startedAt: null,
+    lastActivityAt: null,
+    unavailable: failure.reason,
+    unavailableCode: failure.code,
+  }));
 
-  found.sort(
-    (left, right) => (right.lastActivityAt?.getTime() ?? 0) - (left.lastActivityAt?.getTime() ?? 0),
-  );
-
-  const limited = request.limit === undefined ? found : found.slice(0, request.limit);
-  const failures = listed
-    .filter((entry) => entry.unavailable !== null)
-    .map((entry) => ({
-      source: entry.source,
-      sessionRef: '',
-      cwd: null,
-      startedAt: null,
-      lastActivityAt: null,
-      unavailable: entry.unavailable,
-    }));
-
-  return [...limited, ...failures];
+  return [...available, ...failures];
 }
 
 export async function readTrajectory(

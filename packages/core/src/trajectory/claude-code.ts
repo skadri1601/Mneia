@@ -1,10 +1,12 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { matchesCwd } from './paths.js';
 import { createRefFactory } from './refs.js';
 import {
+  compareByRecency,
   type ListTrajectoriesRequest,
+  reportUnplaced,
   type Trajectory,
   TrajectoryError,
   type TrajectoryReader,
@@ -13,7 +15,9 @@ import {
   type TrajectoryTurn,
   type TurnKind,
   type TurnRole,
+  unavailableFrom,
 } from './types.js';
+import { readTranscriptWindows } from './windows.js';
 
 const IGNORED_LINE_TYPES = new Set([
   'ai-title',
@@ -168,7 +172,19 @@ export interface ClaudeCodeReaderOptions {
 
 const defaultProjectsRoot = (): string => join(homedir(), '.claude', 'projects');
 
-async function listJsonlFiles(root: string): Promise<readonly string[]> {
+export function slugCouldHoldCwd(directoryName: string, cwd: string | undefined): boolean {
+  if (cwd === undefined) {
+    return true;
+  }
+  const left = directoryName.toLowerCase();
+  const right = projectSlug(cwd).toLowerCase();
+  return left === right || left.startsWith(`${right}-`) || right.startsWith(`${left}-`);
+}
+
+async function listProjectDirectories(
+  root: string,
+  cwd: string | undefined,
+): Promise<readonly string[]> {
   let entries: readonly string[];
   try {
     entries = await readdir(root);
@@ -176,9 +192,16 @@ async function listJsonlFiles(root: string): Promise<readonly string[]> {
     return [];
   }
 
+  const narrowed = entries.filter((entry) => slugCouldHoldCwd(entry, cwd));
+  return (narrowed.length === 0 ? entries : narrowed).map((entry) => join(root, entry));
+}
+
+async function listJsonlFiles(
+  root: string,
+  cwd: string | undefined = undefined,
+): Promise<readonly string[]> {
   const found: string[] = [];
-  for (const entry of entries) {
-    const directory = join(root, entry);
+  for (const directory of await listProjectDirectories(root, cwd)) {
     let files: readonly string[];
     try {
       files = await readdir(directory);
@@ -192,6 +215,70 @@ async function listJsonlFiles(root: string): Promise<readonly string[]> {
     }
   }
   return found;
+}
+
+async function summariseTranscript(
+  file: string,
+  source: TrajectorySource,
+  request: ListTrajectoriesRequest,
+  unplaced: string[],
+): Promise<TrajectorySummary | null> {
+  const sessionRef = basename(file, '.jsonl');
+
+  let windows: Awaited<ReturnType<typeof readTranscriptWindows>>;
+  try {
+    windows = await readTranscriptWindows(file);
+  } catch (cause) {
+    request.onUnavailable?.(
+      unavailableFrom(
+        source,
+        sessionRef,
+        'unreadable',
+        new TrajectoryError(
+          'unreadable',
+          source,
+          `expected to read the ${source} transcript at ${file}; the read failed — check the file is not locked by another process`,
+          { cause },
+        ),
+      ),
+    );
+    return null;
+  }
+
+  const opening = parseClaudeCodeJsonl(windows.head, sessionRef);
+  const closing =
+    windows.tail.length === 0 ? opening : parseClaudeCodeJsonl(windows.tail, sessionRef);
+  const cwd = opening.cwd ?? closing.cwd;
+
+  if (opening.turns.length === 0 && closing.turns.length === 0) {
+    if (windows.bytes > 0) {
+      request.onUnavailable?.({
+        source,
+        sessionRef,
+        code: 'unrecognised_format',
+        reason: `expected ${file} to hold ${source} transcript lines; ${windows.bytes} bytes produced no turns — report this with your client version so the reader can be updated`,
+      });
+    }
+    return null;
+  }
+
+  if (cwd === null && request.cwd !== undefined) {
+    unplaced.push(sessionRef);
+    return null;
+  }
+
+  if (!matchesCwd(cwd, request.cwd)) {
+    return null;
+  }
+
+  const lastTurn = closing.turns[closing.turns.length - 1] ?? null;
+  return {
+    source,
+    sessionRef,
+    cwd,
+    startedAt: opening.turns[0]?.at ?? null,
+    lastActivityAt: lastTurn?.at ?? windows.modified,
+  };
 }
 
 export function createClaudeCodeReader(options: ClaudeCodeReaderOptions = {}): TrajectoryReader {
@@ -215,38 +302,25 @@ export function createClaudeCodeReader(options: ClaudeCodeReaderOptions = {}): T
     source,
 
     async list(request: ListTrajectoriesRequest = {}) {
-      const files = await listJsonlFiles(root);
+      const files = await listJsonlFiles(root, request.cwd);
       const summaries: TrajectorySummary[] = [];
+      const unplaced: string[] = [];
 
       for (const file of files) {
-        let raw: string;
-        let modified: Date | null;
-        try {
-          raw = await readFile(file, 'utf8');
-          modified = (await stat(file)).mtime;
-        } catch {
-          continue;
+        const summary = await summariseTranscript(file, source, request, unplaced);
+        if (summary !== null) {
+          summaries.push(summary);
         }
-        const parsed = parseClaudeCodeJsonl(raw, basename(file, '.jsonl'));
-        if (parsed.turns.length === 0) {
-          continue;
-        }
-        if (!matchesCwd(parsed.cwd, request.cwd)) {
-          continue;
-        }
-        summaries.push({
-          source,
-          sessionRef: parsed.sessionRef,
-          cwd: parsed.cwd,
-          startedAt: parsed.turns[0]?.at ?? null,
-          lastActivityAt: parsed.turns[parsed.turns.length - 1]?.at ?? modified,
-        });
       }
 
-      summaries.sort(
-        (left, right) =>
-          (right.lastActivityAt?.getTime() ?? 0) - (left.lastActivityAt?.getTime() ?? 0),
+      reportUnplaced(
+        request,
+        source,
+        unplaced,
+        'open one with --from-file if it belongs to this repository',
       );
+
+      summaries.sort(compareByRecency);
       return request.limit === undefined ? summaries : summaries.slice(0, request.limit);
     },
 

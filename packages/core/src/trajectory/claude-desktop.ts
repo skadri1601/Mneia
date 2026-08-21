@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { createClaudeCodeReader } from './claude-code.js';
 import { roamingAppDataDir } from './paths.js';
 import {
+  compareByRecency,
   type ListTrajectoriesRequest,
   type Trajectory,
   TrajectoryError,
@@ -72,10 +73,7 @@ export function createClaudeDesktopReader(
       for (const reader of await readers()) {
         all.push(...(await reader.list({ ...request, limit: undefined })));
       }
-      all.sort(
-        (left, right) =>
-          (right.lastActivityAt?.getTime() ?? 0) - (left.lastActivityAt?.getTime() ?? 0),
-      );
+      all.sort(compareByRecency);
       return request.limit === undefined ? all : all.slice(0, request.limit);
     },
 

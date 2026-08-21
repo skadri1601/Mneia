@@ -25,6 +25,7 @@ export const SERVER_INSTRUCTIONS = [
   'When your harness supplies conversation metadata, pass it as sourceSession on mneia_assert and mneia_checkpoint so Mneia can distinguish conversations inside a persistent MCP process; client name and version come from the MCP initialization handshake and must not be included in tool arguments.',
   'When you checkpoint after a rehydrate, pass that slice id back as sliceId along with referencedItemIds — the ids of the slice items that actually changed what you did. That is the only signal of whether the slice was worth loading, and it cannot be recovered later.',
   'Items that need a human to confirm come back as a pending queue — surface them to the user rather than treating them as written.',
+  'This repository may have other people and other agents working in it: call mneia_handoff_inbox at the start of a session to see whether work was handed to you, mneia_sessions to see who has been here before you, and mneia_team for the names and ids mneia_handoff_create accepts as toActor.',
 ].join(' ');
 
 export const DEFAULT_SHUTDOWN_TIMEOUT_MS = 5000;

@@ -4,12 +4,15 @@ import { matchesCwd, roamingAppDataDir } from './paths.js';
 import { createRefFactory } from './refs.js';
 import { fileUriToPath, openReadOnly, type SqliteDatabase } from './sqlite.js';
 import {
+  compareByRecency,
   type ListTrajectoriesRequest,
+  reportUnplaced,
   type Trajectory,
   TrajectoryError,
   type TrajectoryReader,
   type TrajectorySummary,
   type TrajectoryTurn,
+  type TrajectoryUnavailableReporter,
   type TurnRole,
 } from './types.js';
 
@@ -92,6 +95,7 @@ const defaultWorkspaceStorage = (env: NodeJS.ProcessEnv = process.env): string =
 
 export async function composerFolders(
   workspaceStoragePath: string,
+  onUnavailable?: TrajectoryUnavailableReporter,
 ): Promise<ReadonlyMap<string, string>> {
   const mapping = new Map<string, string>();
 
@@ -119,7 +123,13 @@ export async function composerFolders(
     let database: SqliteDatabase;
     try {
       database = await openReadOnly(join(workspaceStoragePath, directory, 'state.vscdb'), 'cursor');
-    } catch {
+    } catch (cause) {
+      onUnavailable?.({
+        source: 'cursor',
+        sessionRef: null,
+        code: cause instanceof TrajectoryError ? cause.code : 'unreadable',
+        reason: `expected to read the Cursor workspace index at ${join(workspaceStoragePath, directory, 'state.vscdb')}; the open failed (${cause instanceof Error ? cause.message : String(cause)}) — every conversation in ${folder} is unmatched to a working directory until it opens`,
+      });
       continue;
     }
 
@@ -249,9 +259,10 @@ export function createCursorReader(options: CursorReaderOptions = {}): Trajector
     source: 'cursor',
 
     async list(request: ListTrajectoriesRequest = {}): Promise<readonly TrajectorySummary[]> {
-      const folders = await composerFolders(workspacePath);
+      const folders = await composerFolders(workspacePath, request.onUnavailable);
       const database = await openReadOnly(globalPath, 'cursor');
       const summaries: TrajectorySummary[] = [];
+      const unplaced: string[] = [];
 
       try {
         const rows = database
@@ -261,7 +272,16 @@ export function createCursorReader(options: CursorReaderOptions = {}): Trajector
         for (const row of rows) {
           const key = asString(row.key);
           const data = parseJson(row.value);
-          if (key === null || data === null) {
+          if (key === null) {
+            continue;
+          }
+          if (data === null) {
+            request.onUnavailable?.({
+              source: 'cursor',
+              sessionRef: key.slice('composerData:'.length),
+              code: 'unrecognised_format',
+              reason: `expected ${key} in ${globalPath} to hold JSON describing a Cursor conversation; it did not parse — report this with your Cursor version so the reader can be updated`,
+            });
             continue;
           }
           const composerId = asString(data.composerId) ?? key.slice('composerData:'.length);
@@ -270,6 +290,10 @@ export function createCursorReader(options: CursorReaderOptions = {}): Trajector
             continue;
           }
           const cwd = folders.get(composerId) ?? null;
+          if (cwd === null && request.cwd !== undefined) {
+            unplaced.push(composerId);
+            continue;
+          }
           if (!matchesCwd(cwd, request.cwd)) {
             continue;
           }
@@ -286,10 +310,14 @@ export function createCursorReader(options: CursorReaderOptions = {}): Trajector
         database.close();
       }
 
-      summaries.sort(
-        (left, right) =>
-          (right.lastActivityAt?.getTime() ?? 0) - (left.lastActivityAt?.getTime() ?? 0),
+      reportUnplaced(
+        request,
+        'cursor',
+        unplaced,
+        `no workspace folder under ${workspacePath} names them — open one in Cursor once, or pass it with --from-file`,
       );
+
+      summaries.sort(compareByRecency);
       return request.limit === undefined ? summaries : summaries.slice(0, request.limit);
     },
 
