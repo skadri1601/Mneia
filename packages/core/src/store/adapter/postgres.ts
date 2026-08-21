@@ -12,8 +12,10 @@ import type {
   Uuid,
 } from '../../domain/types.js';
 import { assertSupersedeAllowed } from '../../policy/index.js';
+import { DEFAULT_DECAY_AFTER_BY_KIND } from '../../rehydrate/score.js';
 import type { SqlExecutor, SqlValue } from '../driver.js';
 import { assertConnectionEnforcesRls } from '../rls-guard.js';
+import type { ItemKind } from '../schema.js';
 import {
   ACCESS_SCOPES,
   ACTOR_KINDS,
@@ -257,6 +259,9 @@ const assertOptionalIntervalMs = (
   }
   return value;
 };
+
+const defaultDecayAfterMs = (kind: ItemKind): number | null =>
+  DEFAULT_DECAY_AFTER_BY_KIND[kind] ?? null;
 
 const assertNonEmpty = (value: string, label: string): string => {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -943,7 +948,10 @@ class PostgresScopedStore implements ReviewCapableStore {
     const embeddingValue =
       embedding === null ? null : embeddingLiteral(assertEmbedding(embedding, 'item.embedding'));
 
-    const decayAfterMs = assertOptionalIntervalMs(item.decayAfter, 'item.decayAfter');
+    const decayAfterMs =
+      item.decayAfter === undefined
+        ? defaultDecayAfterMs(item.kind)
+        : assertOptionalIntervalMs(item.decayAfter, 'item.decayAfter');
 
     const params = new SqlParams();
     const values = [

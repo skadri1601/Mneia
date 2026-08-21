@@ -7,6 +7,7 @@ export const SHIPPED_COMMAND_NAMES = [
   'checkpoint',
   'log',
   'status',
+  'verify',
   'login',
   'whoami',
   'handoff',

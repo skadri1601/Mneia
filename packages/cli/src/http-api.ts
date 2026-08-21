@@ -43,6 +43,13 @@ import type { AttachRequest, AttachResult, InitApi } from './commands/init.js';
 import type { LogApi, LogChainPage, LogChainRequest, LogPage, LogRequest } from './commands/log.js';
 import { MAX_CHAIN_REVISIONS, matchItemIds } from './commands/log.js';
 import type { StatusApi, StatusReport, StatusRequest } from './commands/status.js';
+import type {
+  StaleList,
+  StaleListRequest,
+  VerifyApi,
+  VerifyOutcome,
+  VerifyRequest,
+} from './commands/verify.js';
 import { resolveToken } from './config.js';
 
 const STATUS_ITEM_LIMIT = 500;
@@ -344,6 +351,47 @@ export const httpStatusApi: StatusApi = {
     return {
       projectId: project.id,
       items: await store.listContextItems({ projectId: project.id, limit: STATUS_ITEM_LIMIT }),
+    };
+  },
+};
+
+export const httpVerifyApi: VerifyApi = {
+  async stale(request: StaleListRequest): Promise<StaleList> {
+    const { store } = await connect(request.config);
+    const project = await requireProject(store, request.config, 'verify');
+
+    const due = await store.listStaleContextItems({
+      projectId: project.id,
+      asOf: request.asOf,
+      limit: request.limit,
+    });
+
+    return {
+      projectId: project.id,
+      entries: due.map((entry) => ({
+        item: entry.item,
+        staleSince: entry.staleSince,
+        staleForMs: entry.staleForMs,
+      })),
+    };
+  },
+
+  async verify(request: VerifyRequest): Promise<VerifyOutcome> {
+    const { store } = await connect(request.config);
+    const project = await requireProject(store, request.config, 'verify');
+
+    const result = await store.verifyContextItem({
+      projectId: project.id,
+      itemId: request.itemId,
+      verification: request.verification,
+      reason: request.reason,
+    });
+
+    return {
+      checkpointId: result.checkpoint.id,
+      item: result.item,
+      verification: result.verification,
+      previousLastVerifiedAt: result.previousLastVerifiedAt,
     };
   },
 };
