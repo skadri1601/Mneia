@@ -4,6 +4,7 @@ import type { SqlResult, SqlValue } from '../../packages/core/src/index.js';
 import {
   EMBEDDING_DIMENSIONS,
   migrate,
+  semanticRelevance,
   SupersedeNotAllowedError,
   WORKSPACE_SETTING,
 } from '../../packages/core/src/index.js';
@@ -300,6 +301,64 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
         );
         expect(groups.mandatory.map((item) => item.id)).toEqual([constraint.id]);
         expect(groups.superseded.map((item) => item.id)).toEqual([previous.id]);
+      });
+    });
+  });
+
+  it('returns a semantic relevance the ranker can trust without shipping the vector', async () => {
+    await withAdapter(async (adapter) => {
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const embeddingFor = (seed: number): number[] =>
+          Array.from({ length: EMBEDDING_DIMENSIONS }, (_, index) =>
+            Number(Math.sin(seed + index * 0.01).toFixed(6)),
+          );
+
+        const model = 'openai:text-embedding-3-small';
+        const near = await store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'Cache the rehydration slice per task'),
+          embedding: embeddingFor(1),
+          embeddingModel: model,
+        });
+        const far = await store.insertContextItem({
+          ...newItem(PROJECT_A, ACTOR_A, 'Rotate the deploy key every quarter'),
+          embedding: embeddingFor(9),
+          embeddingModel: model,
+        });
+
+        const task = embeddingFor(1.05);
+
+        const select = store.selectRehydrationCandidates;
+        expect(select).toBeDefined();
+        if (select === undefined) return;
+
+        const groups = await select.call(store, {
+          projectId: PROJECT_A,
+          asOf: new Date(Date.now() + 60_000),
+          candidateLimit: 160,
+          mandatoryLimit: 1000,
+          supersededLimit: 5,
+          embedding: task,
+          embeddingModel: model,
+        });
+
+        const scored = groups.relevance;
+        expect(scored).toBeDefined();
+        if (scored === undefined) return;
+
+        for (const [item, seed] of [
+          [near, 1],
+          [far, 9],
+        ] as const) {
+          const fromPostgres = scored.get(item.id);
+          expect(fromPostgres).toBeDefined();
+          expect(fromPostgres).toBeCloseTo(semanticRelevance(embeddingFor(seed), task), 5);
+        }
+
+        expect(scored.get(near.id) ?? 0).toBeGreaterThan(scored.get(far.id) ?? 1);
+
+        for (const candidate of groups.candidates) {
+          expect(candidate.embedding).toBeNull();
+        }
       });
     });
   });

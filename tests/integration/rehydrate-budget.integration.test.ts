@@ -20,7 +20,8 @@ const connectionString = process.env.DATABASE_URL;
 
 export const P95_BUDGET_MS = 300;
 
-const ITEM_COUNT = 2000;
+const ITEM_COUNT = 8000;
+const SEED_BATCH = 250;
 const LOAD_BEARING_CONSTRAINTS = 40;
 const SUPERSEDED_ITEMS = 60;
 const WARMUP_RUNS = 5;
@@ -136,18 +137,21 @@ async function seedCorpus(client: Client): Promise<void> {
     [PROJECT, WS, TEAM, 'bench-platform'],
   );
 
-  for (let index = 0; index < ITEM_COUNT; index += 1) {
-    const kind = KINDS[index % KINDS.length];
-    const loadBearing = kind === 'constraint' && index < LOAD_BEARING_CONSTRAINTS * KINDS.length;
-    const status = index >= ITEM_COUNT - SUPERSEDED_ITEMS ? 'superseded' : 'active';
-    const inserted = await client.query(
-      `INSERT INTO context_item
-         (id, workspace_id, project_id, kind, title, body, status, load_bearing, human_confirmed,
-          confidence, access_scope, asserted_by, asserted_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, 'project', $10,
-               now() - ($11 || ' minutes')::interval)
-       RETURNING id`,
-      [
+  for (let base = 0; base < ITEM_COUNT; base += SEED_BATCH) {
+    const rows: string[] = [];
+    const values: unknown[] = [];
+
+    for (let index = base; index < Math.min(base + SEED_BATCH, ITEM_COUNT); index += 1) {
+      const kind = KINDS[index % KINDS.length];
+      const loadBearing = kind === 'constraint' && index < LOAD_BEARING_CONSTRAINTS * KINDS.length;
+      const status = index >= ITEM_COUNT - SUPERSEDED_ITEMS ? 'superseded' : 'active';
+      const at = values.length;
+      rows.push(
+        `(gen_random_uuid(), $${at + 1}, $${at + 2}, $${at + 3}, $${at + 4}, $${at + 5}, $${at + 6}, ` +
+          `$${at + 7}, $${at + 8}, $${at + 9}, 'project', $${at + 10}, ` +
+          `now() - ($${at + 11} || ' minutes')::interval)`,
+      );
+      values.push(
         WS,
         PROJECT,
         status === 'superseded' ? 'decision' : kind,
@@ -159,16 +163,41 @@ async function seedCorpus(client: Client): Promise<void> {
         0.5 + (index % 50) / 100,
         ACTOR,
         String(index),
-      ],
+      );
+    }
+
+    const inserted = await client.query(
+      `INSERT INTO context_item
+         (id, workspace_id, project_id, kind, title, body, status, load_bearing, human_confirmed,
+          confidence, access_scope, asserted_by, asserted_at)
+       VALUES ${rows.join(', ')}
+       RETURNING id`,
+      values,
     );
-    const itemId = inserted.rows[0]?.id as string;
+
+    const embeddingRows: string[] = [];
+    const embeddingValues: unknown[] = [];
+    inserted.rows.forEach((row, offset) => {
+      const at = embeddingValues.length;
+      embeddingRows.push(
+        `($${at + 1}, $${at + 2}, 'openai:text-embedding-3-small', $${at + 3}, $${at + 4})`,
+      );
+      embeddingValues.push(
+        WS,
+        row.id as string,
+        EMBEDDING_DIMENSIONS,
+        vectorLiteral(base + offset),
+      );
+    });
 
     await client.query(
       `INSERT INTO context_item_embedding (workspace_id, item_id, model, dim, embedding)
-       VALUES ($1, $2, 'openai:text-embedding-3-small', $3, $4)`,
-      [WS, itemId, EMBEDDING_DIMENSIONS, vectorLiteral(index)],
+       VALUES ${embeddingRows.join(', ')}`,
+      embeddingValues,
     );
   }
+
+  await client.query('ANALYZE');
 }
 
 let adapter: PostgresStoreAdapter | null = null;

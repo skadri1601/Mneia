@@ -687,7 +687,7 @@ describe('mneia checkpoint across sessions', () => {
   const commandFor = (api: FakeApi, prompter = new ScriptedPrompter([])) =>
     createCheckpointCommand({ api, loadConfig: () => CONFIG, prompter });
 
-  it('still reads only the newest session by default', async () => {
+  it('reads every discovered session by default, not just the newest', async () => {
     const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
     api.sessions = [NEWEST_SESSION, OLDER_SESSION];
     const sink = capture();
@@ -695,29 +695,20 @@ describe('mneia checkpoint across sessions', () => {
     const code = await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
 
     expect(code).toBe(0);
-    expect(api.proposals.map((request) => request.sessionRef)).toEqual(['session-newest']);
+    expect(api.proposals.map((request) => request.sessionRef)).toEqual([
+      'session-newest',
+      'session-older',
+    ]);
   });
 
-  it('tells you how many other sessions it did not read, and how to reach them', async () => {
+  it('no longer points at a flag for behaviour it now has by default', async () => {
     const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
     api.sessions = [NEWEST_SESSION, OLDER_SESSION];
     const sink = capture();
 
     await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
 
-    const warned = sink.err.join('');
-    expect(warned).toContain('1 other agent session');
-    expect(warned).toContain('--all-sessions');
-    expect(warned).toContain('--session');
-  });
-
-  it('says nothing extra when there is only one session', async () => {
-    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
-    const sink = capture();
-
-    await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
-
-    expect(sink.err.join('')).not.toContain('--all-sessions');
+    expect(sink.err.join('')).not.toContain('did not read');
   });
 
   it('reads the session you name', async () => {

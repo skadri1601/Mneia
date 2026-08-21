@@ -836,7 +836,7 @@ export const CheckpointProposeWireSchema = z.object({
   source: z.enum(TRAJECTORY_SOURCES),
   sessionRef: z.string().min(1).max(300),
   trigger: z.enum(CHECKPOINT_TRIGGERS),
-  turns: z.array(TrajectoryTurnWireSchema).min(1).max(MAX_TRAJECTORY_TURNS),
+  turns: z.array(TrajectoryTurnWireSchema).max(MAX_TRAJECTORY_TURNS),
 });
 
 export type CheckpointProposeWire = z.infer<typeof CheckpointProposeWireSchema>;

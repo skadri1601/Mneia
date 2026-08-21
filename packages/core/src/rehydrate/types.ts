@@ -35,6 +35,7 @@ export interface ScoringInput {
   readonly now: Date;
   readonly weights?: ScoringWeights;
   readonly decayDefaults?: DecayDefaults;
+  readonly relevance?: ReadonlyMap<Uuid, number>;
 }
 
 export type KindQuotas = Readonly<Record<ItemKind, number>>;

@@ -3,6 +3,7 @@ import type { ContextItem, Session } from '../domain/types.js';
 import type { PendingReviewItem } from '../store/adapter/types.js';
 import {
   CheckpointProposalWireSchema,
+  CheckpointProposeWireSchema,
   CheckpointWriteWireSchema,
   ContextItemWireSchema,
   decodeContextItem,
@@ -332,5 +333,36 @@ describe('the review queue wire contract', () => {
     expect(PendingReviewFilterWireSchema.safeParse({ projectId: pending.projectId }).success).toBe(
       true,
     );
+  });
+});
+
+describe('CheckpointProposeWireSchema', () => {
+  const probe = {
+    project: 'acme/billing',
+    source: 'claude-code' as const,
+    sessionRef: 'session-1',
+    trigger: 'manual' as const,
+    turns: [],
+  };
+
+  it('accepts an upload of no turns, because that is how the watermark is asked for', () => {
+    const parsed = CheckpointProposeWireSchema.safeParse(probe);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts turns when there are some to send', () => {
+    const parsed = CheckpointProposeWireSchema.safeParse({
+      ...probe,
+      turns: [
+        {
+          ref: 'turn-1',
+          role: 'user',
+          kind: 'text',
+          text: 'ship the probe',
+          at: '2026-08-21T00:00:00.000Z',
+        },
+      ],
+    });
+    expect(parsed.success).toBe(true);
   });
 });

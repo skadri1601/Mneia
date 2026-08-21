@@ -237,7 +237,6 @@ export function matchSessions(
 export function selectSessions(
   discovery: SessionDiscovery,
   reference: string | null,
-  allSessions: boolean,
   cwd: string,
 ): readonly DiscoveredSession[] {
   if (discovery.sessions.length === 0) {
@@ -264,11 +263,7 @@ export function selectSessions(
     return [matched];
   }
 
-  if (allSessions) {
-    return discovery.sessions.slice(0, MAX_CHECKPOINT_SESSIONS);
-  }
-
-  return discovery.sessions.slice(0, 1);
+  return discovery.sessions.slice(0, MAX_CHECKPOINT_SESSIONS);
 }
 
 export function needsHuman(candidate: CheckpointCandidate): boolean {
@@ -774,15 +769,6 @@ const lastActivityOf = (session: DiscoveredSession): string =>
     ? 'last activity unknown'
     : `last active ${session.lastActivityAt.toISOString().replace('T', ' ').slice(0, 16)} UTC`;
 
-function unreadSessionsNote(selection: SessionSelection): string {
-  const unread = selection.discovered - 1;
-  return [
-    `${countOf(unread, 'other agent session')} on this directory ${unread === 1 ? 'was' : 'were'} discovered and not read; mneia checkpoint read only ${sessionLabel(selection.chosen)}.`,
-    'Run mneia checkpoint --all-sessions to cover them all, or mneia checkpoint --session <ref> to pick one.',
-    '',
-  ].join('\n');
-}
-
 function sessionRunLine(run: SessionRun): string {
   if (run.error !== null) {
     return `    failed: ${run.error}`;
@@ -826,7 +812,7 @@ function renderAllSessions(
 
   const footer = [
     tally,
-    'Each session resumes from its own watermark, so re-running mneia checkpoint --all-sessions covers whatever is left.',
+    'Each session resumes from its own watermark, so re-running mneia checkpoint covers whatever is left.',
   ].join('\n');
 
   return `${[header, ...blocks, footer].join('\n\n')}\n`;
@@ -975,12 +961,12 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
         deps.api.discover({ config, cwd: invocation.io.cwd }),
       );
 
-      const chosen = selectSessions(discovery, sessionRef, allSessions, invocation.io.cwd);
+      const chosen = selectSessions(discovery, sessionRef, invocation.io.cwd);
       const context = { config, trigger, summary };
       const canPrompt = deps.prompter.interactive && !invocation.json;
 
       try {
-        if (allSessions) {
+        if (chosen.length > 1) {
           return await runEverySession(deps, invocation, context, discovery, chosen);
         }
 
@@ -993,10 +979,6 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
           chosen: only,
           discovered: discovery.sessions.length,
         };
-
-        if (sessionRef === null && discovery.sessions.length > 1 && !invocation.json) {
-          invocation.io.stderr(unreadSessionsNote(selection));
-        }
 
         const run = await runSession(deps, invocation, { ...context, session: only, prefix: '' });
         return renderOneSession(run, invocation, config, selection);

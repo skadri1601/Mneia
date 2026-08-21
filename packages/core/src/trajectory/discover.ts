@@ -2,6 +2,7 @@ import { createClaudeCodeReader } from './claude-code.js';
 import { createClaudeDesktopReader } from './claude-desktop.js';
 import { createCodexReader } from './codex.js';
 import { createCursorReader } from './cursor.js';
+import { createGeminiReader } from './gemini.js';
 import {
   compareByRecency,
   type ListTrajectoriesRequest,
@@ -22,6 +23,7 @@ export function createReaders(): readonly TrajectoryReader[] {
     createClaudeDesktopReader(),
     createCodexReader(),
     createCursorReader(),
+    createGeminiReader(),
     createWarpReader(),
   ];
 }

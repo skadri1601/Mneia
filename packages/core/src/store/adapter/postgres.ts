@@ -38,6 +38,7 @@ import {
   toEnum,
   toHandoff,
   toNullableDate,
+  toNullableNumber,
   toNullableText,
   toNullableUuid,
   toNumber,
@@ -716,7 +717,8 @@ class PostgresScopedStore implements ReviewCapableStore {
          ${CONTEXT_ITEM_PROVENANCE_JOINS}`;
     let candidateColumns = `${CONTEXT_ITEM_COLUMNS},
        ${CONTEXT_ITEM_PROVENANCE_COLUMNS},
-       NULL::text AS embedding_model, NULL::text AS embedding`;
+       NULL::text AS embedding_model, NULL::text AS embedding,
+       NULL::double precision AS semantic_relevance`;
     let candidateOrder = 'context_item.asserted_at DESC, context_item.id DESC';
 
     if (request.embedding !== undefined) {
@@ -734,13 +736,13 @@ class PostgresScopedStore implements ReviewCapableStore {
           AND context_item_embedding.item_id = context_item.id
           AND context_item_embedding.model = ${params.add(model)}
          ${CONTEXT_ITEM_PROVENANCE_JOINS}`;
+      const vector = `${params.add(embeddingLiteral(request.embedding))}::vector`;
       candidateColumns = `${CONTEXT_ITEM_COLUMNS},
        ${CONTEXT_ITEM_PROVENANCE_COLUMNS},
-       context_item_embedding.model AS embedding_model,
-       context_item_embedding.embedding::text AS embedding`;
-      candidateOrder = `context_item_embedding.embedding <=> ${params.add(
-        embeddingLiteral(request.embedding),
-      )}::vector`;
+       context_item_embedding.model AS embedding_model, NULL::text AS embedding,
+       GREATEST(0, LEAST(1, 1 - (context_item_embedding.embedding <=> ${vector})))::double precision
+         AS semantic_relevance`;
+      candidateOrder = `context_item_embedding.embedding <=> ${vector}`;
     }
 
     const rows = await this.rows(
@@ -777,7 +779,8 @@ class PostgresScopedStore implements ReviewCapableStore {
        ), mandatory_rows AS (
          SELECT 'mandatory'::text AS candidate_group, ${CONTEXT_ITEM_COLUMNS},
                 ${CONTEXT_ITEM_PROVENANCE_COLUMNS},
-                NULL::text AS embedding_model, NULL::text AS embedding
+                NULL::text AS embedding_model, NULL::text AS embedding,
+                NULL::double precision AS semantic_relevance
            FROM context_item
           ${CONTEXT_ITEM_PROVENANCE_JOINS}
           CROSS JOIN viewer
@@ -794,7 +797,8 @@ class PostgresScopedStore implements ReviewCapableStore {
        ), superseded_rows AS (
          SELECT 'superseded'::text AS candidate_group, ${CONTEXT_ITEM_COLUMNS},
                 ${CONTEXT_ITEM_PROVENANCE_COLUMNS},
-                NULL::text AS embedding_model, NULL::text AS embedding
+                NULL::text AS embedding_model, NULL::text AS embedding,
+                NULL::double precision AS semantic_relevance
            FROM context_item
           ${CONTEXT_ITEM_PROVENANCE_JOINS}
           CROSS JOIN viewer
@@ -817,10 +821,13 @@ class PostgresScopedStore implements ReviewCapableStore {
     const candidates: ContextItem[] = [];
     const mandatory: ContextItem[] = [];
     const superseded: ContextItem[] = [];
+    const relevance = new Map<Uuid, number>();
 
     for (const row of rows) {
       const group = toText(row, 'candidate_group');
       const contextItem = toContextItem(row);
+      const scored = toNullableNumber(row, 'semantic_relevance');
+      if (scored !== null) relevance.set(contextItem.id, scored);
       if (group === 'candidate') candidates.push(contextItem);
       else if (group === 'mandatory') mandatory.push(contextItem);
       else if (group === 'superseded') superseded.push(contextItem);
@@ -832,7 +839,7 @@ class PostgresScopedStore implements ReviewCapableStore {
       }
     }
 
-    return { candidates, mandatory, superseded };
+    return { candidates, mandatory, superseded, relevance };
   }
 
   private async selectContextItems(search: ContextItemSearch): Promise<readonly ContextItem[]> {
