@@ -1,5 +1,11 @@
 import type { ContextItem, ContextItemSearch, Project } from '@mneia/core';
-import { ITEM_KINDS, ITEM_STATUSES, truncateToTokens } from '@mneia/core';
+import {
+  ITEM_KINDS,
+  ITEM_STATUSES,
+  sanitizeActorName,
+  truncateToTokens,
+  UNATTRIBUTED_ACTOR,
+} from '@mneia/core';
 import { z } from 'zod';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
@@ -128,8 +134,21 @@ const pad = (value: number, width: number): string => String(value).padStart(wid
 const utcDay = (value: Date): string =>
   `${pad(value.getUTCFullYear(), 4)}-${pad(value.getUTCMonth() + 1, 2)}-${pad(value.getUTCDate(), 2)}`;
 
+function attributionFor(item: ContextItem): readonly string[] {
+  const { provenance } = item;
+
+  if (provenance === undefined) {
+    return [UNATTRIBUTED_ACTOR];
+  }
+
+  return [provenance.actorKind, sanitizeActorName(provenance.actorDisplayName)];
+}
+
 function markersFor(item: ContextItem): readonly string[] {
-  const markers = [item.humanConfirmed ? 'human-confirmed' : 'unconfirmed'];
+  const markers = [
+    ...attributionFor(item),
+    item.humanConfirmed ? 'human-confirmed' : 'not human-confirmed',
+  ];
 
   if (item.loadBearing) {
     markers.push('load-bearing');
@@ -226,6 +245,14 @@ async function run(input: SearchInput, context: ToolContext): Promise<ToolResult
           title: item.title,
           status: item.status,
           humanConfirmed: item.humanConfirmed,
+          assertedBy: {
+            id: item.assertedBy,
+            displayName:
+              item.provenance === undefined
+                ? UNATTRIBUTED_ACTOR
+                : sanitizeActorName(item.provenance.actorDisplayName),
+            kind: item.provenance?.actorKind ?? null,
+          },
           loadBearing: item.loadBearing,
           confidence: item.confidence,
           assertedAt: item.assertedAt.toISOString(),
