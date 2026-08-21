@@ -1,5 +1,6 @@
 import type {
   Actor,
+  ContextItem,
   HostedIdentity,
   HttpTransport,
   NewContextItem,
@@ -39,7 +40,8 @@ import type {
   PickupRequest,
 } from './commands/handoff.js';
 import type { AttachRequest, AttachResult, InitApi } from './commands/init.js';
-import type { LogApi, LogPage, LogRequest } from './commands/log.js';
+import type { LogApi, LogChainPage, LogChainRequest, LogPage, LogRequest } from './commands/log.js';
+import { MAX_CHAIN_REVISIONS, matchItemIds } from './commands/log.js';
 import type { StatusApi, StatusReport, StatusRequest } from './commands/status.js';
 import { resolveToken } from './config.js';
 
@@ -214,7 +216,102 @@ export const httpHandoffApi: HandoffApi = {
   },
 };
 
+const CHAIN_LOOKUP_LIMIT = 500;
+const FULL_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+function chainReferenceUnknown(reference: string, where: string): CliError {
+  return new CliError(
+    'usage',
+    `mneia log --chain found no item matching ${reference} ${where}`,
+    'run mneia log to see the ids it prints in [brackets], then pass one of those',
+  );
+}
+
+async function resolveChainSeed(
+  store: ScopedStore,
+  projectId: Uuid,
+  reference: string,
+): Promise<ContextItem> {
+  if (FULL_UUID.test(reference)) {
+    const item = await store.getContextItem(reference);
+    if (item === null || item.projectId !== projectId) {
+      throw chainReferenceUnknown(reference, 'in this project');
+    }
+    return item;
+  }
+
+  const items = await store.listContextItems({ projectId, limit: CHAIN_LOOKUP_LIMIT });
+  const matches = matchItemIds(
+    items.map((item) => item.id),
+    reference,
+  );
+
+  if (matches.length === 0) {
+    throw chainReferenceUnknown(
+      reference,
+      `in the newest ${CHAIN_LOOKUP_LIMIT} items of this project`,
+    );
+  }
+  if (matches.length > 1) {
+    throw new CliError(
+      'usage',
+      `mneia log --chain matched ${matches.length} items for ${reference}: ${matches.join(', ')}`,
+      'pass more characters of the id, or the full uuid',
+    );
+  }
+
+  const seed = items.find((item) => item.id === matches[0]);
+  if (seed === undefined) {
+    throw chainReferenceUnknown(reference, 'in this project');
+  }
+  return seed;
+}
+
+async function walkChain(store: ScopedStore, seed: ContextItem): Promise<readonly ContextItem[]> {
+  const revisions = new Map<Uuid, ContextItem>([[seed.id, seed]]);
+
+  let backwards: ContextItem = seed;
+  while (backwards.supersedesId !== null && revisions.size < MAX_CHAIN_REVISIONS) {
+    const previous = await store.getContextItem(backwards.supersedesId);
+    if (previous === null || revisions.has(previous.id)) {
+      break;
+    }
+    revisions.set(previous.id, previous);
+    backwards = previous;
+  }
+
+  let forwards: ContextItem = seed;
+  while (forwards.supersededById !== null && revisions.size < MAX_CHAIN_REVISIONS) {
+    const next = await store.getContextItem(forwards.supersededById);
+    if (next === null || revisions.has(next.id)) {
+      break;
+    }
+    revisions.set(next.id, next);
+    forwards = next;
+  }
+
+  return [...revisions.values()];
+}
+
 export const httpLogApi: LogApi = {
+  async chain(request: LogChainRequest): Promise<LogChainPage> {
+    const { store } = await connect(request.config);
+    const project = await requireProject(store, request.config, 'log');
+    const seed = await resolveChainSeed(store, project.id, request.reference);
+    const revisions = await walkChain(store, seed);
+
+    return {
+      projectId: project.id,
+      itemId: seed.id,
+      revisions,
+      actors: await actorsFor(
+        store,
+        revisions.map((item) => item.assertedBy),
+      ),
+      truncated: revisions.length >= MAX_CHAIN_REVISIONS,
+    };
+  },
+
   async log(request: LogRequest): Promise<LogPage> {
     const { store } = await connect(request.config);
     const project = await requireProject(store, request.config, 'log');

@@ -36,6 +36,7 @@ import {
   toDate,
   toEnum,
   toHandoff,
+  toNullableDate,
   toNullableText,
   toNullableUuid,
   toNumber,
@@ -69,7 +70,11 @@ import type {
   ReviewPendingItemsInput,
   ReviewPendingItemsResult,
   SessionClientProvenance,
+  StaleContextItem,
+  StaleContextItemFilter,
   StoreAdapter,
+  VerifyContextItemInput,
+  VerifyContextItemResult,
   WorkspaceScope,
 } from './types.js';
 
@@ -181,6 +186,11 @@ const REVIEWED_ITEM_COLUMNS =
 
 const REVIEW_TRIGGER = 'manual';
 
+const VERIFICATION_ANCHOR = 'COALESCE(context_item.last_verified_at, context_item.asserted_at)';
+const VERIFICATION_DUE_AT = `(${VERIFICATION_ANCHOR} + context_item.decay_after)`;
+
+const CONTEXT_ITEM_VERIFICATIONS = ['confirmed', 'denied'] as const;
+
 const toPendingReviewItem = (row: SqlRow): PendingReviewItem => ({
   id: toUuid(row, 'id'),
   projectId: toUuid(row, 'project_id'),
@@ -288,6 +298,17 @@ const assertEmbeddingProvenance = (
   }
   if (embeddingModel === null) return null;
   return assertNonEmpty(embeddingModel, 'item.embeddingModel');
+};
+
+const assertInstant = (value: Date | undefined, label: string): Date => {
+  if (value === undefined) return new Date();
+  if (!(value instanceof Date) || Number.isNaN(value.getTime())) {
+    throw new StoreError(
+      'invalid_argument',
+      `expected ${label} to be a valid Date; received ${JSON.stringify(value)}`,
+    );
+  }
+  return value;
 };
 
 const resolveLimit = (limit: number | undefined, label: string): number => {
@@ -591,6 +612,54 @@ class PostgresScopedStore implements ReviewCapableStore {
 
   async searchContextItems(search: ContextItemSearch): Promise<readonly ContextItem[]> {
     return this.selectContextItems(search);
+  }
+
+  async listStaleContextItems(
+    filter: StaleContextItemFilter,
+  ): Promise<readonly StaleContextItem[]> {
+    assertUuid(filter.projectId, 'filter.projectId');
+    const asOfAt = assertInstant(filter.asOf, 'filter.asOf');
+
+    const params = new SqlParams();
+    const workspace = params.add(this.scope.workspaceId);
+    const project = params.add(filter.projectId);
+
+    const visibility = visibilityPredicate({
+      scope: this.scope,
+      actorTeamIds: await this.actorTeamIds(),
+      projectId: filter.projectId,
+      paramOffset: params.length,
+      itemAlias: 'context_item',
+    });
+    params.addAll(visibility.params);
+
+    const asOf = params.add(asOfAt);
+    const limit = params.add(resolveLimit(filter.limit, 'filter.limit'));
+
+    const rows = await this.rows(
+      `SELECT ${contextItemReadColumns(false)},
+              ${VERIFICATION_DUE_AT} AS stale_since
+         FROM ${contextItemFrom(false)}
+        WHERE context_item.workspace_id = ${workspace}
+          AND context_item.project_id = ${project}
+          AND (${visibility.sql})
+          AND context_item.status = 'active'
+          AND context_item.valid_to IS NULL
+          AND context_item.decay_after IS NOT NULL
+          AND ${VERIFICATION_DUE_AT} <= ${asOf}
+        ORDER BY stale_since ASC, context_item.id ASC
+        LIMIT ${limit}`,
+      params.list(),
+    );
+
+    return rows.map((row) => {
+      const staleSince = toDate(row, 'stale_since');
+      return {
+        item: toContextItem(row),
+        staleSince,
+        staleForMs: asOfAt.getTime() - staleSince.getTime(),
+      };
+    });
   }
 
   async selectRehydrationCandidates(
@@ -980,6 +1049,107 @@ class PostgresScopedStore implements ReviewCapableStore {
         );
       }
       return toContextItem(row);
+    });
+  }
+
+  async verifyContextItem(input: VerifyContextItemInput): Promise<VerifyContextItemResult> {
+    assertUuid(input.projectId, 'input.projectId');
+    assertUuid(input.itemId, 'input.itemId');
+
+    if (!CONTEXT_ITEM_VERIFICATIONS.includes(input.verification)) {
+      throw new StoreError(
+        'invalid_argument',
+        `expected input.verification to be one of ${CONTEXT_ITEM_VERIFICATIONS.join(', ')}; received ${JSON.stringify(input.verification)}`,
+      );
+    }
+
+    const reason = input.reason ?? null;
+    if (input.verification === 'denied' && (reason === null || reason.trim() === '')) {
+      throw new StoreError(
+        'invalid_argument',
+        'expected input.reason to say why the item no longer holds; received none — a denial retires the item, and the reason is the labelled example §17 collects',
+      );
+    }
+
+    return this.atomic(`verifying context item ${input.itemId}`, async () => {
+      const actor = await this.assertingActor();
+      if (actor.kind !== 'human') {
+        throw new StoreError(
+          'invalid_argument',
+          `expected the verifying actor ${actor.id} to be of kind "human"; received "${actor.kind}". Only a human answers a re-verification prompt — an agent doing so would let it overrule a human (vision.md §10.1). Open the scope with a human actor.`,
+        );
+      }
+
+      const existingRows = await this.rows(
+        `SELECT ${CONTEXT_ITEM_COLUMNS}
+           FROM context_item
+          WHERE workspace_id = $1 AND id = $2 AND project_id = $3
+          FOR UPDATE`,
+        [this.scope.workspaceId, input.itemId, input.projectId],
+      );
+      const existing = existingRows[0];
+      if (existing === undefined) {
+        throw new StoreError(
+          'not_found',
+          `expected context item ${input.itemId} in project ${input.projectId} of workspace ${this.scope.workspaceId} to verify; found none — re-read the stale list and name an item that exists in this project`,
+        );
+      }
+
+      const status = toEnum(existing, 'status', ITEM_STATUSES);
+      if (status !== 'active') {
+        throw new StoreError(
+          'invalid_argument',
+          `expected context item ${input.itemId} to be active to verify; its status is "${status}" — only an active item is ever prompted for re-verification, so reload the stale list`,
+        );
+      }
+
+      const previousLastVerifiedAt = toNullableDate(existing, 'last_verified_at');
+      const confirmed = input.verification === 'confirmed';
+
+      const checkpointRow = expectOne(
+        await this.rows(
+          `INSERT INTO checkpoint (id, workspace_id, project_id, session_id, actor_id, "trigger", summary)
+           VALUES (gen_random_uuid(), $1, $2, NULL, $3, $4, $5)
+           RETURNING ${CHECKPOINT_COLUMNS}`,
+          [
+            this.scope.workspaceId,
+            input.projectId,
+            this.scope.actorId,
+            REVIEW_TRIGGER,
+            confirmed
+              ? `Re-verified: ${reason ?? 'still holds'}`
+              : `Verification denied: ${reason ?? ''}`,
+          ],
+        ),
+        `opening the verification checkpoint for project ${input.projectId}`,
+      );
+      const checkpoint = toCheckpoint(checkpointRow);
+
+      const assignments = confirmed
+        ? 'human_confirmed = true, last_verified_at = now()'
+        : "status = 'retired', valid_to = COALESCE(valid_to, now()), last_verified_at = now()";
+
+      const verifiedRows = await this.rows(
+        `UPDATE context_item
+            SET ${assignments}
+          WHERE workspace_id = $1 AND id = $2
+          RETURNING ${CONTEXT_ITEM_COLUMNS}`,
+        [this.scope.workspaceId, input.itemId],
+      );
+      const verified = expectOne(verifiedRows, `verifying context item ${input.itemId}`);
+
+      await this.rows(
+        `INSERT INTO checkpoint_item (workspace_id, checkpoint_id, item_id, action)
+         VALUES ($1, $2, $3, $4)`,
+        [this.scope.workspaceId, checkpoint.id, input.itemId, confirmed ? 'updated' : 'rejected'],
+      );
+
+      return {
+        checkpoint,
+        item: toContextItem(verified),
+        verification: input.verification,
+        previousLastVerifiedAt,
+      };
     });
   }
 

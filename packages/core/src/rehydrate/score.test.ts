@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem } from '../domain/types.js';
+import { ITEM_KINDS } from '../store/schema.js';
+import { isMandatoryItem, packSlice } from './pack.js';
 import {
+  DEFAULT_DECAY_AFTER_BY_KIND,
   DEFAULT_SCORING_WEIGHTS,
+  decayAfterFor,
   freshness,
   NEUTRAL_SEMANTIC_RELEVANCE,
   RECENCY_HALF_LIFE_MS,
@@ -11,7 +15,7 @@ import {
   semanticRelevance,
   totalScore,
 } from './score.js';
-import type { ScoreComponents, ScoringWeights } from './types.js';
+import type { DecayDefaults, ScoreComponents, ScoringWeights } from './types.js';
 
 const NOW = new Date('2026-08-01T12:00:00.000Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -327,5 +331,204 @@ describe('scoreItems', () => {
 
   it('returns an empty ranking for an empty candidate set', () => {
     expect(scoreItems({ items: [], taskEmbedding: null, now: NOW })).toEqual([]);
+  });
+});
+
+describe('DEFAULT_DECAY_AFTER_BY_KIND', () => {
+  it('names a default for every item kind', () => {
+    expect(Object.keys(DEFAULT_DECAY_AFTER_BY_KIND).sort()).toEqual([...ITEM_KINDS].sort());
+  });
+
+  it('holds a constraint until it is explicitly superseded rather than decaying it', () => {
+    const ancient = item({ kind: 'constraint', assertedAt: at(-3650 * DAY_MS) });
+
+    expect(DEFAULT_DECAY_AFTER_BY_KIND.constraint).toBeNull();
+    expect(decayAfterFor(ancient)).toBeNull();
+    expect(scoreComponents(ancient, null, NOW).freshness).toBe(1);
+  });
+
+  it('stales a fact faster than a decision of the same age', () => {
+    const age = 200 * DAY_MS;
+    const fact = scoreComponents(item({ kind: 'fact', assertedAt: at(-age) }), null, NOW);
+    const decision = scoreComponents(item({ kind: 'decision', assertedAt: at(-age) }), null, NOW);
+
+    expect(decision.freshness).toBe(1);
+    expect(fact.freshness).toBeLessThan(1);
+    expect(fact.freshness).toBeLessThan(decision.freshness);
+  });
+
+  it('orders the defaults so a longer-lived kind is never staler than a shorter-lived one', () => {
+    const ladder = ['fact', 'artifact_ref', 'open_question', 'decision'] as const;
+    const windows = ladder.map(
+      (kind) => DEFAULT_DECAY_AFTER_BY_KIND[kind] ?? Number.POSITIVE_INFINITY,
+    );
+
+    for (let index = 1; index < windows.length; index += 1) {
+      expect(windows[index] ?? 0).toBeGreaterThan(windows[index - 1] ?? 0);
+    }
+    expect(DEFAULT_DECAY_AFTER_BY_KIND.constraint).toBeNull();
+  });
+
+  it('down-ranks a stale fact below an otherwise identical fresh one', () => {
+    const fresh = item({ id: 'fresh', kind: 'fact', assertedAt: at(-DAY_MS) });
+    const stale = item({ id: 'stale', kind: 'fact', assertedAt: at(-400 * DAY_MS) });
+
+    const ranked = scoreItems({ items: [stale, fresh], taskEmbedding: null, now: NOW });
+
+    expect(ranked.map((scored) => scored.item.id)).toEqual(['fresh', 'stale']);
+    expect(ranked[0]?.components.freshness).toBe(1);
+    expect(ranked[1]?.components.freshness ?? 1).toBeLessThan(0.1);
+    expect(ranked[0]?.score ?? 0).toBeGreaterThan(ranked[1]?.score ?? 0);
+  });
+
+  it('lets an explicit decayAfter on the item override the kind default in both directions', () => {
+    const patientFact = item({
+      kind: 'fact',
+      assertedAt: at(-100 * DAY_MS),
+      decayAfter: 3650 * DAY_MS,
+    });
+    const impatientConstraint = item({
+      kind: 'constraint',
+      assertedAt: at(-100 * DAY_MS),
+      decayAfter: DAY_MS,
+    });
+
+    expect(decayAfterFor(patientFact)).toBe(3650 * DAY_MS);
+    expect(scoreComponents(patientFact, null, NOW).freshness).toBe(1);
+    expect(decayAfterFor(impatientConstraint)).toBe(DAY_MS);
+    expect(scoreComponents(impatientConstraint, null, NOW).freshness).toBeLessThan(0.01);
+  });
+});
+
+describe('configurable decay defaults', () => {
+  const neverStale: DecayDefaults = {
+    decision: null,
+    constraint: null,
+    open_question: null,
+    fact: null,
+    artifact_ref: null,
+  };
+  const staleInADay: DecayDefaults = {
+    decision: DAY_MS,
+    constraint: DAY_MS,
+    open_question: DAY_MS,
+    fact: DAY_MS,
+    artifact_ref: DAY_MS,
+  };
+
+  it('accepts a tuned map through scoreComponents', () => {
+    const oldFact = item({ kind: 'fact', assertedAt: at(-400 * DAY_MS) });
+
+    expect(scoreComponents(oldFact, null, NOW).freshness).toBeLessThan(1);
+    expect(scoreComponents(oldFact, null, NOW, neverStale).freshness).toBe(1);
+  });
+
+  it('accepts a tuned map through scoreItems', () => {
+    const items = [item({ id: 'aged', kind: 'decision', assertedAt: at(-30 * DAY_MS) })];
+
+    const withDefaults = scoreItems({ items, taskEmbedding: null, now: NOW });
+    const withOverride = scoreItems({
+      items,
+      taskEmbedding: null,
+      now: NOW,
+      decayDefaults: staleInADay,
+    });
+
+    expect(withDefaults[0]?.components.freshness).toBe(1);
+    expect(withOverride[0]?.components.freshness ?? 1).toBeLessThan(0.01);
+    expect(withOverride[0]?.score ?? 0).toBeLessThan(withDefaults[0]?.score ?? 0);
+  });
+
+  it('falls back to the shipped defaults when no map is supplied', () => {
+    const aged = item({ kind: 'fact', assertedAt: at(-400 * DAY_MS) });
+    const [scored] = scoreItems({ items: [aged], taskEmbedding: null, now: NOW });
+
+    expect(scored?.components.freshness).toBe(
+      scoreComponents(aged, null, NOW, DEFAULT_DECAY_AFTER_BY_KIND).freshness,
+    );
+  });
+});
+
+describe('GUARD §10.2: the freshness term cannot drop a load-bearing constraint', () => {
+  const punishing: DecayDefaults = {
+    decision: 1,
+    constraint: 1,
+    open_question: 1,
+    fact: 1,
+    artifact_ref: 1,
+  };
+
+  const decayedConstraint = item({
+    id: '00000000-0000-4000-8000-0000000000c0',
+    kind: 'constraint',
+    title: 'no downtime window; the cutover must be online',
+    loadBearing: true,
+    status: 'active',
+    confidence: 0.1,
+    assertedAt: at(-3650 * DAY_MS),
+    lastVerifiedAt: at(-3650 * DAY_MS),
+    decayAfter: 1,
+  });
+
+  it('scores the decayed constraint at the floor of the freshness term', () => {
+    const components = scoreComponents(decayedConstraint, null, NOW, punishing);
+
+    expect(components.freshness).toBeLessThan(0.000001);
+    expect(components.loadBearing).toBe(1);
+    expect(isMandatoryItem(decayedConstraint)).toBe(true);
+  });
+
+  it('still packs it when it ranks last and the budget holds nothing else', () => {
+    const competitors = ITEM_KINDS.filter((kind) => kind !== 'constraint').map((kind, index) =>
+      item({
+        id: `00000000-0000-4000-8000-00000000000${index}`,
+        kind,
+        title: `a fresh ${kind} that would otherwise win the budget`,
+        humanConfirmed: true,
+        confidence: 1,
+        assertedAt: NOW,
+      }),
+    );
+
+    const scored = scoreItems({
+      items: [...competitors, decayedConstraint],
+      taskEmbedding: null,
+      now: NOW,
+      decayDefaults: punishing,
+    });
+
+    expect(scored[scored.length - 1]?.item.id).toBe(decayedConstraint.id);
+
+    const slice = packSlice({ scored, tokenBudget: 0 });
+
+    expect(slice.mandatoryItemIds).toEqual([decayedConstraint.id]);
+    expect(slice.items.map((entry) => entry.item.id)).toEqual([decayedConstraint.id]);
+    expect(slice.droppedItemIds).not.toContain(decayedConstraint.id);
+  });
+
+  it('keeps it in the slice across every budget from zero upward', () => {
+    const noise = Array.from({ length: 12 }, (_, index) =>
+      item({
+        id: `00000000-0000-4000-8000-1000000000${String(index).padStart(2, '0')}`,
+        kind: 'fact',
+        title: `a fresh fact competing for the budget, number ${index}`,
+        humanConfirmed: true,
+        confidence: 1,
+        assertedAt: NOW,
+      }),
+    );
+    const scored = scoreItems({
+      items: [...noise, decayedConstraint],
+      taskEmbedding: null,
+      now: NOW,
+      decayDefaults: punishing,
+    });
+
+    for (const tokenBudget of [0, 1, 5, 25, 100, 4000]) {
+      const slice = packSlice({ scored, tokenBudget });
+
+      expect(slice.items.map((entry) => entry.item.id)).toContain(decayedConstraint.id);
+      expect(slice.droppedItemIds).not.toContain(decayedConstraint.id);
+    }
   });
 });

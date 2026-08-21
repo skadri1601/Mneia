@@ -30,6 +30,7 @@ import { migration as checkpointSourceAndUsage } from './0029-checkpoint-source-
 import { migration as identityBackfill } from './0030-identity-backfill.js';
 import { migration as sessionProvenance } from './0031-session-provenance.js';
 import { migration as workspacePlanPro } from './0032-workspace-plan-pro.js';
+import { migration as contextItemVerificationDue } from './0033-context-item-verification-due.js';
 import type { Migration } from './migration.js';
 
 export type { AppliedMigration, Migration } from './migration.js';
@@ -67,4 +68,5 @@ export const MIGRATIONS: readonly Migration[] = [
   identityBackfill,
   sessionProvenance,
   workspacePlanPro,
+  contextItemVerificationDue,
 ];

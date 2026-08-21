@@ -1,5 +1,11 @@
 import type { ContextItem, Embedding, IntervalMs } from '../domain/types.js';
-import type { ScoreComponents, ScoredItem, ScoringInput, ScoringWeights } from './types.js';
+import type {
+  DecayDefaults,
+  ScoreComponents,
+  ScoredItem,
+  ScoringInput,
+  ScoringWeights,
+} from './types.js';
 
 export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   semanticRelevance: 0.3,
@@ -11,7 +17,17 @@ export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   disputed: 0.5,
 };
 
-export const RECENCY_HALF_LIFE_MS = 14 * 24 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export const RECENCY_HALF_LIFE_MS = 14 * DAY_MS;
+
+export const DEFAULT_DECAY_AFTER_BY_KIND: DecayDefaults = {
+  fact: 14 * DAY_MS,
+  artifact_ref: 30 * DAY_MS,
+  open_question: 90 * DAY_MS,
+  decision: 365 * DAY_MS,
+  constraint: null,
+};
 
 export const STALENESS_HALF_LIFE_RATIO = 1;
 
@@ -101,10 +117,18 @@ export function freshness(
   return halfLifeDecay(elapsed - decayAfter, decayAfter * STALENESS_HALF_LIFE_RATIO);
 }
 
+export function decayAfterFor(
+  item: ContextItem,
+  defaults: DecayDefaults = DEFAULT_DECAY_AFTER_BY_KIND,
+): IntervalMs | null {
+  return item.decayAfter ?? defaults[item.kind];
+}
+
 export function scoreComponents(
   item: ContextItem,
   taskEmbedding: Embedding | null,
   now: Date,
+  decayDefaults: DecayDefaults = DEFAULT_DECAY_AFTER_BY_KIND,
 ): ScoreComponents {
   return {
     semanticRelevance: semanticRelevance(item.embedding, taskEmbedding),
@@ -112,7 +136,12 @@ export function scoreComponents(
     confidence: clamp01(item.confidence),
     humanConfirmed: item.humanConfirmed ? 1 : 0,
     loadBearing: item.loadBearing ? 1 : 0,
-    freshness: freshness(item.lastVerifiedAt, item.assertedAt, item.decayAfter, now),
+    freshness: freshness(
+      item.lastVerifiedAt,
+      item.assertedAt,
+      decayAfterFor(item, decayDefaults),
+      now,
+    ),
     disputed: item.status === 'disputed' ? 1 : 0,
   };
 }
@@ -144,9 +173,10 @@ const byScoreThenId = (left: ScoredItem, right: ScoredItem): number => {
 
 export function scoreItems(input: ScoringInput): readonly ScoredItem[] {
   const weights = input.weights ?? DEFAULT_SCORING_WEIGHTS;
+  const decayDefaults = input.decayDefaults ?? DEFAULT_DECAY_AFTER_BY_KIND;
 
   const scored = input.items.map((item): ScoredItem => {
-    const components = scoreComponents(item, input.taskEmbedding, input.now);
+    const components = scoreComponents(item, input.taskEmbedding, input.now, decayDefaults);
     return { item, score: totalScore(components, weights), components };
   });
 

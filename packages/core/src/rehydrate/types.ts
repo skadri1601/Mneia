@@ -1,4 +1,4 @@
-import type { ContextItem, Embedding, Uuid } from '../domain/types.js';
+import type { ContextItem, Embedding, IntervalMs, Uuid } from '../domain/types.js';
 import type { ItemKind } from '../store/schema.js';
 
 export interface ScoringWeights {
@@ -10,6 +10,8 @@ export interface ScoringWeights {
   readonly freshness: number;
   readonly disputed: number;
 }
+
+export type DecayDefaults = Readonly<Record<ItemKind, IntervalMs | null>>;
 
 export interface ScoreComponents {
   readonly semanticRelevance: number;
@@ -32,6 +34,7 @@ export interface ScoringInput {
   readonly taskEmbedding: Embedding | null;
   readonly now: Date;
   readonly weights?: ScoringWeights;
+  readonly decayDefaults?: DecayDefaults;
 }
 
 export type KindQuotas = Readonly<Record<ItemKind, number>>;
