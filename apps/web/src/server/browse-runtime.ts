@@ -113,3 +113,46 @@ export const browseHandoff = (scope: BrowseScope, handoffId: Uuid): Promise<Hand
 
     return { handoff, project, items };
   });
+
+export interface HandoffInboxEntry {
+  readonly handoff: Handoff;
+  readonly addressedToYou: boolean;
+  readonly fromName: string;
+}
+
+export interface HandoffInboxView {
+  readonly project: Project | null;
+  readonly addressed: readonly HandoffInboxEntry[];
+  readonly open: readonly HandoffInboxEntry[];
+  readonly truncated: boolean;
+}
+
+export const browseHandoffInbox = (
+  scope: BrowseScope,
+  projectId: Uuid,
+): Promise<HandoffInboxView> =>
+  withWorkspaceScope(scope, async (store) => {
+    const project = await store.getProject(projectId);
+    if (project === null) {
+      return { project: null, addressed: [], open: [], truncated: false };
+    }
+
+    const [waiting, actors] = await Promise.all([
+      store.listInboxHandoffs({ projectId, limit: BROWSE_LIMIT }),
+      store.listWorkspaceActors({ limit: BROWSE_LIMIT }),
+    ]);
+
+    const names = new Map(actors.map((actor) => [actor.id, actor.displayName]));
+    const entries = waiting.map((handoff) => ({
+      handoff,
+      addressedToYou: handoff.toActor === scope.actorId,
+      fromName: names.get(handoff.fromActor) ?? handoff.fromActor.slice(0, 8),
+    }));
+
+    return {
+      project,
+      addressed: entries.filter((entry) => entry.addressedToYou),
+      open: entries.filter((entry) => entry.handoff.toActor === null),
+      truncated: waiting.length === BROWSE_LIMIT,
+    };
+  });

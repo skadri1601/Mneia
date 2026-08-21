@@ -16,6 +16,7 @@ const SECTIONS = [
   { suffix: '', label: 'Overview' },
   { suffix: '/decisions', label: 'Decisions' },
   { suffix: '/timeline', label: 'Timeline' },
+  { suffix: '/handoffs', label: 'Handoffs' },
   { suffix: '/review', label: 'Review queue' },
 ] as const;
 

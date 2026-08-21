@@ -52,7 +52,6 @@ import type {
 } from './commands/handoff.js';
 import type { AttachRequest, AttachResult, InitApi } from './commands/init.js';
 import type { LogApi, LogChainPage, LogChainRequest, LogPage, LogRequest } from './commands/log.js';
-import { MAX_CHAIN_REVISIONS, matchItemIds } from './commands/log.js';
 import type {
   PendingQueue,
   PendingQueueRequest,
@@ -71,6 +70,7 @@ import type {
   VerifyRequest,
 } from './commands/verify.js';
 import { resolveToken } from './config.js';
+import { MAX_CHAIN_REVISIONS, matchItemIds } from './item-ids.js';
 
 const STATUS_ITEM_LIMIT = 500;
 
