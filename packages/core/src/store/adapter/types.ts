@@ -89,6 +89,7 @@ export interface RehydrationCandidateGroups {
   readonly candidates: readonly ContextItem[];
   readonly mandatory: readonly ContextItem[];
   readonly superseded: readonly ContextItem[];
+  readonly relevance?: ReadonlyMap<Uuid, number>;
 }
 
 export interface NewContextItem {

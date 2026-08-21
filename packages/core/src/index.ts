@@ -124,7 +124,7 @@ export {
 } from './rehydrate/pack.js';
 export type { RenderSliceInput } from './rehydrate/render.js';
 export { renderSlice, SLICE_SECTION_HEADINGS, shortenItemIds } from './rehydrate/render.js';
-export { DEFAULT_SCORING_WEIGHTS, scoreItems } from './rehydrate/score.js';
+export { DEFAULT_SCORING_WEIGHTS, scoreItems, semanticRelevance } from './rehydrate/score.js';
 export type { TokenCounter } from './rehydrate/tokens.js';
 export {
   bpeTokenCounter,
@@ -322,6 +322,11 @@ export {
 } from './trajectory/claude-desktop.js';
 export { createCodexReader, parseCodexRollout } from './trajectory/codex.js';
 export { composerFolders, createCursorReader } from './trajectory/cursor.js';
+export {
+  createGeminiReader,
+  geminiTurns,
+  parseGeminiSession,
+} from './trajectory/gemini.js';
 export type { DiscoveredTrajectory, TrajectoryDiscovery } from './trajectory/discover.js';
 export {
   createReaders,

@@ -436,7 +436,7 @@ describe('PostgresStoreAdapter scoped membership lookup', () => {
       });
     });
 
-    expect(groups).toEqual({ candidates: [], mandatory: [], superseded: [] });
+    expect(groups).toEqual({ candidates: [], mandatory: [], superseded: [], relevance: new Map() });
     expect(session.calls.filter((sql) => sql.includes('FROM context_item'))).toHaveLength(1);
     const itemRead = session.calls.find((sql) => sql.includes('FROM context_item')) ?? '';
     expect(itemRead).toContain('JOIN actor AS provenance_actor');
