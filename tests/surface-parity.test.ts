@@ -427,6 +427,11 @@ const COMMAND_PARITY: Readonly<Record<ShippedCommandName, CommandParity>> = {
     kind: 'command-only',
     why: 'reports what is stale, disputed, or unanswered so a human can act on it; no tool exposes project health, which means an agent cannot see a disputed item until it appears in a slice',
   },
+  review: {
+    kind: 'paired',
+    tools: ['mneia_review_queue'],
+    sharedCore: ['sanitizeActorName'],
+  },
   verify: {
     kind: 'command-only',
     why: 'runs the human re-verification prompt through verifyContextItem. mneia_retire is not its counterpart: it retires through retireContextItem, a different store method with different preconditions, so the two surfaces do not share this path',
@@ -435,8 +440,9 @@ const COMMAND_PARITY: Readonly<Record<ShippedCommandName, CommandParity>> = {
 
 const TOOL_PARITY: Readonly<Record<ShippedToolName, ToolParity>> = {
   mneia_review_queue: {
-    kind: 'tool-only',
-    why: 'MNE-273 shipped the MCP half first and the mneia review command does not exist yet; this entry must become paired when it does, not be deleted',
+    kind: 'paired',
+    commands: ['review'],
+    sharedCore: ['sanitizeActorName'],
   },
   mneia_rehydrate: {
     kind: 'paired',

@@ -6,6 +6,7 @@ import type {
   HostedIdentity,
   HttpTransport,
   NewContextItem,
+  PendingReviewItem,
   RemoteStore,
   ScopedStore,
   Trajectory,
@@ -13,11 +14,16 @@ import type {
   Uuid,
 } from '@mneia/core';
 import {
+  ACCESS_SCOPES,
+  ACTOR_KINDS,
+  ApiError,
   CheckpointProposalWireSchema,
+  CheckpointWireSchema,
   createHttpTransport,
   createRemoteStore,
   discoverTrajectories,
   fetchIdentity,
+  ITEM_KINDS,
   readTrajectory,
   readTrajectoryFile,
   reduceTrajectory,
@@ -47,6 +53,13 @@ import type {
 import type { AttachRequest, AttachResult, InitApi } from './commands/init.js';
 import type { LogApi, LogChainPage, LogChainRequest, LogPage, LogRequest } from './commands/log.js';
 import { MAX_CHAIN_REVISIONS, matchItemIds } from './commands/log.js';
+import type {
+  PendingQueue,
+  PendingQueueRequest,
+  ReviewApi,
+  ReviewReceipt,
+  SubmitReviewRequest,
+} from './commands/review.js';
 import type { SessionsApi, SessionsReport, SessionsRequest } from './commands/sessions.js';
 import type { StatusApi, StatusReport, StatusRequest } from './commands/status.js';
 import type { Roster, RosterRequest, TeamApi } from './commands/team.js';
@@ -459,6 +472,122 @@ export const httpVerifyApi: VerifyApi = {
       verification: result.verification,
       previousLastVerifiedAt: result.previousLastVerifiedAt,
     };
+  },
+};
+
+export const REVIEW_PENDING_ROUTE = '/api/v1/review/pending';
+export const REVIEW_ROUTE = '/api/v1/review';
+
+const PendingReviewItemWireSchema = z.object({
+  id: z.string(),
+  projectId: z.string(),
+  kind: z.enum(ITEM_KINDS),
+  title: z.string(),
+  body: z.string().nullable(),
+  confidence: z.number(),
+  loadBearing: z.boolean(),
+  accessScope: z.enum(ACCESS_SCOPES),
+  assertedBy: z.string(),
+  assertedByKind: z.enum(ACTOR_KINDS),
+  assertedByName: z.string(),
+  assertedAt: z.string(),
+  sourceRef: z.string().nullable(),
+  originCheckpointId: z.string().nullable(),
+});
+
+const PendingReviewEnvelope = z.object({ items: z.array(PendingReviewItemWireSchema) });
+
+const ReviewOutcomeWireSchema = z.object({
+  itemId: z.string(),
+  outcome: z.enum(['confirmed', 'edited', 'rejected']),
+  fieldsChanged: z.array(z.string()),
+});
+
+const ReviewResultEnvelope = z.object({
+  result: z.object({
+    checkpoint: CheckpointWireSchema,
+    outcomes: z.array(ReviewOutcomeWireSchema),
+  }),
+});
+
+type PendingReviewItemWire = z.infer<typeof PendingReviewItemWireSchema>;
+
+const decodePendingReviewItem = (wire: PendingReviewItemWire): PendingReviewItem => ({
+  id: wire.id,
+  projectId: wire.projectId,
+  kind: wire.kind,
+  title: wire.title,
+  body: wire.body,
+  confidence: wire.confidence,
+  loadBearing: wire.loadBearing,
+  accessScope: wire.accessScope,
+  assertedBy: wire.assertedBy,
+  assertedByKind: wire.assertedByKind,
+  assertedByName: wire.assertedByName,
+  assertedAt: new Date(wire.assertedAt),
+  sourceRef: wire.sourceRef,
+  originCheckpointId: wire.originCheckpointId,
+});
+
+function reviewRouteMissing(endpoint: string, route: string): CliError {
+  return new CliError(
+    'failed',
+    `the Mneia API at ${endpoint} serves no ${route}, so mneia review has nothing to call — MNE-273 shipped the store methods and the MCP queue reader, and the hosted review endpoints are still open`,
+    'open the project review page in the web app and drain the queue there until that route ships',
+  );
+}
+
+async function reviewRequest<T>(
+  transport: HttpTransport,
+  endpoint: string,
+  route: string,
+  path: string,
+  schema: z.ZodType<T>,
+  body?: unknown,
+): Promise<T> {
+  try {
+    return await transport.request(path, schema, body);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.code === 'unsupported')) {
+      throw reviewRouteMissing(endpoint, route);
+    }
+    throw error;
+  }
+}
+
+export const httpReviewApi: ReviewApi = {
+  async pending(request: PendingQueueRequest): Promise<PendingQueue> {
+    const { store, transport } = await connect(request.config);
+    const project = await requireProject(store, request.config, 'review');
+
+    const { items } = await reviewRequest(
+      transport,
+      request.config.endpoint,
+      REVIEW_PENDING_ROUTE,
+      `${REVIEW_PENDING_ROUTE}?projectId=${encodeURIComponent(project.id)}&limit=${request.limit}`,
+      PendingReviewEnvelope,
+    );
+
+    return { projectId: project.id, items: items.map(decodePendingReviewItem) };
+  },
+
+  async submit(request: SubmitReviewRequest): Promise<ReviewReceipt> {
+    const { transport } = await connect(request.config);
+
+    const { result } = await reviewRequest(
+      transport,
+      request.config.endpoint,
+      REVIEW_ROUTE,
+      REVIEW_ROUTE,
+      ReviewResultEnvelope,
+      {
+        projectId: request.projectId,
+        reviews: request.reviews,
+        summary: request.summary,
+      },
+    );
+
+    return { checkpointId: result.checkpoint.id, outcomes: result.outcomes };
   },
 };
 
