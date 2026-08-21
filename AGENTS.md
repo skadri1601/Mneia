@@ -104,13 +104,27 @@ are fixed; do not go looking for them:
   `apps/web/src/server/extraction/select.ts`, which refuses a fallback that cannot hold the prompt
   and says so. `select.test.ts` covers it.
 - **The client stopped trimming too.** `bfd46bf` removed the 700,000-character cap from
-  `packages/cli/src/http-api.ts`; a session larger than one request is now uploaded across successive
+  `packages/cli/src/http-api.ts`; a session larger than one request is uploaded across successive
   runs and the remainder is reported as pending rather than dropped.
+
+**That last bullet was false for as long as it stood here, and MNE-100 found out why.** The
+incremental path probes for the watermark by uploading no turns, and `CheckpointProposeWireSchema`
+had `turns: ...min(1)` — so the API rejected the probe and an oversized session could not be
+checkpointed at all. Nothing caught it because the fake server in `http-api.test.ts` never validated
+against the real schema. The `.min(1)` is gone and `wire.test.ts` asserts the schema accepts an
+empty upload. **Treat a fake that is more permissive than the schema it stands in for as a defect,
+not a convenience.**
+
+`mneia checkpoint` **sweeps every session discovered for the directory**, up to
+`MAX_CHECKPOINT_SESSIONS`. It probes each one's watermark before uploading, so a session with
+nothing new sends no transcript. `--session <ref>` still names one; `--all-sessions` is now just an
+explicit spelling of the default.
 
 One thing in that path is genuinely still open: `turnsSince` returns `resolved: false` when the
 watermark is absent from the uploaded turns, and `propose.ts` ignores `resolved` — so **any partial
 upload is treated as entirely new**, moving the watermark backwards and re-running extraction we pay
-for. The CLI avoids it by asking for the watermark first, but nothing in the server prevents it.
+for. The CLI now always asks for the watermark first, on every session rather than only oversized
+ones, but nothing in the server prevents it.
 
 ## Repo map
 
