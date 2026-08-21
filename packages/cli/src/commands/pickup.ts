@@ -1,6 +1,7 @@
 import type { Actor, Handoff, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
+import { describeActorAttribution } from '../attribution.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import { httpHandoffApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
@@ -85,7 +86,7 @@ export function describeSender(inbox: HandoffInbox, handoff: Handoff): string {
   if (actor === null) {
     return `an actor outside this workspace roster (${handoff.fromActor})`;
   }
-  return `${actor.displayName} (${actor.kind})`;
+  return describeActorAttribution(actor, actor.id);
 }
 
 function handoffLine(

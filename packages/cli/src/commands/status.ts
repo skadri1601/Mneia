@@ -1,6 +1,7 @@
 import type { ActorKind, ContextItem, IntervalMs, ItemKind, ItemStatus, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
+import { confirmationMark, describeAsserter } from '../attribution.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import { httpStatusApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
@@ -183,18 +184,8 @@ function titleLine(item: ContextItem, shortIds: ReadonlyMap<Uuid, string>): stri
   if (item.loadBearing) {
     marks.push('load-bearing');
   }
-  if (item.humanConfirmed) {
-    marks.push('human-confirmed');
-  }
+  marks.push(confirmationMark(item.humanConfirmed));
   return `  ${item.title}  [${shortIds.get(item.id) ?? item.id}] · ${marks.join(' · ')}`;
-}
-
-function describeAsserter(item: ContextItem): string {
-  const provenance = item.provenance;
-  if (provenance === undefined) {
-    return `by an unnamed actor (${item.assertedBy.slice(0, 8)})`;
-  }
-  return `by ${provenance.actorDisplayName} (${provenance.actorKind})`;
 }
 
 function staleBlock(stale: StaleItem, shortIds: ReadonlyMap<Uuid, string>): string {

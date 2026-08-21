@@ -1,6 +1,7 @@
 import type { ActorKind, ContextItem, ItemKind, ItemStatus, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
+import { confirmationMark, describeAsserter } from '../attribution.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import { httpVerifyApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
@@ -205,20 +206,12 @@ function describeDuration(ms: number): string {
   return 'less than a minute';
 }
 
-function describeAsserter(item: ContextItem): string {
-  const provenance = item.provenance;
-  if (provenance === undefined) {
-    return `by an unnamed actor (${item.assertedBy.slice(0, 8)})`;
-  }
-  return `by ${provenance.actorDisplayName} (${provenance.actorKind})`;
-}
-
 function marksFor(item: ContextItem): readonly string[] {
   const marks: string[] = [item.kind];
   if (item.loadBearing) {
     marks.push('load-bearing');
   }
-  marks.push(item.humanConfirmed ? 'human-confirmed' : 'not human-confirmed');
+  marks.push(confirmationMark(item.humanConfirmed));
   return marks;
 }
 
