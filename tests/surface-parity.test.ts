@@ -295,7 +295,9 @@ function hostedRehydrateTransport(store: ScopedStore): HttpTransport {
       const request = readRecord(body, 'the rehydrate request body');
       const project = await core.resolveProject(store, readString(request, 'project'));
       if (project === null) {
-        throw new Error(`the fixture store did not resolve project ${readString(request, 'project')}`);
+        throw new Error(
+          `the fixture store did not resolve project ${readString(request, 'project')}`,
+        );
       }
       const { slice } = await core.assembleSlice({
         store,
@@ -351,9 +353,7 @@ async function cliJsonLeg(): Promise<SurfaceResult> {
   }
   return {
     renderedMarkdown: readString(payload, 'renderedMarkdown'),
-    itemIds: items.map((entry, index) =>
-      readString(readRecord(entry, `items[${index}]`), 'id'),
-    ),
+    itemIds: items.map((entry, index) => readString(readRecord(entry, `items[${index}]`), 'id')),
     tokenBudget: readNumber(payload, 'tokenBudget'),
     tokensUsed: readNumber(payload, 'tokensUsed'),
     calls,
@@ -434,6 +434,10 @@ const COMMAND_PARITY: Readonly<Record<ShippedCommandName, CommandParity>> = {
 };
 
 const TOOL_PARITY: Readonly<Record<ShippedToolName, ToolParity>> = {
+  mneia_review_queue: {
+    kind: 'tool-only',
+    why: 'MNE-273 shipped the MCP half first and the mneia review command does not exist yet; this entry must become paired when it does, not be deleted',
+  },
   mneia_rehydrate: {
     kind: 'paired',
     commands: ['brief'],
@@ -492,7 +496,9 @@ const scopedStoreMethodNames = (): readonly string[] => {
   );
   const block = /export interface ScopedStore\s*\{([\s\S]*?)\n\}/.exec(source);
   if (block === null) {
-    throw new Error('expected ScopedStore to be declared in packages/core/src/store/adapter/types.ts');
+    throw new Error(
+      'expected ScopedStore to be declared in packages/core/src/store/adapter/types.ts',
+    );
   }
   const body = block[1] ?? '';
   return [...body.matchAll(/^\s{2}(\w+)\??\s*[(<]/gm)].map((match) => match[1] ?? '');
@@ -501,8 +507,7 @@ const scopedStoreMethodNames = (): readonly string[] => {
 const STORE_METHODS: ReadonlySet<string> = new Set(scopedStoreMethodNames());
 const CORE_EXPORTS: ReadonlySet<string> = new Set(Object.keys(core));
 
-const resolvesInCore = (name: string): boolean =>
-  CORE_EXPORTS.has(name) || STORE_METHODS.has(name);
+const resolvesInCore = (name: string): boolean => CORE_EXPORTS.has(name) || STORE_METHODS.has(name);
 
 const pairedCommands = (): readonly (readonly [
   ShippedCommandName,
@@ -650,9 +655,10 @@ describe('GUARD (MNE-104) every shipped command and tool declares its counterpar
     for (const [name, parity] of pairedTools()) {
       for (const command of parity.commands) {
         const other = COMMAND_PARITY[command];
-        expect(other.kind, `${name} pairs with ${command}, which declares itself command-only`).toBe(
-          'paired',
-        );
+        expect(
+          other.kind,
+          `${name} pairs with ${command}, which declares itself command-only`,
+        ).toBe('paired');
         if (other.kind === 'paired') {
           expect(other.tools, `${command} must name ${name} back`).toContain(name);
         }
