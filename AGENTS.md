@@ -39,10 +39,12 @@ billing (MNE-26) into it, so it covers the core loop, the hosted API, the full w
 Stripe. `ROADMAP.md` §M1 is the checklist; check it for which milestone a thing belongs to before
 assuming an implementation is missing.
 
-Most of the loop is real and deployed. `packages/core/src/store/` is at schema version 32, the CLI
-ships nine commands plus an interactive session, the MCP server ships seven tools, and extraction
-runs against real sessions in production. Counts drift — read `packages/cli/src/bin.ts` and
-`SHIPPED_TOOL_NAMES` in `packages/mcp-server/src/registry.ts` rather than trusting this sentence.
+Most of the loop is real and deployed. `packages/core/src/store/` is at schema version 33, the CLI
+ships twelve commands plus an interactive session, the MCP server ships ten tools, and extraction
+runs against real sessions in production. Counts drift — read `SHIPPED_COMMAND_NAMES` in
+`packages/cli/src/router.ts` and `SHIPPED_TOOL_NAMES` in `packages/mcp-server/src/registry.ts`
+rather than trusting this sentence. Those two arrays are enforced: a command or tool registered but
+missing from them is rejected, and in the MCP server's case it refuses to start at all.
 
 **The core tables exist. Multi-tenancy is ruled.** §11.2 Q3 closed on 2026-07-31 (MNE-172): shared
 schema, `workspace_id` on every row, Postgres RLS mandatory — see `vision.md` §11.3. Migrations
