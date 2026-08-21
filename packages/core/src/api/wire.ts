@@ -13,7 +13,12 @@ import {
   type Session,
 } from '../domain/types.js';
 import type { ScoredItem, Slice } from '../rehydrate/types.js';
-import type { CheckpointWriteResult } from '../store/adapter/types.js';
+import type {
+  CheckpointWriteResult,
+  ContextItemVerification,
+  StaleContextItem,
+  VerifyContextItemResult,
+} from '../store/adapter/types.js';
 import {
   ACCESS_SCOPES,
   ACTOR_KINDS,
@@ -363,6 +368,84 @@ export const RetireContextItemWireSchema = z.object({
 });
 
 export type RetireContextItemWire = z.infer<typeof RetireContextItemWireSchema>;
+
+export const MAX_VERIFICATION_REASON_LENGTH = 1000;
+
+export const CONTEXT_ITEM_VERIFICATIONS = [
+  'confirmed',
+  'denied',
+] as const satisfies readonly ContextItemVerification[];
+
+export const StaleContextItemFilterWireSchema = z.object({
+  projectId: uuid,
+  asOf: isoDate.optional(),
+  limit: z.number().int().positive().max(MAX_ITEM_LIMIT).optional(),
+});
+
+export type StaleContextItemFilterWire = z.infer<typeof StaleContextItemFilterWireSchema>;
+
+export const StaleContextItemWireSchema = z.object({
+  item: ContextItemWireSchema,
+  staleSince: isoDate,
+  staleForMs: z.number().int().nonnegative(),
+});
+
+export type StaleContextItemWire = z.infer<typeof StaleContextItemWireSchema>;
+
+export const encodeStaleContextItem = (stale: StaleContextItem): StaleContextItemWire => ({
+  item: encodeContextItem(stale.item),
+  staleSince: stale.staleSince.toISOString(),
+  staleForMs: stale.staleForMs,
+});
+
+export const decodeStaleContextItem = (wire: StaleContextItemWire): StaleContextItem => ({
+  item: decodeContextItem(wire.item),
+  staleSince: toDate(wire.staleSince),
+  staleForMs: wire.staleForMs,
+});
+
+export const VerifyContextItemWireSchema = z.object({
+  projectId: uuid,
+  itemId: uuid,
+  verification: z.enum(CONTEXT_ITEM_VERIFICATIONS),
+  reason: z
+    .string()
+    .min(1)
+    .max(MAX_VERIFICATION_REASON_LENGTH)
+    .refine(isStorableText, NO_NULL_BYTE)
+    .nullable()
+    .optional(),
+});
+
+export type VerifyContextItemWire = z.infer<typeof VerifyContextItemWireSchema>;
+
+export const VerifyContextItemResultWireSchema = z.object({
+  checkpoint: CheckpointWireSchema,
+  item: ContextItemWireSchema,
+  verification: z.enum(CONTEXT_ITEM_VERIFICATIONS),
+  previousLastVerifiedAt: isoDate.nullable(),
+});
+
+export type VerifyContextItemResultWire = z.infer<typeof VerifyContextItemResultWireSchema>;
+
+export const encodeVerifyContextItemResult = (
+  result: VerifyContextItemResult,
+): VerifyContextItemResultWire => ({
+  checkpoint: encodeCheckpoint(result.checkpoint),
+  item: encodeContextItem(result.item),
+  verification: result.verification,
+  previousLastVerifiedAt:
+    result.previousLastVerifiedAt === null ? null : result.previousLastVerifiedAt.toISOString(),
+});
+
+export const decodeVerifyContextItemResult = (
+  wire: VerifyContextItemResultWire,
+): VerifyContextItemResult => ({
+  checkpoint: decodeCheckpoint(wire.checkpoint),
+  item: decodeContextItem(wire.item),
+  verification: wire.verification,
+  previousLastVerifiedAt: toNullableDate(wire.previousLastVerifiedAt),
+});
 
 export const encodeCheckpointItem = (item: CheckpointItem): CheckpointItemWire => ({
   workspaceId: item.workspaceId,
