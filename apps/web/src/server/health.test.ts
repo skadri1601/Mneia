@@ -3,7 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('server-only', () => ({}));
 
 import type { PostgresConnectionSource, PostgresSession, SqlResult, SqlValue } from '@mneia/core';
+import type { CapabilityStates, HealthReport } from './health.js';
 import {
+  assessCapabilities,
+  CAPABILITY_NAMES,
+  CAPABILITY_TIERS,
   checkHealth,
   describeModelPosture,
   EXPECTED_SCHEMA_VERSION,
@@ -122,6 +126,11 @@ describe('checkHealth', () => {
       ...NO_MODELS,
       billing: 'not_configured',
       errorReporting: 'no_dsn',
+      capabilities: {
+        ready: ['database', 'rls', 'schema', 'telemetry'],
+        failing: ['extraction', 'extractionFallback', 'embeddings'],
+        unconfigured: ['billing', 'errorReporting'],
+      },
       detail: `${NO_MODEL_DETAIL}; ${NO_BILLING_DETAIL}; ${NO_SENTRY_DETAIL}`,
     });
     expect(session.statements.at(0)).toBe('SELECT 1');
@@ -223,11 +232,11 @@ describe('checkHealth RLS posture', () => {
 });
 
 describe('model posture', () => {
-  it('reports both providers configured when the keys are present', () => {
+  it('claims only that a key is present, since health never calls the provider (MNE-266)', () => {
     expect(inspectModelPosture(BOTH_KEYS)).toEqual({
-      extraction: 'configured',
-      extractionFallback: 'configured',
-      embeddings: 'configured',
+      extraction: 'key_present',
+      extractionFallback: 'key_present',
+      embeddings: 'key_present',
     });
     expect(describeModelPosture(inspectModelPosture(BOTH_KEYS))).toBeNull();
   });
@@ -238,7 +247,7 @@ describe('model posture', () => {
 
   it('ties embeddings to the OpenAI key, since one key serves both calls', () => {
     const posture = inspectModelPosture({ OPENAI_API_KEY: 'sk-x' });
-    expect(posture.embeddings).toBe('configured');
+    expect(posture.embeddings).toBe('key_present');
     expect(posture.extractionFallback).toBe('no_key');
   });
 
@@ -274,11 +283,12 @@ describe('model posture', () => {
       database: 'ok',
       rls: 'enforced',
       ...CURRENT_SCHEMA,
-      extraction: 'configured',
-      extractionFallback: 'configured',
-      embeddings: 'configured',
+      extraction: 'key_present',
+      extractionFallback: 'key_present',
+      embeddings: 'key_present',
       billing: 'configured',
       errorReporting: 'configured',
+      capabilities: { ready: [...CAPABILITY_NAMES], failing: [], unconfigured: [] },
     });
   });
 
@@ -506,5 +516,139 @@ describe('resolveTelemetryHealth', () => {
     });
     expect(verdict.telemetry).toBe('failing');
     expect(verdict.detail).toContain('connection terminated');
+  });
+});
+
+describe('the capability manifest', () => {
+  const ALL_READY: CapabilityStates = {
+    database: 'ok',
+    rls: 'enforced',
+    schema: 'current',
+    telemetry: 'persisted',
+    extraction: 'key_present',
+    extractionFallback: 'key_present',
+    embeddings: 'key_present',
+    billing: 'configured',
+    errorReporting: 'configured',
+  };
+
+  it('classifies every capability the report names, so a new one cannot go unwatched', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(
+      sourceOf(session),
+      noEscapeHatch,
+      { ...BOTH_KEYS, ...STRIPE_KEYS, ...SENTRY_KEYS },
+      noDelivery,
+    );
+
+    const bookkeeping = new Set(['status', 'schemaVersion', 'capabilities', 'detail']);
+    const named = Object.keys(report).filter((key) => !bookkeeping.has(key));
+
+    expect(named.sort()).toEqual([...CAPABILITY_NAMES].sort());
+    expect(Object.keys(CAPABILITY_TIERS).sort()).toEqual([...CAPABILITY_NAMES].sort());
+  });
+
+  it('accounts for every capability exactly once', () => {
+    const verdict = assessCapabilities({
+      ...ALL_READY,
+      schema: 'behind',
+      billing: 'not_configured',
+    });
+
+    expect([...verdict.ready, ...verdict.failing, ...verdict.unconfigured].sort()).toEqual(
+      [...CAPABILITY_NAMES].sort(),
+    );
+  });
+
+  it('fails the deploy for a required capability and only warns for an advisory one', () => {
+    const verdict = assessCapabilities({
+      ...ALL_READY,
+      schema: 'behind',
+      billing: 'not_configured',
+      errorReporting: 'no_dsn',
+    });
+
+    expect(verdict.failing).toEqual(['schema']);
+    expect(verdict.unconfigured).toEqual(['billing', 'errorReporting']);
+  });
+
+  it('calls billing advisory, because a hard gate on it blocks every lane for days (MNE-141)', () => {
+    expect(CAPABILITY_TIERS.billing).toBe('advisory');
+    expect(CAPABILITY_TIERS.errorReporting).toBe('advisory');
+  });
+
+  it('keeps the model keys required, since checkpoint silently returns worse answers without them', () => {
+    expect(CAPABILITY_TIERS.extraction).toBe('required');
+    expect(CAPABILITY_TIERS.extractionFallback).toBe('required');
+    expect(CAPABILITY_TIERS.embeddings).toBe('required');
+  });
+
+  it('treats a key that is merely present as ready, since health cannot know it works', () => {
+    expect(assessCapabilities(ALL_READY).failing).toEqual([]);
+  });
+
+  it('counts an escape-hatch bypass as ready but a silent bypass as failing', () => {
+    expect(assessCapabilities({ ...ALL_READY, rls: 'bypassed_by_escape_hatch' }).failing).toEqual(
+      [],
+    );
+    expect(assessCapabilities({ ...ALL_READY, rls: 'bypassed' }).failing).toEqual(['rls']);
+    expect(assessCapabilities({ ...ALL_READY, rls: 'unknown' }).failing).toEqual(['rls']);
+  });
+
+  it('fails a build running ahead of its own schema, matching what the deploy gate already checked', () => {
+    expect(assessCapabilities({ ...ALL_READY, schema: 'ahead' }).failing).toEqual(['schema']);
+  });
+
+  it('names billing on the report the day the Stripe keys are absent', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(
+      sourceOf(session),
+      noEscapeHatch,
+      { ...BOTH_KEYS, ...SENTRY_KEYS },
+      noDelivery,
+    );
+
+    expect(report.capabilities.unconfigured).toEqual(['billing']);
+    expect(report.capabilities.failing).toEqual([]);
+  });
+
+  it('keeps status ok while naming a failing capability, because the app still serves', async () => {
+    const session = new RecordingSession();
+
+    const report = await checkHealth(sourceOf(session), noEscapeHatch, NO_KEYS, noDelivery);
+
+    expect(report.status).toBe('ok');
+    expect(report.capabilities.failing).toEqual(['extraction', 'extractionFallback', 'embeddings']);
+  });
+
+  it('still reports a manifest when the database is unreachable', async () => {
+    const unreachable: PostgresConnectionSource = {
+      acquire: async () => {
+        throw new Error('connection refused');
+      },
+      close: async () => {},
+    };
+
+    const report = await checkHealth(unreachable, noEscapeHatch, NO_KEYS, noDelivery);
+
+    expect(report.database).toBe('unreachable');
+    expect(report.capabilities.failing).toContain('database');
+    expect(report.capabilities.unconfigured).toEqual(['billing', 'errorReporting']);
+  });
+
+  it('serialises the manifest as arrays the deploy reader can read as a comma-joined list', () => {
+    const verdict = assessCapabilities({
+      ...ALL_READY,
+      schema: 'behind',
+      telemetry: 'dropped',
+      billing: 'not_configured',
+    });
+    const parsed: HealthReport['capabilities'] = JSON.parse(JSON.stringify(verdict));
+
+    expect(String(parsed.failing)).toBe('schema,telemetry');
+    expect(String(parsed.unconfigured)).toBe('billing');
+    expect(String(assessCapabilities(ALL_READY).failing)).toBe('');
   });
 });

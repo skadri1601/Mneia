@@ -69,10 +69,21 @@ curl -s https://app.mneia.dev/api/health
 is for one privileged migration command and never for the application — see `deploy/web.env.example`,
 which is the inventory of what the deployed app reads.
 
-**The same endpoint reports whether the models are reachable**, because the failure is otherwise
-invisible: `extraction`, `extractionFallback` and `embeddings` each read `configured` or `no_key`.
+**The same endpoint reports whether a model key is set**, because the failure is otherwise
+invisible: `extraction`, `extractionFallback` and `embeddings` each read `key_present` or `no_key`.
+**`key_present` is not `working`** — health never calls the provider, so it cannot see a key that
+authenticates and is out of credit. That is MNE-266, and it is still open; read the state as "a key
+is set", never as "extraction works".
 
-**Both keys are set and funded as of 2026-08-08** (MNE-265), and `/api/health` reports `configured`
+**The endpoint also classifies itself.** `capabilities.failing` lists the required capabilities that
+did not come up and `capabilities.unconfigured` the advisory ones, so a reader does not have to know
+which of a dozen fields matter. `deploy-web.yml` fails on `failing` and warns on `unconfigured`;
+`health-watch.yml` runs every six hours and fails on either. Add a capability to `HealthReport` and
+a test in `health.test.ts` fails until you classify it in `CAPABILITY_TIERS` — that is deliberate,
+because `billing` was added to the report and never to the check, and sat `not_configured` through
+three deploys after five people were invited (MNE-141).
+
+**Both keys are set and funded as of 2026-08-08** (MNE-265), and `/api/health` reports `key_present`
 for all three. Extraction is verified end to end against real sessions on this repo: a 1,357-turn
 Claude Code session reduced from 1.31M to 700K characters and returned 7 candidates in 12.5s for
 $0.05; an 18-turn session returned 1 for $0.0017.

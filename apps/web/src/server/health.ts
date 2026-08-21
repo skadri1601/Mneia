@@ -26,11 +26,45 @@ export type TelemetryHealth = TelemetryPosture | 'failing';
 
 export type EnvLike = TelemetryEnvLike;
 
-export type ModelHealth = 'configured' | 'no_key';
+export type ModelHealth = 'key_present' | 'no_key';
 
 export interface SchemaVersions {
   readonly expected: number;
   readonly applied: number | null;
+}
+
+export const CAPABILITY_NAMES = [
+  'database',
+  'rls',
+  'schema',
+  'telemetry',
+  'extraction',
+  'extractionFallback',
+  'embeddings',
+  'billing',
+  'errorReporting',
+] as const;
+
+export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
+
+export type CapabilityTier = 'required' | 'advisory';
+
+export const CAPABILITY_TIERS: Readonly<Record<CapabilityName, CapabilityTier>> = {
+  database: 'required',
+  rls: 'required',
+  schema: 'required',
+  telemetry: 'required',
+  extraction: 'required',
+  extractionFallback: 'required',
+  embeddings: 'required',
+  billing: 'advisory',
+  errorReporting: 'advisory',
+};
+
+export interface CapabilityVerdict {
+  readonly ready: readonly CapabilityName[];
+  readonly failing: readonly CapabilityName[];
+  readonly unconfigured: readonly CapabilityName[];
 }
 
 export interface HealthReport {
@@ -45,15 +79,57 @@ export interface HealthReport {
   readonly embeddings: ModelHealth;
   readonly billing: BillingHealth;
   readonly errorReporting: ErrorReportingHealth;
+  readonly capabilities: CapabilityVerdict;
   readonly detail?: string;
 }
+
+export type CapabilityStates = Pick<HealthReport, CapabilityName>;
 
 export type BillingHealth = 'configured' | 'not_configured';
 
 export type ErrorReportingHealth = 'configured' | 'no_dsn';
 
+const isReady = (name: CapabilityName, states: CapabilityStates): boolean => {
+  switch (name) {
+    case 'database':
+      return states.database === 'ok';
+    case 'rls':
+      return states.rls === 'enforced' || states.rls === 'bypassed_by_escape_hatch';
+    case 'schema':
+      return states.schema === 'current';
+    case 'telemetry':
+      return states.telemetry === 'persisted';
+    case 'extraction':
+    case 'extractionFallback':
+    case 'embeddings':
+      return states[name] === 'key_present';
+    case 'billing':
+      return states.billing === 'configured';
+    case 'errorReporting':
+      return states.errorReporting === 'configured';
+  }
+};
+
+export const assessCapabilities = (states: CapabilityStates): CapabilityVerdict => {
+  const ready: CapabilityName[] = [];
+  const failing: CapabilityName[] = [];
+  const unconfigured: CapabilityName[] = [];
+
+  for (const name of CAPABILITY_NAMES) {
+    if (isReady(name, states)) {
+      ready.push(name);
+    } else if (CAPABILITY_TIERS[name] === 'required') {
+      failing.push(name);
+    } else {
+      unconfigured.push(name);
+    }
+  }
+
+  return { ready, failing, unconfigured };
+};
+
 const keyed = (value: string | undefined): ModelHealth =>
-  value !== undefined && value.trim().length > 0 ? 'configured' : 'no_key';
+  value !== undefined && value.trim().length > 0 ? 'key_present' : 'no_key';
 
 export interface ModelPosture {
   readonly extraction: ModelHealth;
@@ -290,30 +366,40 @@ export const checkHealth = async (
       errorReportingDetail,
     ].filter((part): part is string => part !== undefined && part !== null);
 
-    const report: HealthReport = {
-      status,
+    const states: CapabilityStates = {
       database: 'ok',
       rls,
       schema,
-      schemaVersion: versions,
       telemetry,
       ...models,
       billing,
       errorReporting,
     };
 
+    const report: HealthReport = {
+      status,
+      schemaVersion: versions,
+      ...states,
+      capabilities: assessCapabilities(states),
+    };
+
     return combined.length === 0 ? report : { ...report, detail: combined.join('; ') };
   } catch (error) {
-    return {
-      status: 'degraded',
+    const states: CapabilityStates = {
       database: 'unreachable',
       rls: 'unknown',
       schema: 'unknown',
-      schemaVersion: { expected: EXPECTED_SCHEMA_VERSION, applied: null },
       telemetry: plan.posture,
       ...models,
       billing,
       errorReporting,
+    };
+
+    return {
+      status: 'degraded',
+      schemaVersion: { expected: EXPECTED_SCHEMA_VERSION, applied: null },
+      ...states,
+      capabilities: assessCapabilities(states),
       detail: describe(error),
     };
   } finally {

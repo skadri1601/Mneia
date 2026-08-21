@@ -198,7 +198,14 @@ jobs:
           head -c 500 /tmp/health.json || true
           exit 1
 
+      # The deployed build classifies its own capabilities, so this step reads that manifest rather
+      # than a list of field names kept by hand here. The hand-kept list is why billing sat
+      # not_configured through three deploys (MNE-141): it was added to the health report and never
+      # to this check. Required capabilities fail the deploy; advisory ones warn here and are chased
+      # by health-watch.yml, which fails on every run until they are set.
       - name: Verify the deployed app rather than assuming it
+        env:
+          HEALTH_URL: https://${{ secrets.DEPLOY_PUBLIC_HOST }}/api/health
         run: |
           cat /tmp/health.json
           echo
@@ -209,29 +216,37 @@ jobs:
             node "${reader}" "$1" < /tmp/health.json 2>/dev/null || echo "absent"
           }
 
-          schema=$(read_field schema)
-          if [ "${schema}" != "current" ]; then
-            echo "::error::schema is \"${schema}\" — this build expects version $(read_field schemaVersion.expected) and the database is at $(read_field schemaVersion.applied). The migrate job should have closed that gap before this deploy ran — read its log."
+          failing=$(read_field capabilities.failing)
+          unconfigured=$(read_field capabilities.unconfigured)
+
+          if [ "${failing}" = "absent" ] || [ "${unconfigured}" = "absent" ]; then
+            echo "::error::the build now running does not report capabilities.failing and capabilities.unconfigured, so this step cannot tell which of its capabilities came up. A check that cannot read must fail closed rather than put a green tick over an unread health report - that is how billing stayed not_configured for days (MNE-141). Read ${HEALTH_URL} by hand and say what you found, or deploy a build that reports the manifest."
+            exit 1
+          fi
+
+          detail=$(read_field detail)
+          if [ "${detail}" = "absent" ]; then
+            detail="the report gave no detail."
+          fi
+
+          if [ -n "${failing}" ]; then
+            echo "::error::required capabilities did not come up on this deploy: ${failing//,/, }. The product does not work without them, so this run is a failure even though the container restarted. The build reported: ${detail}"
             failed=1
           fi
 
-          telemetry=$(read_field telemetry)
-          if [ "${telemetry}" != "persisted" ]; then
-            echo "::error::telemetry is \"${telemetry}\", so §17 events are not reaching telemetry_event. That loses the arbitration dataset docs/BUSINESS.md calls the moat (MNE-268)."
-            failed=1
+          if [ -n "${unconfigured}" ]; then
+            echo "::warning::advisory capabilities are not configured on this deployment: ${unconfigured//,/, }. The app still serves, so this does not stop the deploy - blocking here would have stopped every lane for the days nobody had the Stripe keys. health-watch.yml fails on every run until they are set or deliberately retired. The build reported: ${detail}"
+            {
+              echo "### Advisory capabilities that did not come up"
+              echo
+              echo "\`${unconfigured//,/, }\` - advisory, so this deploy shipped anyway."
+              echo
+              echo "${detail}"
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-          rls=$(read_field rls)
-          if [ "${rls}" != "enforced" ] && [ "${rls}" != "bypassed_by_escape_hatch" ]; then
-            echo "::error::rls is \"${rls}\", so workspace isolation is not doing what vision.md §11.3 says it does"
-            failed=1
+          if [ "${failed}" -eq 0 ] && [ -z "${unconfigured}" ]; then
+            echo "::notice::every capability the deployed build names came up: $(read_field capabilities.ready)"
           fi
-
-          for field in extraction extractionFallback embeddings; do
-            if [ "$(read_field "${field}")" != "configured" ]; then
-              echo "::error::${field} is not configured, so this deploy degrades silently rather than failing"
-              failed=1
-            fi
-          done
 
           exit "${failed}"
