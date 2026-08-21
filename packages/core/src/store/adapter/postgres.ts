@@ -1052,6 +1052,112 @@ class PostgresScopedStore implements ReviewCapableStore {
     });
   }
 
+  async verifyContextItem(input: VerifyContextItemInput): Promise<VerifyContextItemResult> {
+    assertUuid(input.projectId, 'input.projectId');
+    assertUuid(input.itemId, 'input.itemId');
+
+    if (!CONTEXT_ITEM_VERIFICATIONS.includes(input.verification)) {
+      throw new StoreError(
+        'invalid_argument',
+        `expected input.verification to be one of ${CONTEXT_ITEM_VERIFICATIONS.join(', ')}; received ${JSON.stringify(input.verification)}`,
+      );
+    }
+
+    const reason = input.reason ?? null;
+    if (input.verification === 'denied' && (reason === null || reason.trim() === '')) {
+      throw new StoreError(
+        'invalid_argument',
+        'expected input.reason to say why the item no longer holds; received none — a denial retires the item, and the reason is the labelled example §17 collects',
+      );
+    }
+
+    return this.atomic(`verifying context item ${input.itemId}`, async () => {
+      const actor = await this.assertingActor();
+      if (actor.kind !== 'human') {
+        throw new StoreError(
+          'invalid_argument',
+          `expected the verifying actor ${actor.id} to be of kind "human"; received "${actor.kind}". Only a human answers a re-verification prompt — an agent doing so would let it overrule a human (vision.md §10.1). Open the scope with a human actor.`,
+        );
+      }
+
+      const existingRows = await this.rows(
+        `SELECT ${CONTEXT_ITEM_COLUMNS}
+           FROM context_item
+          WHERE workspace_id = $1 AND id = $2 AND project_id = $3
+          FOR UPDATE`,
+        [this.scope.workspaceId, input.itemId, input.projectId],
+      );
+      const existing = existingRows[0];
+      if (existing === undefined) {
+        throw new StoreError(
+          'not_found',
+          `expected context item ${input.itemId} in project ${input.projectId} of workspace ${this.scope.workspaceId} to verify; found none — re-read the stale list and name an item that exists in this project`,
+        );
+      }
+
+      const status = toEnum(existing, 'status', ITEM_STATUSES);
+      if (status !== 'active') {
+        throw new StoreError(
+          'invalid_argument',
+          `expected context item ${input.itemId} to be active to verify; its status is "${status}" — only an active item is ever prompted for re-verification, so reload the stale list`,
+        );
+      }
+
+      const previousLastVerifiedAt = toNullableDate(existing, 'last_verified_at');
+      const confirmed = input.verification === 'confirmed';
+
+      const checkpointRow = expectOne(
+        await this.rows(
+          `INSERT INTO checkpoint (id, workspace_id, project_id, session_id, actor_id, "trigger", summary)
+           VALUES (gen_random_uuid(), $1, $2, NULL, $3, $4, $5)
+           RETURNING ${CHECKPOINT_COLUMNS}`,
+          [
+            this.scope.workspaceId,
+            input.projectId,
+            this.scope.actorId,
+            REVIEW_TRIGGER,
+            confirmed
+              ? `Re-verified: ${reason ?? 'still holds'}`
+              : `Verification denied: ${reason ?? ''}`,
+          ],
+        ),
+        `opening the verification checkpoint for project ${input.projectId}`,
+      );
+      const checkpoint = toCheckpoint(checkpointRow);
+
+      const assignments = confirmed
+        ? 'human_confirmed = true, last_verified_at = now()'
+        : "status = 'retired', valid_to = COALESCE(valid_to, now()), last_verified_at = now()";
+
+      const verifiedRows = await this.rows(
+        `UPDATE context_item
+            SET ${assignments}
+          WHERE workspace_id = $1 AND id = $2
+          RETURNING ${CONTEXT_ITEM_COLUMNS}`,
+        [this.scope.workspaceId, input.itemId],
+      );
+      const verified = expectOne(verifiedRows, `verifying context item ${input.itemId}`);
+
+      await this.rows(
+        `INSERT INTO checkpoint_item (workspace_id, checkpoint_id, item_id, action)
+         VALUES ($1, $2, $3, $4)`,
+        [
+          this.scope.workspaceId,
+          checkpoint.id,
+          input.itemId,
+          confirmed ? 'updated' : 'rejected',
+        ],
+      );
+
+      return {
+        checkpoint,
+        item: toContextItem(verified),
+        verification: input.verification,
+        previousLastVerifiedAt,
+      };
+    });
+  }
+
   async retireContextItem(input: RetireContextItemInput): Promise<RetireContextItemResult> {
     assertUuid(input.projectId, 'input.projectId');
     assertUuid(input.itemId, 'input.itemId');
