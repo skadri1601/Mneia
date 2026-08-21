@@ -131,6 +131,23 @@ const supersededAndAncient = contextItem({
   supersededById: 'bb22cc33-0000-4000-8000-000000000002',
 });
 
+const disputedLongStanding = contextItem({
+  id: 'ba11cd22-0000-4000-8000-000000000008',
+  kind: 'fact',
+  title: 'The EU workspace runs in Frankfurt',
+  status: 'disputed',
+  assertedAt: new Date('2026-05-01T00:00:00.000Z'),
+  humanConfirmed: true,
+});
+
+const disputedRecent = contextItem({
+  id: 'ca22de33-0000-4000-8000-000000000009',
+  kind: 'fact',
+  title: 'Checkout retries three times',
+  status: 'disputed',
+  assertedAt: new Date('2026-07-28T00:00:00.000Z'),
+});
+
 const PROJECT_ITEMS: readonly ContextItem[] = [
   stalePooling,
   evergreenRuling,
@@ -451,5 +468,80 @@ describe('mneia status', () => {
 
     expect(api.requests).toHaveLength(1);
     expect(api.requests[0]?.config).toBe(CONFIG);
+  });
+
+  it('reports how long each disputed item has stood unresolved', async () => {
+    const result = await run(commandWith(recordingApi(report(PROJECT_ITEMS))));
+
+    expect(result.out).toContain('unresolved · 12 days old · asserted 2026-07-20');
+    expect(classifyStatus(PROJECT_ITEMS, NOW).disputed[0]?.ageMs).toBe(12 * DAY_MS);
+  });
+
+  it('puts a load-bearing dispute first, then the longest-standing', () => {
+    const sections = classifyStatus([disputedRecent, disputedLongStanding, disputedBilling], NOW);
+
+    expect(sections.disputed.map((entry) => entry.item.id)).toEqual([
+      disputedBilling.id,
+      disputedLongStanding.id,
+      disputedRecent.id,
+    ]);
+    expect(sections.disputed.map((entry) => entry.ageMs)).toEqual([
+      12 * DAY_MS,
+      92 * DAY_MS,
+      4 * DAY_MS,
+    ]);
+  });
+
+  it('never renders a dispute between humans as resolved', async () => {
+    const result = await run(
+      commandWith(recordingApi(report([disputedLongStanding, disputedBilling]))),
+    );
+
+    expect(result.out).toContain('disputed (2) — conflicting assertions; a human decides');
+    expect(result.out).toContain('human-confirmed');
+    expect(result.out).toContain('unresolved');
+    expect(result.out).not.toMatch(/\bresolved\b/);
+    expect(result.out).not.toMatch(/auto-resolv/i);
+    expect(result.out).not.toContain('is clean');
+  });
+
+  it('counts a disputed open question as disputed, not as unanswered', () => {
+    const contested = contextItem({
+      id: 'da33ef44-0000-4000-8000-000000000010',
+      kind: 'open_question',
+      title: 'Do we ship SSO at launch?',
+      status: 'disputed',
+      assertedAt: new Date('2026-07-11T00:00:00.000Z'),
+    });
+
+    const sections = classifyStatus([contested], NOW);
+
+    expect(sections.disputed.map((entry) => entry.item.id)).toEqual([contested.id]);
+    expect(sections.disputed[0]?.ageMs).toBe(21 * DAY_MS);
+    expect(sections.unanswered).toHaveLength(0);
+  });
+
+  it('carries an age for every disputed item in --json', async () => {
+    const result = await run(
+      commandWith(recordingApi(report([...PROJECT_ITEMS, disputedLongStanding]))),
+      { json: true },
+    );
+    const payload = JSON.parse(result.out) as {
+      counts: Record<string, number>;
+      disputed: readonly Record<string, unknown>[];
+    };
+
+    expect(payload.counts.disputed).toBe(2);
+    expect(payload.disputed[0]).toMatchObject({
+      id: disputedBilling.id,
+      status: 'disputed',
+      loadBearing: true,
+      ageMs: 12 * DAY_MS,
+    });
+    expect(payload.disputed[1]).toMatchObject({
+      id: disputedLongStanding.id,
+      humanConfirmed: true,
+      ageMs: 92 * DAY_MS,
+    });
   });
 });
