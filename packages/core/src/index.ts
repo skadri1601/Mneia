@@ -322,6 +322,11 @@ export {
 } from './trajectory/claude-desktop.js';
 export { createCodexReader, parseCodexRollout } from './trajectory/codex.js';
 export { composerFolders, createCursorReader } from './trajectory/cursor.js';
+export {
+  createGeminiReader,
+  geminiTurns,
+  parseGeminiSession,
+} from './trajectory/gemini.js';
 export type { DiscoveredTrajectory, TrajectoryDiscovery } from './trajectory/discover.js';
 export {
   createReaders,

@@ -3,6 +3,7 @@ export const TRAJECTORY_SOURCES = [
   'claude-desktop',
   'codex',
   'cursor',
+  'gemini',
   'warp',
   'file',
 ] as const;
