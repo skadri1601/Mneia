@@ -1,0 +1,98 @@
+name: purge-waitlist
+
+# Deletes waitlist addresses whose published retention has elapsed (MNE-269).
+#
+# apps/site/src/content/legal.ts publishes "Until you unsubscribe or access opens, then deleted
+# within 30 days", and the access-open email repeats the promise to the person receiving it. That
+# is a dated, unconditional obligation. Unsubscribe already deletes on the spot; nothing honoured
+# the other half until this workflow existed.
+#
+# The scheduled run deletes, and that is deliberate. Everywhere else in this repo the destructive
+# command waits for a human — db:migrate, waitlist:notify — because those acts have no deadline.
+# This one does: a promise kept only when somebody remembers is the defect being fixed here, and
+# the ticket was filed precisely because nobody was watching the clock. The safety comes from the
+# shape of the command instead:
+#
+#   * the CLI still deletes nothing without --apply, so a human at a terminal gets a dry run
+#   * --max refuses a run larger than expected rather than deleting it, so a widened predicate
+#     stops loudly instead of emptying the table
+#   * the delete is bounded to the id list printed immediately above it in the same transaction,
+#     so it can never remove a row the run did not report
+#   * every run prints its plan, and the log is the audit trail
+#
+# Dispatch it by hand with mode=report for a dry run against production without deleting anything.
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'report lists what is due and deletes nothing; apply deletes it'
+        type: choice
+        options: [report, apply]
+        default: report
+      max:
+        description: 'refuse the run rather than deleting more addresses than this'
+        type: string
+        default: '100'
+
+concurrency:
+  group: purge-waitlist
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    name: delete addresses past the published deadline
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Resolve the production connection string from Neon
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          if [ -z "${NEON_API_KEY}" ] || [ -z "${NEON_PROJECT_ID}" ]; then
+            echo "::error::NEON_API_KEY or NEON_PROJECT_ID is missing, so this job cannot reach production. Refusing to continue rather than reporting a purge that never ran."
+            exit 1
+          fi
+
+          if ! response=$(curl -sS --fail-with-body --max-time 30 \
+            -H "Authorization: Bearer ${NEON_API_KEY}" \
+            "https://console.neon.tech/api/v2/projects/${NEON_PROJECT_ID}/connection_uri?database_name=neondb&role_name=neondb_owner&pooled=false"); then
+            echo "::error::the Neon API would not hand back a connection URI for project ${NEON_PROJECT_ID}"
+            exit 1
+          fi
+
+          if ! url=$(node "${GITHUB_WORKSPACE}/scripts/read-neon-connection-uri.mjs" <<< "${response}"); then
+            echo "::error::the Neon API answered with something that is not a connection URI"
+            exit 1
+          fi
+
+          echo "::add-mask::${url}"
+          echo "DATABASE_URL=${url}" >> "$GITHUB_ENV"
+
+      - name: Delete every address past the published deadline
+        env:
+          MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'apply' }}
+          MAX: ${{ github.event_name == 'workflow_dispatch' && inputs.max || '100' }}
+        run: |
+          if [ "${MODE}" = "apply" ]; then
+            pnpm waitlist:purge --apply --max "${MAX}"
+          else
+            echo "::notice::mode=report — this run lists what is due and deletes nothing."
+            pnpm waitlist:purge --max "${MAX}"
+          fi

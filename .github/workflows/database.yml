@@ -20,6 +20,8 @@ on:
       - 'db/structure.sql'
       - 'scripts/db-snapshot.mjs'
       - 'scripts/db-provision-app-role.mjs'
+      - 'scripts/waitlist-purge.mjs'
+      - 'tests/waitlist-purge.test.ts'
       - '.github/workflows/database.yml'
   push:
     branches: [main]
@@ -41,6 +43,8 @@ on:
       - 'db/structure.sql'
       - 'scripts/db-snapshot.mjs'
       - 'scripts/db-provision-app-role.mjs'
+      - 'scripts/waitlist-purge.mjs'
+      - 'tests/waitlist-purge.test.ts'
       - '.github/workflows/database.yml'
 
 concurrency:

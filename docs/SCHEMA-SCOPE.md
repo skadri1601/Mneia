@@ -118,7 +118,7 @@ write it down then, do not pre-build it.
 
 | Promise | Source | Now |
 |---|---|---|
-| Waitlist address deleted within 30 days of access opening | published privacy policy, `apps/site/src/content/legal.ts` | **implemented** — it was a live obligation with nothing behind it |
+| Waitlist address deleted within 30 days of access opening | published privacy policy, `apps/site/src/content/legal.ts` | **enforced since MNE-269** — `scripts/waitlist-purge.mjs`, run daily by `.github/workflows/purge-waitlist.yml`. Migration 0023 shipped `waitlist_signup_purge_idx` for this sweep and this line claimed the sweep existed. It did not, and saying so here is how a live obligation ran unwatched |
 | Solo tier: 30-day history | §14 pricing table | column only |
 | Privacy by controls: retention | §11.1 | column only |
 
