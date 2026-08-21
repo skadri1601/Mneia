@@ -38,7 +38,8 @@
     "sync:version": "node scripts/sync-version.mjs",
     "check:version": "node scripts/sync-version.mjs --check",
     "release:publish": "changeset publish",
-    "demote:imported-constraints": "node scripts/demote-imported-constraints.mjs"
+    "demote:imported-constraints": "node scripts/demote-imported-constraints.mjs",
+    "audit:workspace-membership": "node scripts/audit-workspace-membership.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.6",
