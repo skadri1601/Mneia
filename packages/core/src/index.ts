@@ -124,7 +124,7 @@ export {
 } from './rehydrate/pack.js';
 export type { RenderSliceInput } from './rehydrate/render.js';
 export { renderSlice, SLICE_SECTION_HEADINGS, shortenItemIds } from './rehydrate/render.js';
-export { DEFAULT_SCORING_WEIGHTS, scoreItems } from './rehydrate/score.js';
+export { DEFAULT_SCORING_WEIGHTS, scoreItems, semanticRelevance } from './rehydrate/score.js';
 export type { TokenCounter } from './rehydrate/tokens.js';
 export {
   bpeTokenCounter,

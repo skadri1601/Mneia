@@ -129,9 +129,13 @@ export function scoreComponents(
   taskEmbedding: Embedding | null,
   now: Date,
   decayDefaults: DecayDefaults = DEFAULT_DECAY_AFTER_BY_KIND,
+  precomputedRelevance?: number,
 ): ScoreComponents {
   return {
-    semanticRelevance: semanticRelevance(item.embedding, taskEmbedding),
+    semanticRelevance:
+      precomputedRelevance === undefined
+        ? semanticRelevance(item.embedding, taskEmbedding)
+        : clamp01(precomputedRelevance),
     recencyDecay: recencyDecay(item.assertedAt, now),
     confidence: clamp01(item.confidence),
     humanConfirmed: item.humanConfirmed ? 1 : 0,
@@ -176,7 +180,13 @@ export function scoreItems(input: ScoringInput): readonly ScoredItem[] {
   const decayDefaults = input.decayDefaults ?? DEFAULT_DECAY_AFTER_BY_KIND;
 
   const scored = input.items.map((item): ScoredItem => {
-    const components = scoreComponents(item, input.taskEmbedding, input.now, decayDefaults);
+    const components = scoreComponents(
+      item,
+      input.taskEmbedding,
+      input.now,
+      decayDefaults,
+      input.relevance?.get(item.id),
+    );
     return { item, score: totalScore(components, weights), components };
   });
 

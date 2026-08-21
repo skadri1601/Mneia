@@ -70,6 +70,7 @@ export async function assembleSlice(request: AssembleSliceRequest): Promise<Asse
   let candidates: readonly ContextItem[];
   let mandatory: readonly ContextItem[];
   let superseded: readonly ContextItem[];
+  let relevance: ReadonlyMap<Uuid, number> | undefined;
 
   const selectRehydrationCandidates = store.selectRehydrationCandidates;
   if (selectRehydrationCandidates !== undefined) {
@@ -86,6 +87,7 @@ export async function assembleSlice(request: AssembleSliceRequest): Promise<Asse
       }),
     );
     ({ candidates, mandatory, superseded } = groups);
+    relevance = groups.relevance;
   } else {
     [candidates, mandatory, superseded] = await Promise.all([
       through('searchContextItems', () =>
@@ -125,6 +127,7 @@ export async function assembleSlice(request: AssembleSliceRequest): Promise<Asse
     taskEmbedding,
     now,
     weights: DEFAULT_SCORING_WEIGHTS,
+    ...(relevance === undefined ? {} : { relevance }),
   });
 
   const packed = packSlice({ scored, tokenBudget, quotas: DEFAULT_KIND_QUOTAS });
