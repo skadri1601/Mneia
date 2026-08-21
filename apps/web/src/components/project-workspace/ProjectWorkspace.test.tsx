@@ -46,6 +46,7 @@ describe('ProjectWorkspace', () => {
       { href: `/projects/${PROJECT.id}`, text: 'Overview' },
       { href: `/projects/${PROJECT.id}/decisions`, text: 'Decisions' },
       { href: `/projects/${PROJECT.id}/timeline`, text: 'Timeline' },
+      { href: `/projects/${PROJECT.id}/handoffs`, text: 'Handoffs' },
       { href: `/projects/${PROJECT.id}/review`, text: 'Review queue' },
       { href: '/projects', text: 'All projects' },
     ]);
@@ -56,6 +57,7 @@ describe('ProjectWorkspace', () => {
     [`/projects/${PROJECT.id}`, `/projects/${PROJECT.id}`, 'Overview'],
     [`/projects/${PROJECT.id}/decisions`, `/projects/${PROJECT.id}/decisions`, 'Decisions'],
     [`/projects/${PROJECT.id}/timeline`, `/projects/${PROJECT.id}/timeline`, 'Timeline'],
+    [`/projects/${PROJECT.id}/handoffs`, `/projects/${PROJECT.id}/handoffs`, 'Handoffs'],
     [`/projects/${PROJECT.id}/review`, `/projects/${PROJECT.id}/review`, 'Review queue'],
   ])('marks only %s as the current destination', (pathname, href, label) => {
     navigation.pathname = pathname;

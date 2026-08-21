@@ -325,4 +325,31 @@ describe('mneia pickup', () => {
       open: [{ id: OPEN_HANDOFF_ID, addressedToYou: false }],
     });
   });
+
+  it('reads a handoff with --read without receiving it', async () => {
+    const { deps, api, out, invocation } = harness();
+
+    const code = await createPickupCommand(deps).run(invocation([HANDOFF_ID], { read: true }));
+
+    expect(code).toBe(0);
+    expect(api.receive).not.toHaveBeenCalled();
+    expect(out.join('\n')).toContain('not received');
+    expect(out.join('\n')).toContain(`mneia pickup ${HANDOFF_ID}`);
+  });
+
+  it('refuses a --read that carries a value', async () => {
+    const { deps, invocation } = harness();
+
+    await expect(
+      createPickupCommand(deps).run(invocation([HANDOFF_ID], { read: 'yes' })),
+    ).rejects.toThrow(/--read takes no value/);
+  });
+
+  it('still receives when --read is absent', async () => {
+    const { deps, api, invocation } = harness();
+
+    await createPickupCommand(deps).run(invocation([HANDOFF_ID]));
+
+    expect(api.receive).toHaveBeenCalledTimes(1);
+  });
 });
