@@ -1,7 +1,8 @@
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ContextItem } from '@mneia/core';
+import type { ActorKind, ContextItem, ContextItemProvenance, Uuid } from '@mneia/core';
+import { deriveContextItemProvenance } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
 import type { CommandDefinition, CommandIo } from '../command.js';
 import {
@@ -27,6 +28,9 @@ import {
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const ACTOR_ID = '33333333-3333-4333-8333-333333333333';
+const PRIYA_ID = '44444444-4444-4444-8444-444444444444';
+const DEVI_ID = '55555555-5555-4555-8555-555555555555';
+const EXTRACTOR_ID = '66666666-6666-4666-8666-666666666666';
 
 const DAY_MS = 86_400_000;
 const NOW = new Date('2026-08-01T00:00:00.000Z');
@@ -38,6 +42,29 @@ const CONFIG: ProjectConfig = {
   configPath: '/repo/.mneia/config.json',
   repoRoot: '/repo',
 };
+
+function provenanceOf(
+  actorId: Uuid,
+  actorKind: ActorKind,
+  actorDisplayName: string,
+): ContextItemProvenance {
+  return deriveContextItemProvenance({
+    actorId,
+    actorKind,
+    actorDisplayName,
+    sourceSessionId: null,
+    sessionTool: null,
+    clientName: null,
+    clientVersion: null,
+    clientSessionRef: null,
+    clientSessionName: null,
+    clientSessionUrl: null,
+  });
+}
+
+const PRIYA = provenanceOf(PRIYA_ID, 'human', 'Priya Raman');
+const DEVI = provenanceOf(DEVI_ID, 'human', 'Devi Okonkwo');
+const EXTRACTOR = provenanceOf(EXTRACTOR_ID, 'agent', 'Claude Code');
 
 function contextItem(overrides: Partial<ContextItem>): ContextItem {
   const assertedAt = overrides.assertedAt ?? new Date('2026-07-01T00:00:00.000Z');
@@ -65,6 +92,7 @@ function contextItem(overrides: Partial<ContextItem>): ContextItem {
     accessScope: 'project',
     embedding: null,
     embeddingModel: null,
+    supersedeReason: null,
     ...overrides,
   };
 }
@@ -76,6 +104,8 @@ const stalePooling = contextItem({
   assertedAt: new Date('2026-05-01T00:00:00.000Z'),
   lastVerifiedAt: new Date('2026-06-01T00:00:00.000Z'),
   decayAfter: 30 * DAY_MS,
+  assertedBy: EXTRACTOR_ID,
+  provenance: EXTRACTOR,
 });
 
 const evergreenRuling = contextItem({
@@ -95,6 +125,9 @@ const disputedBilling = contextItem({
   status: 'disputed',
   assertedAt: new Date('2026-07-20T00:00:00.000Z'),
   loadBearing: true,
+  humanConfirmed: true,
+  assertedBy: PRIYA_ID,
+  provenance: PRIYA,
 });
 
 const oldQuestion = contextItem({
@@ -102,6 +135,8 @@ const oldQuestion = contextItem({
   kind: 'open_question',
   title: 'Do we support SSO at launch?',
   assertedAt: new Date('2026-07-20T00:00:00.000Z'),
+  assertedBy: EXTRACTOR_ID,
+  provenance: EXTRACTOR,
 });
 
 const recentQuestion = contextItem({
@@ -119,6 +154,8 @@ const staleLoadBearing = contextItem({
   loadBearing: true,
   humanConfirmed: true,
   decayAfter: 7 * DAY_MS,
+  assertedBy: PRIYA_ID,
+  provenance: PRIYA,
 });
 
 const supersededAndAncient = contextItem({
@@ -129,6 +166,25 @@ const supersededAndAncient = contextItem({
   assertedAt: new Date('2026-01-01T00:00:00.000Z'),
   decayAfter: DAY_MS,
   supersededById: 'bb22cc33-0000-4000-8000-000000000002',
+});
+
+const disputedLongStanding = contextItem({
+  id: 'ba11cd22-0000-4000-8000-000000000008',
+  kind: 'fact',
+  title: 'The EU workspace runs in Frankfurt',
+  status: 'disputed',
+  assertedAt: new Date('2026-05-01T00:00:00.000Z'),
+  humanConfirmed: true,
+  assertedBy: DEVI_ID,
+  provenance: DEVI,
+});
+
+const disputedRecent = contextItem({
+  id: 'ca22de33-0000-4000-8000-000000000009',
+  kind: 'fact',
+  title: 'Checkout retries three times',
+  status: 'disputed',
+  assertedAt: new Date('2026-07-28T00:00:00.000Z'),
 });
 
 const PROJECT_ITEMS: readonly ContextItem[] = [
@@ -451,5 +507,151 @@ describe('mneia status', () => {
 
     expect(api.requests).toHaveLength(1);
     expect(api.requests[0]?.config).toBe(CONFIG);
+  });
+
+  it('reports how long each disputed item has stood unresolved', async () => {
+    const result = await run(commandWith(recordingApi(report(PROJECT_ITEMS))));
+
+    expect(result.out).toContain('unresolved · 12 days old · asserted 2026-07-20');
+    expect(classifyStatus(PROJECT_ITEMS, NOW).disputed[0]?.ageMs).toBe(12 * DAY_MS);
+  });
+
+  it('puts a load-bearing dispute first, then the longest-standing', () => {
+    const sections = classifyStatus([disputedRecent, disputedLongStanding, disputedBilling], NOW);
+
+    expect(sections.disputed.map((entry) => entry.item.id)).toEqual([
+      disputedBilling.id,
+      disputedLongStanding.id,
+      disputedRecent.id,
+    ]);
+    expect(sections.disputed.map((entry) => entry.ageMs)).toEqual([
+      12 * DAY_MS,
+      92 * DAY_MS,
+      4 * DAY_MS,
+    ]);
+  });
+
+  it('never renders a dispute between humans as resolved', async () => {
+    const result = await run(
+      commandWith(recordingApi(report([disputedLongStanding, disputedBilling]))),
+    );
+
+    expect(result.out).toContain('disputed (2) — conflicting assertions; a human decides');
+    expect(result.out).toContain('by Devi Okonkwo (human) · unresolved');
+    expect(result.out).toContain('by Priya Raman (human) · unresolved');
+    expect(result.out).toContain('human-confirmed');
+    expect(result.out).not.toMatch(/\bresolved\b/);
+    expect(result.out).not.toMatch(/auto-resolv/i);
+    expect(result.out).not.toContain('is clean');
+    expect(result.out).not.toMatch(/\bwins\b|supersed|overrul/i);
+  });
+
+  it('names who asserted every item it renders, and whether a human confirmed it', async () => {
+    const result = await run(commandWith(recordingApi(report(PROJECT_ITEMS))));
+
+    expect(result.out).toContain('by Priya Raman (human) · asserted 2026-07-20, never re-verified');
+    expect(result.out).toContain('by Claude Code (agent) · last verified 2026-06-01');
+    expect(result.out).toContain('by Priya Raman (human) · unresolved');
+    expect(result.out).toContain('by Claude Code (agent) · open 12 days');
+
+    const rendered = result.out.split('\n').filter((line) => line.startsWith('    by '));
+
+    expect(rendered).toHaveLength(
+      classifyStatus(PROJECT_ITEMS, NOW).stale.length +
+        classifyStatus(PROJECT_ITEMS, NOW).disputed.length +
+        classifyStatus(PROJECT_ITEMS, NOW).unanswered.length,
+    );
+    expect(result.out).toContain('The p95 rehydrate budget is 300ms  [ff66aa77]');
+    expect(result.out).toContain('load-bearing · human-confirmed');
+  });
+
+  it('falls back to the asserting actor id when the API returns no provenance', async () => {
+    const orphaned = contextItem({
+      id: 'fa77bc88-0000-4000-8000-000000000011',
+      kind: 'open_question',
+      title: 'Who owns the retention policy?',
+      assertedAt: new Date('2026-07-25T00:00:00.000Z'),
+      assertedBy: '99999999-9999-4999-8999-999999999999',
+    });
+
+    const result = await run(commandWith(recordingApi(report([orphaned]))));
+
+    expect(result.out).toContain('by an unnamed actor (99999999) · open 7 days');
+    expect(result.out).not.toContain('undefined');
+  });
+
+  it('carries assertedBy in --json for every section', async () => {
+    const result = await run(commandWith(recordingApi(report(PROJECT_ITEMS))), { json: true });
+    const payload = JSON.parse(result.out) as {
+      stale: readonly Record<string, unknown>[];
+      disputed: readonly Record<string, unknown>[];
+      unanswered: readonly Record<string, unknown>[];
+    };
+
+    expect(payload.stale[0]).toMatchObject({
+      assertedBy: { id: PRIYA_ID, displayName: 'Priya Raman', kind: 'human' },
+    });
+    expect(payload.stale[1]).toMatchObject({
+      assertedBy: { id: EXTRACTOR_ID, displayName: 'Claude Code', kind: 'agent' },
+    });
+    expect(payload.disputed[0]).toMatchObject({
+      assertedBy: { id: PRIYA_ID, kind: 'human' },
+      humanConfirmed: true,
+    });
+    expect(payload.unanswered[0]).toMatchObject({
+      assertedBy: { id: EXTRACTOR_ID, kind: 'agent' },
+    });
+
+    const withoutProvenance = await run(
+      commandWith(
+        recordingApi(report([contextItem({ status: 'disputed', assertedBy: ACTOR_ID })])),
+      ),
+      { json: true },
+    );
+
+    expect(
+      (JSON.parse(withoutProvenance.out) as { disputed: readonly Record<string, unknown>[] })
+        .disputed[0],
+    ).toMatchObject({ assertedBy: { id: ACTOR_ID, displayName: null, kind: null } });
+  });
+
+  it('counts a disputed open question as disputed, not as unanswered', () => {
+    const contested = contextItem({
+      id: 'da33ef44-0000-4000-8000-000000000010',
+      kind: 'open_question',
+      title: 'Do we ship SSO at launch?',
+      status: 'disputed',
+      assertedAt: new Date('2026-07-11T00:00:00.000Z'),
+    });
+
+    const sections = classifyStatus([contested], NOW);
+
+    expect(sections.disputed.map((entry) => entry.item.id)).toEqual([contested.id]);
+    expect(sections.disputed[0]?.ageMs).toBe(21 * DAY_MS);
+    expect(sections.unanswered).toHaveLength(0);
+  });
+
+  it('carries an age for every disputed item in --json', async () => {
+    const result = await run(
+      commandWith(recordingApi(report([...PROJECT_ITEMS, disputedLongStanding]))),
+      { json: true },
+    );
+    const payload = JSON.parse(result.out) as {
+      counts: Record<string, number>;
+      disputed: readonly Record<string, unknown>[];
+    };
+
+    expect(payload.counts.disputed).toBe(2);
+    expect(payload.disputed[0]).toMatchObject({
+      id: disputedBilling.id,
+      status: 'disputed',
+      loadBearing: true,
+      ageMs: 12 * DAY_MS,
+    });
+    expect(payload.disputed[1]).toMatchObject({
+      id: disputedLongStanding.id,
+      humanConfirmed: true,
+      ageMs: 92 * DAY_MS,
+    });
   });
 });

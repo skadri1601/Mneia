@@ -1,7 +1,7 @@
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Actor, ContextItem } from '@mneia/core';
+import type { Actor, ContextItem, Uuid } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
 import type { CommandDefinition, CommandIo } from '../command.js';
 import {
@@ -19,8 +19,11 @@ import {
   createLogCommand,
   DEFAULT_LOG_LIMIT,
   type LogApi,
+  type LogChainPage,
+  type LogChainRequest,
   type LogPage,
   type LogRequest,
+  matchItemIds,
 } from './log.js';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
@@ -29,6 +32,7 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const NEW_DECISION_ID = '4f3a1b2c-0000-4000-8000-000000000001';
 const OLD_DECISION_ID = '9c2d0e5a-0000-4000-8000-000000000002';
 const CONSTRAINT_ID = '7b1e33aa-0000-4000-8000-000000000003';
+const ROOT_DECISION_ID = '1a2b3c4d-0000-4000-8000-000000000004';
 
 const PRIYA: Actor = {
   id: '33333333-3333-4333-8333-333333333333',
@@ -44,6 +48,15 @@ const AGENT: Actor = {
   workspaceId: WORKSPACE_ID,
   kind: 'agent',
   displayName: 'claude-code',
+  externalRef: null,
+  createdAt: new Date('2026-07-01T00:00:00.000Z'),
+};
+
+const DAN: Actor = {
+  id: '55555555-5555-4555-8555-555555555555',
+  workspaceId: WORKSPACE_ID,
+  kind: 'human',
+  displayName: 'Dan Okafor',
   externalRef: null,
   createdAt: new Date('2026-07-01T00:00:00.000Z'),
 };
@@ -82,6 +95,7 @@ function contextItem(overrides: Partial<ContextItem>): ContextItem {
     accessScope: 'project',
     embedding: null,
     embeddingModel: null,
+    supersedeReason: null,
     ...overrides,
   };
 }
@@ -128,23 +142,82 @@ const page = (
 
 const TIMELINE = page([oldDecision, newDecision, billingConstraint]);
 
+const chainRoot = contextItem({
+  id: ROOT_DECISION_ID,
+  kind: 'decision',
+  title: 'Isolate tenants with one database per tenant',
+  status: 'superseded',
+  assertedAt: new Date('2026-07-20T09:15:00.000Z'),
+  validTo: new Date('2026-07-28T16:40:00.000Z'),
+  supersededById: OLD_DECISION_ID,
+});
+
+const chainMiddle = contextItem({
+  id: OLD_DECISION_ID,
+  kind: 'decision',
+  title: 'Schema-per-tenant isolation',
+  status: 'superseded',
+  assertedAt: new Date('2026-07-28T16:40:00.000Z'),
+  validTo: new Date('2026-07-31T14:22:00.000Z'),
+  supersedesId: ROOT_DECISION_ID,
+  supersededById: NEW_DECISION_ID,
+  supersedeReason: 'a database per tenant exhausted the connection pool past 200 tenants',
+});
+
+const chainHead = contextItem({
+  id: NEW_DECISION_ID,
+  kind: 'decision',
+  title: 'Adopt Postgres row-level security for tenant isolation',
+  assertedAt: new Date('2026-07-31T14:22:00.000Z'),
+  confidence: 0.95,
+  loadBearing: true,
+  supersedesId: OLD_DECISION_ID,
+  supersedeReason: 'row-level security keeps one connection pool and one migration path',
+});
+
+const chainPage = (
+  revisions: readonly ContextItem[],
+  itemId: Uuid = NEW_DECISION_ID,
+  actors: readonly Actor[] = [PRIYA, AGENT, DAN],
+): LogChainPage => ({
+  projectId: PROJECT_ID,
+  itemId,
+  revisions,
+  actors,
+  truncated: false,
+});
+
+const CHAIN = chainPage([chainRoot, chainMiddle, chainHead]);
+
 interface RecordingApi extends LogApi {
   readonly requests: LogRequest[];
+  readonly chainRequests: LogChainRequest[];
 }
 
-function recordingApi(result: LogPage): RecordingApi {
+function recordingApi(result: LogPage, chainResult?: LogChainPage): RecordingApi {
   const requests: LogRequest[] = [];
+  const chainRequests: LogChainRequest[] = [];
   return {
     requests,
+    chainRequests,
     log: (request) => {
       requests.push(request);
       return Promise.resolve(result);
     },
+    chain: (request) => {
+      chainRequests.push(request);
+      return chainResult === undefined
+        ? Promise.reject(new Error('this test stubbed no chain'))
+        : Promise.resolve(chainResult);
+    },
   };
 }
 
+const chainApi = (result: LogChainPage): RecordingApi => recordingApi(TIMELINE, result);
+
 const rejectingApi = (error: unknown): LogApi => ({
   log: () => Promise.reject(error),
+  chain: () => Promise.reject(error),
 });
 
 const loadConfig = (): ProjectConfig => CONFIG;
@@ -446,5 +519,349 @@ describe('mneia log', () => {
     const payload: unknown = JSON.parse(result.out);
 
     expect(payload).toMatchObject({ count: 0, entries: [] });
+  });
+});
+
+const occurrences = (text: string, needle: string): number => text.split(needle).length - 1;
+
+describe('mneia log --chain', () => {
+  it('reconstructs the whole chain oldest first, with the rationale for each replacement', async () => {
+    const result = await run(commandWith(chainApi(CHAIN)), { flags: { chain: '4f3a1b2c' } });
+
+    expect(result.code).toBe(EXIT_OK);
+    expect(result.out).toContain(
+      'acme/checkout — supersede chain for "Adopt Postgres row-level security for tenant isolation"',
+    );
+    expect(result.out).toContain('3 revisions · oldest first · times in UTC');
+
+    const root = result.out.indexOf('Isolate tenants with one database per tenant');
+    const middle = result.out.indexOf('Schema-per-tenant isolation');
+    const head = result.out.indexOf('Adopt Postgres row-level security for tenant isolation  [');
+    expect(root).toBeGreaterThan(-1);
+    expect(root).toBeLessThan(middle);
+    expect(middle).toBeLessThan(head);
+
+    expect(result.out).toContain('first recorded revision — it replaced nothing');
+    expect(result.out).toContain(
+      'because: a database per tenant exhausted the connection pool past 200 tenants',
+    );
+    expect(result.out).toContain(
+      'because: row-level security keeps one connection pool and one migration path',
+    );
+  });
+
+  it('dates each replacement and names what replaced it', async () => {
+    const result = await run(commandWith(chainApi(CHAIN)), { flags: { chain: '4f3a1b2c' } });
+
+    expect(result.out).toContain('2026-07-20 09:15');
+    expect(result.out).toContain('superseded on 2026-07-28 by "Schema-per-tenant isolation"');
+    expect(result.out).toContain(
+      'superseded on 2026-07-31 by "Adopt Postgres row-level security for tenant isolation"',
+    );
+  });
+
+  it('carries provenance on every revision, not just the newest', async () => {
+    const agentRoot = contextItem({
+      ...chainRoot,
+      assertedBy: AGENT.id,
+      humanConfirmed: false,
+      confidence: 0.72,
+    });
+    const result = await run(
+      commandWith(chainApi(chainPage([agentRoot, chainMiddle, chainHead]))),
+      { flags: { chain: '4f3a1b2c' } },
+    );
+
+    expect(occurrences(result.out, 'by claude-code (agent)')).toBe(1);
+    expect(occurrences(result.out, 'by Priya Raman (human)')).toBe(2);
+    expect(occurrences(result.out, 'human-confirmed')).toBe(2);
+    expect(occurrences(result.out, 'confidence ')).toBe(3);
+    expect(result.out).not.toContain('flagged:');
+  });
+
+  it('says so plainly when a replacement recorded no rationale', async () => {
+    const silent = contextItem({ ...chainHead, supersedeReason: null });
+    const result = await run(commandWith(chainApi(chainPage([chainMiddle, silent]))), {
+      flags: { chain: '4f3a1b2c' },
+    });
+
+    expect(result.out).toContain('no rationale recorded for this replacement');
+  });
+
+  it('calls the newest revision in force only when nothing in the chain is unsettled', async () => {
+    const result = await run(commandWith(chainApi(CHAIN)), { flags: { chain: '4f3a1b2c' } });
+
+    expect(result.out).toContain('— in force');
+    expect(occurrences(result.out, '— superseded')).toBe(2);
+  });
+
+  it('never implies a winner when the chain holds a human-versus-human dispute', async () => {
+    const priyaSide = contextItem({ ...chainMiddle, status: 'disputed' });
+    const danSide = contextItem({
+      ...chainHead,
+      status: 'disputed',
+      assertedBy: DAN.id,
+      humanConfirmed: true,
+    });
+
+    const result = await run(commandWith(chainApi(chainPage([priyaSide, danSide]))), {
+      flags: { chain: '4f3a1b2c' },
+    });
+
+    expect(result.code).toBe(EXIT_OK);
+    expect(result.out).not.toContain('in force');
+    expect(occurrences(result.out, '— disputed')).toBe(2);
+    expect(result.out).toContain('by Priya Raman (human)');
+    expect(result.out).toContain('by Dan Okafor (human)');
+    expect(result.out).toContain('Mneia does not choose between them');
+    expect(result.out).toContain('§10.4');
+  });
+
+  it('reports the dispute in JSON too, with no revision marked in force', async () => {
+    const disputedHead = contextItem({ ...chainHead, status: 'disputed', assertedBy: DAN.id });
+    const result = await run(commandWith(chainApi(chainPage([chainMiddle, disputedHead]))), {
+      json: true,
+      flags: { chain: '4f3a1b2c' },
+    });
+    const payload: unknown = JSON.parse(result.out);
+
+    expect(payload).toMatchObject({ settled: false, count: 2 });
+    const revisions = (payload as { revisions: readonly Record<string, unknown>[] }).revisions;
+    expect(revisions.every((revision) => revision.inForce === false)).toBe(true);
+  });
+
+  it('flags a replacement that overruled a human-confirmed decision without human confirmation', async () => {
+    const agentHead = contextItem({
+      ...chainHead,
+      assertedBy: AGENT.id,
+      humanConfirmed: false,
+      confidence: 0.61,
+    });
+
+    const result = await run(commandWith(chainApi(chainPage([chainMiddle, agentHead]))), {
+      flags: { chain: '4f3a1b2c' },
+    });
+
+    expect(result.out).toContain('by claude-code (agent)');
+    expect(result.out).toContain(
+      'flagged: this replaced a human-confirmed decision without human confirmation',
+    );
+    expect(result.out).toContain('§10.1');
+    expect(result.out).not.toContain('in force');
+  });
+
+  it('leaves an ordinary agent revision unflagged', async () => {
+    const agentRoot = contextItem({
+      ...chainMiddle,
+      assertedBy: AGENT.id,
+      humanConfirmed: false,
+      supersedesId: null,
+      supersedeReason: null,
+    });
+    const agentHead = contextItem({
+      ...chainHead,
+      assertedBy: AGENT.id,
+      humanConfirmed: false,
+    });
+
+    const result = await run(commandWith(chainApi(chainPage([agentRoot, agentHead]))), {
+      flags: { chain: '4f3a1b2c' },
+    });
+
+    expect(result.out).not.toContain('flagged:');
+    expect(result.out).toContain('— in force');
+  });
+
+  it('marks which revision the caller asked for', async () => {
+    const result = await run(
+      commandWith(chainApi(chainPage([chainRoot, chainMiddle, chainHead], OLD_DECISION_ID))),
+      {
+        flags: { chain: '9c2d0e5a' },
+      },
+    );
+
+    expect(occurrences(result.out, 'this is the revision you asked for')).toBe(1);
+    expect(result.out).toContain('supersede chain for "Schema-per-tenant isolation"');
+  });
+
+  it('says a decision has never been superseded rather than pretending it has history', async () => {
+    const alone = contextItem({ ...chainHead, supersedesId: null, supersedeReason: null });
+    const result = await run(commandWith(chainApi(chainPage([alone]))), {
+      flags: { chain: '4f3a1b2c' },
+    });
+
+    expect(result.out).toContain('1 revision · oldest first');
+    expect(result.out).toContain('This decision has never been superseded.');
+    expect(result.out).not.toContain('this is the revision you asked for');
+  });
+
+  it('emits the chain, its rationale, and its provenance as JSON', async () => {
+    const result = await run(commandWith(chainApi(CHAIN)), {
+      json: true,
+      flags: { chain: '4f3a1b2c' },
+    });
+    const payload: unknown = JSON.parse(result.out);
+
+    expect(payload).toMatchObject({
+      project: 'acme/checkout',
+      projectId: PROJECT_ID,
+      chain: '4f3a1b2c',
+      itemId: NEW_DECISION_ID,
+      count: 3,
+      truncated: false,
+      settled: true,
+    });
+
+    const revisions = (payload as { revisions: readonly Record<string, unknown>[] }).revisions;
+    expect(revisions[0]).toMatchObject({
+      id: ROOT_DECISION_ID,
+      supersedeReason: null,
+      inForce: false,
+      agentOverHumanConfirmed: false,
+      assertedBy: { id: PRIYA.id, displayName: 'Priya Raman', kind: 'human' },
+    });
+    expect(revisions[2]).toMatchObject({
+      id: NEW_DECISION_ID,
+      supersedeReason: 'row-level security keeps one connection pool and one migration path',
+      inForce: true,
+      humanConfirmed: true,
+      loadBearing: true,
+    });
+  });
+
+  it('stops at a cycle instead of walking a corrupted chain forever', async () => {
+    const left = contextItem({
+      id: OLD_DECISION_ID,
+      title: 'Left',
+      supersedesId: NEW_DECISION_ID,
+      supersededById: NEW_DECISION_ID,
+    });
+    const right = contextItem({
+      id: NEW_DECISION_ID,
+      title: 'Right',
+      supersedesId: OLD_DECISION_ID,
+      supersededById: OLD_DECISION_ID,
+    });
+
+    const result = await run(commandWith(chainApi(chainPage([left, right]))), {
+      flags: { chain: '4f3a1b2c' },
+    });
+
+    expect(result.code).toBe(EXIT_OK);
+    expect(result.out).toContain('2 revisions');
+  });
+
+  it('passes the reference through trimmed and lowercased', async () => {
+    const api = chainApi(CHAIN);
+    await run(commandWith(api), { flags: { chain: '  4F3A1B2C  ' } });
+
+    expect(api.chainRequests).toHaveLength(1);
+    expect(api.chainRequests[0]?.reference).toBe('4f3a1b2c');
+    expect(api.chainRequests[0]?.config).toBe(CONFIG);
+    expect(api.requests).toHaveLength(0);
+  });
+
+  it('accepts a full uuid as well as the short id mneia log prints', async () => {
+    const api = chainApi(CHAIN);
+    await run(commandWith(api), { flags: { chain: NEW_DECISION_ID } });
+
+    expect(api.chainRequests[0]?.reference).toBe(NEW_DECISION_ID);
+  });
+
+  it('rejects a --chain that cannot be an item id', async () => {
+    const command = commandWith(chainApi(CHAIN));
+
+    const missingValue = await failure(command, { flags: { chain: true } });
+    expect(missingValue.kind).toBe('usage');
+    expect(missingValue.message).toContain('--chain needs the id of a decision');
+
+    for (const chain of ['ab', '---', 'not-an-id', '']) {
+      const error = await failure(command, { flags: { chain } });
+      expect(error.exitCode).toBe(EXIT_USAGE);
+      expect(error.message).toContain('at least 4 characters');
+    }
+  });
+
+  it('refuses to narrow a single decision history with --limit or --since', async () => {
+    const command = commandWith(chainApi(CHAIN));
+
+    const withSince = await failure(command, { flags: { chain: '4f3a1b2c', since: '7d' } });
+    expect(withSince.exitCode).toBe(EXIT_USAGE);
+    expect(withSince.message).toContain('--since');
+
+    const withLimit = await failure(command, { flags: { chain: '4f3a1b2c', limit: '5' } });
+    expect(withLimit.message).toContain('--limit');
+  });
+
+  it('lets the API decide an unknown id, and keeps its exit code', async () => {
+    const unknown = await failure(
+      commandWith(
+        rejectingApi(
+          new CliError(
+            'usage',
+            'mneia log --chain found no item matching abcdef12 in this project',
+            'run mneia log to see the ids it prints in [brackets], then pass one of those',
+          ),
+        ),
+      ),
+      { flags: { chain: 'abcdef12' } },
+    );
+
+    expect(unknown.exitCode).toBe(EXIT_USAGE);
+    expect(unknown.fix).toContain('mneia log');
+  });
+
+  it('does not tell a developer whose wifi dropped that their token is invalid', async () => {
+    const unreachable = new TypeError('fetch failed', {
+      cause: Object.assign(new Error('connect ECONNREFUSED 10.0.0.1:443'), {
+        code: 'ECONNREFUSED',
+      }),
+    });
+
+    const network = await failure(commandWith(rejectingApi(unreachable)), {
+      flags: { chain: '4f3a1b2c' },
+    });
+
+    expect(network.exitCode).toBe(EXIT_NETWORK);
+    expect(network.fix).toContain('your token is fine');
+  });
+
+  it('fails loudly if the API returns revisions without the item it resolved', async () => {
+    const error = await failure(commandWith(chainApi(chainPage([chainRoot], NEW_DECISION_ID))), {
+      flags: { chain: '4f3a1b2c' },
+    });
+
+    expect(error.exitCode).toBe(EXIT_FAILED);
+    expect(error.message).toContain(NEW_DECISION_ID);
+  });
+});
+
+describe('matchItemIds', () => {
+  const candidates: readonly Uuid[] = [NEW_DECISION_ID, OLD_DECISION_ID, ROOT_DECISION_ID];
+
+  it('matches the short id mneia log prints in brackets', () => {
+    expect(matchItemIds(candidates, '4f3a1b2c')).toEqual([NEW_DECISION_ID]);
+  });
+
+  it('matches a full uuid exactly, hyphens and all', () => {
+    expect(matchItemIds(candidates, NEW_DECISION_ID)).toEqual([NEW_DECISION_ID]);
+  });
+
+  it('ignores hyphens and case in the reference', () => {
+    expect(matchItemIds(candidates, '4F3A-1B2C')).toEqual([NEW_DECISION_ID]);
+  });
+
+  it('returns every candidate an ambiguous prefix could mean', () => {
+    const ambiguous = matchItemIds([NEW_DECISION_ID, OLD_DECISION_ID], '');
+    expect(ambiguous).toHaveLength(2);
+  });
+
+  it('returns nothing when no id starts with the reference', () => {
+    expect(matchItemIds(candidates, 'deadbeef')).toEqual([]);
+  });
+
+  it('prefers an exact id over a prefix of a longer one', () => {
+    const short = '4f3a1b2c';
+    expect(matchItemIds([short, NEW_DECISION_ID], short)).toEqual([short]);
   });
 });

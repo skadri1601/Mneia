@@ -17,8 +17,22 @@ export interface LogPage {
   readonly actors: readonly Actor[];
 }
 
+export interface LogChainRequest {
+  readonly config: ProjectConfig;
+  readonly reference: string;
+}
+
+export interface LogChainPage {
+  readonly projectId: Uuid;
+  readonly itemId: Uuid;
+  readonly revisions: readonly ContextItem[];
+  readonly actors: readonly Actor[];
+  readonly truncated: boolean;
+}
+
 export interface LogApi {
   readonly log: (request: LogRequest) => Promise<LogPage>;
+  readonly chain: (request: LogChainRequest) => Promise<LogChainPage>;
 }
 
 export interface LogDeps {
@@ -29,8 +43,10 @@ export interface LogDeps {
 
 export const DEFAULT_LOG_LIMIT = 20;
 export const MAX_LOG_LIMIT = 500;
+export const MAX_CHAIN_REVISIONS = 200;
+export const MIN_CHAIN_REFERENCE_LENGTH = 4;
 
-const USAGE = 'mneia log [--limit <count>] [--since <duration|date>] [--json]';
+const USAGE = 'mneia log [--limit <count>] [--since <duration|date>] [--chain <id>] [--json]';
 
 const DURATION = /^(\d+)(m|h|d|w)$/;
 const CALENDAR_DATE = /^\d{4}-\d{2}-\d{2}([T ].*)?$/;
@@ -125,9 +141,55 @@ function readSince(flags: CommandInvocation['flags'], now: Date): Date | null {
   );
 }
 
-interface LogView {
+const HYPHENS = /-/g;
+const CHAIN_REFERENCE = /^[0-9a-f-]+$/;
+
+const compactId = (id: string): string => id.replace(HYPHENS, '').toLowerCase();
+
+export function matchItemIds(candidates: readonly Uuid[], reference: string): readonly Uuid[] {
+  const wanted = compactId(reference);
+  const exact = candidates.filter((id) => compactId(id) === wanted);
+  if (exact.length > 0) {
+    return exact;
+  }
+  return candidates.filter((id) => compactId(id).startsWith(wanted));
+}
+
+function readChain(flags: CommandInvocation['flags']): string | null {
+  const raw = flags.chain;
+  if (raw === undefined) {
+    return null;
+  }
+  if (typeof raw !== 'string') {
+    throw usageError('--chain needs the id of a decision, as mneia log prints it in [brackets]');
+  }
+  const value = raw.trim().toLowerCase();
+  if (!CHAIN_REFERENCE.test(value) || compactId(value).length < MIN_CHAIN_REFERENCE_LENGTH) {
+    throw usageError(
+      `--chain expects at least ${MIN_CHAIN_REFERENCE_LENGTH} characters of an item id, such as 4f3a1b2c or a full uuid; got ${raw}`,
+    );
+  }
+  return value;
+}
+
+function assertChainAlone(flags: CommandInvocation['flags']): void {
+  const narrowing = ['limit', 'since'].filter((name) => flags[name] !== undefined);
+  if (narrowing.length === 0) {
+    return;
+  }
+  throw usageError(
+    `--chain shows one decision's whole history, so it cannot be combined with ${narrowing
+      .map((name) => `--${name}`)
+      .join(' or ')}`,
+  );
+}
+
+interface Provenanced {
   readonly item: ContextItem;
   readonly actor: Actor | undefined;
+}
+
+interface LogView extends Provenanced {
   readonly replaces: ContextItem | undefined;
   readonly replacedBy: ContextItem | undefined;
 }
@@ -157,14 +219,14 @@ const utcDate = (at: Date): string => at.toISOString().slice(0, 10);
 
 const utcTime = (at: Date): string => at.toISOString().slice(11, 16);
 
-function describeActor(view: LogView): string {
+function describeActor(view: Provenanced): string {
   if (view.actor === undefined) {
     return `an actor outside this page (${view.item.assertedBy.slice(0, 8)})`;
   }
   return `${view.actor.displayName} (${view.actor.kind})`;
 }
 
-function provenanceLine(view: LogView): string {
+function provenanceLine(view: Provenanced): string {
   const parts = [`by ${describeActor(view)}`];
   if (view.item.humanConfirmed) {
     parts.push('human-confirmed');
@@ -320,6 +382,7 @@ interface LogJsonEntry {
   readonly validTo: string | null;
   readonly supersedes: LogJsonRef | null;
   readonly supersededBy: LogJsonRef | null;
+  readonly supersedeReason: string | null;
 }
 
 function toJsonRef(resolved: ContextItem | undefined, id: Uuid | null): LogJsonRef | null {
@@ -350,6 +413,7 @@ function toJsonEntry(view: LogView): LogJsonEntry {
     validTo: item.validTo === null ? null : item.validTo.toISOString(),
     supersedes: toJsonRef(view.replaces, item.supersedesId),
     supersededBy: toJsonRef(view.replacedBy, item.supersededById),
+    supersedeReason: item.supersedeReason,
   };
 }
 
@@ -371,6 +435,215 @@ function renderJson(
   return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
+interface ChainStep extends LogView {
+  readonly agentOverHumanConfirmed: boolean;
+}
+
+const CHAIN_CONTINUATION = ' '.repeat(20);
+
+const utcStamp = (at: Date): string => `${utcDate(at)} ${utcTime(at)}`;
+
+const countOf = (count: number, noun: string): string =>
+  `${count} ${count === 1 ? noun : `${noun}s`}`;
+
+function chainOrder(page: LogChainPage, reference: string): readonly ContextItem[] {
+  const byId = new Map(page.revisions.map((item) => [item.id, item]));
+  const seed = byId.get(page.itemId);
+  if (seed === undefined) {
+    throw new CliError(
+      'failed',
+      `mneia log --chain ${reference} expected the revisions to include ${page.itemId}, but the API returned ${page.revisions.length} without it`,
+      'retry, and report it if it keeps failing',
+    );
+  }
+
+  const seen = new Set<Uuid>([seed.id]);
+  const earlier: ContextItem[] = [];
+  let cursor = seed;
+  while (cursor.supersedesId !== null) {
+    const previous = byId.get(cursor.supersedesId);
+    if (previous === undefined || seen.has(previous.id)) {
+      break;
+    }
+    seen.add(previous.id);
+    earlier.unshift(previous);
+    cursor = previous;
+  }
+
+  const later: ContextItem[] = [];
+  cursor = seed;
+  while (cursor.supersededById !== null) {
+    const next = byId.get(cursor.supersededById);
+    if (next === undefined || seen.has(next.id)) {
+      break;
+    }
+    seen.add(next.id);
+    later.push(next);
+    cursor = next;
+  }
+
+  return [...earlier, seed, ...later];
+}
+
+function buildChainSteps(page: LogChainPage, reference: string): readonly ChainStep[] {
+  const actors = new Map(page.actors.map((actor) => [actor.id, actor]));
+  const ordered = chainOrder(page, reference);
+
+  return ordered.map((item, index) => {
+    const replaces = ordered[index - 1];
+    return {
+      item,
+      actor: actors.get(item.assertedBy),
+      replaces,
+      replacedBy: ordered[index + 1],
+      agentOverHumanConfirmed: (replaces?.humanConfirmed ?? false) && !item.humanConfirmed,
+    };
+  });
+}
+
+const isSettled = (steps: readonly ChainStep[]): boolean =>
+  steps.every((step) => step.item.status !== 'disputed' && !step.agentOverHumanConfirmed);
+
+const isInForce = (steps: readonly ChainStep[], index: number): boolean =>
+  isSettled(steps) && index === steps.length - 1 && steps[index]?.item.status === 'active';
+
+function chainRationale(step: ChainStep): string {
+  if (step.item.supersedesId === null) {
+    return 'first recorded revision — it replaced nothing';
+  }
+  const reason = step.item.supersedeReason;
+  if (reason === null || reason.trim().length === 0) {
+    return 'no rationale recorded for this replacement';
+  }
+  return `because: ${reason.trim()}`;
+}
+
+function chainSupersededLine(step: ChainStep, shortIds: ReadonlyMap<Uuid, string>): string | null {
+  const { item } = step;
+  if (item.supersededById === null) {
+    return null;
+  }
+  const at = item.validTo ?? step.replacedBy?.assertedAt;
+  const when = at === undefined ? '' : ` on ${utcDate(at)}`;
+  return `superseded${when} by ${referTo(step.replacedBy, item.supersededById, shortIds)}`;
+}
+
+interface ChainBlockOptions {
+  readonly shortIds: ReadonlyMap<Uuid, string>;
+  readonly kindWidth: number;
+  readonly inForce: boolean;
+  readonly isSubject: boolean;
+}
+
+function chainBlock(step: ChainStep, options: ChainBlockOptions): string {
+  const { item } = step;
+  const shortId = options.shortIds.get(item.id) ?? item.id;
+  const state = options.inForce ? 'in force' : item.status;
+  const headline = `  ${utcStamp(item.assertedAt)}  ${item.kind.padEnd(options.kindWidth)}  ${item.title}  [${shortId}]  — ${state}`;
+
+  const detail = [provenanceLine(step), chainRationale(step)];
+  const validity = validityLine(item);
+  if (validity !== null) {
+    detail.push(validity);
+  }
+  const superseded = chainSupersededLine(step, options.shortIds);
+  if (superseded !== null) {
+    detail.push(superseded);
+  }
+  if (step.agentOverHumanConfirmed) {
+    detail.push(
+      'flagged: this replaced a human-confirmed decision without human confirmation — §10.1 says only a human may overrule one',
+    );
+  }
+  if (item.status === 'disputed') {
+    detail.push(
+      'disputed: Mneia does not pick a winner here — §10.4 leaves that to the actors involved',
+    );
+  }
+  if (options.isSubject) {
+    detail.push('this is the revision you asked for');
+  }
+
+  return [headline, ...detail.map((line) => `${CHAIN_CONTINUATION}${line}`)].join('\n');
+}
+
+function chainNotes(steps: readonly ChainStep[]): readonly string[] {
+  const disputed = steps.filter((step) => step.item.status === 'disputed').length;
+  const flagged = steps.filter((step) => step.agentOverHumanConfirmed).length;
+  const notes: string[] = [];
+
+  if (steps.length === 1) {
+    notes.push('This decision has never been superseded.');
+  }
+  if (disputed > 0) {
+    notes.push(
+      `Unresolved: ${countOf(disputed, 'revision')} disputed. Mneia does not choose between them — §10.4 leaves a human-versus-human conflict to the people who made it.`,
+    );
+  }
+  if (flagged > 0) {
+    notes.push(
+      `Flagged: ${countOf(flagged, 'replacement')} replaced a human-confirmed decision without human confirmation. §10.1 says only a human may overrule one.`,
+    );
+  }
+  return notes;
+}
+
+function renderChainHuman(page: LogChainPage, config: ProjectConfig, reference: string): string {
+  const steps = buildChainSteps(page, reference);
+  const shortIds = shortenItemIds(steps.map((step) => step.item.id));
+  const kindWidth = steps.reduce((widest, step) => Math.max(widest, step.item.kind.length), 0);
+  const subject = steps.find((step) => step.item.id === page.itemId);
+  const subjectId =
+    subject === undefined ? reference : (shortIds.get(subject.item.id) ?? subject.item.id);
+
+  const window = [countOf(steps.length, 'revision'), 'oldest first', 'times in UTC'];
+  if (page.truncated) {
+    window.push(`truncated at ${MAX_CHAIN_REVISIONS}`);
+  }
+
+  const header = [
+    `${projectLabel(config)} — supersede chain for "${subject?.item.title ?? reference}" [${subjectId}]`,
+    window.join(' · '),
+  ].join('\n');
+
+  const blocks = steps.map((step, index) =>
+    chainBlock(step, {
+      shortIds,
+      kindWidth,
+      inForce: isInForce(steps, index),
+      isSubject: steps.length > 1 && step.item.id === page.itemId,
+    }),
+  );
+
+  return `${[header, ...blocks, ...chainNotes(steps)].join('\n\n')}\n`;
+}
+
+interface LogChainJsonEntry extends LogJsonEntry {
+  readonly inForce: boolean;
+  readonly agentOverHumanConfirmed: boolean;
+}
+
+function renderChainJson(page: LogChainPage, config: ProjectConfig, reference: string): string {
+  const steps = buildChainSteps(page, reference);
+  const payload = {
+    project: projectLabel(config),
+    projectId: page.projectId,
+    chain: reference,
+    itemId: page.itemId,
+    count: steps.length,
+    truncated: page.truncated,
+    settled: isSettled(steps),
+    revisions: steps.map(
+      (step, index): LogChainJsonEntry => ({
+        ...toJsonEntry(step),
+        inForce: isInForce(steps, index),
+        agentOverHumanConfirmed: step.agentOverHumanConfirmed,
+      }),
+    ),
+  };
+  return `${JSON.stringify(payload, null, 2)}\n`;
+}
+
 const systemClock = (): Date => new Date();
 
 export function createLogCommand(deps: LogDeps): CommandDefinition {
@@ -380,6 +653,22 @@ export function createLogCommand(deps: LogDeps): CommandDefinition {
     usage: USAGE,
     async run(invocation: CommandInvocation): Promise<number> {
       assertNoPositionals(invocation.args);
+
+      const reference = readChain(invocation.flags);
+      if (reference !== null) {
+        assertChainAlone(invocation.flags);
+        const chainConfig = await deps.loadConfig(invocation.io.cwd, invocation.io.env);
+        const chain = await callApi(chainConfig.endpoint, 'log', () =>
+          deps.api.chain({ config: chainConfig, reference }),
+        );
+        invocation.io.stdout(
+          invocation.json
+            ? renderChainJson(chain, chainConfig, reference)
+            : renderChainHuman(chain, chainConfig, reference),
+        );
+        return EXIT_OK;
+      }
+
       const limit = readLimit(invocation.flags);
       const since = readSince(invocation.flags, (deps.now ?? systemClock)());
       const config = await deps.loadConfig(invocation.io.cwd, invocation.io.env);
