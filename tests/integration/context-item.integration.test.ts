@@ -118,7 +118,8 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
   it('creates both indexes from vision.md', async () => {
     await withSchema(async (client) => {
       const result = await client.query(
-        "SELECT indexdef FROM pg_indexes WHERE tablename = 'context_item'",
+        `SELECT indexdef FROM pg_indexes
+          WHERE schemaname = current_schema() AND tablename = 'context_item'`,
       );
       const defs = result.rows.map((row) => row.indexdef as string).join('\n');
 
@@ -126,7 +127,8 @@ describe.skipIf(connectionString === undefined)('context_item schema', () => {
       expect(defs).toMatch(/load_bearing/);
 
       const vectorIndexes = await client.query(
-        "SELECT indexdef FROM pg_indexes WHERE tablename = 'context_item_embedding'",
+        `SELECT indexdef FROM pg_indexes
+          WHERE schemaname = current_schema() AND tablename = 'context_item_embedding'`,
       );
       const vectorDefs = vectorIndexes.rows
         .map((row) => row.indexdef as string)
