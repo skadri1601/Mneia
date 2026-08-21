@@ -1,4 +1,4 @@
-import type { ContextItem, IntervalMs, ItemKind, ItemStatus, Uuid } from '@mneia/core';
+import type { ActorKind, ContextItem, IntervalMs, ItemKind, ItemStatus, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
@@ -55,22 +55,6 @@ export interface StatusSections {
 
 const USAGE = 'mneia status [--json]';
 
-const NETWORK_ERROR_CODES: ReadonlySet<string> = new Set([
-  'ECONNREFUSED',
-  'ECONNRESET',
-  'EHOSTUNREACH',
-  'ENETDOWN',
-  'ENETUNREACH',
-  'ENOTFOUND',
-  'EAI_AGAIN',
-  'EPIPE',
-  'ETIMEDOUT',
-  'UND_ERR_CONNECT_TIMEOUT',
-  'UND_ERR_HEADERS_TIMEOUT',
-  'UND_ERR_SOCKET',
-]);
-
-const CAUSE_DEPTH = 5;
 const MS_PER_MINUTE = 60_000;
 const MS_PER_HOUR = 3_600_000;
 const MS_PER_DAY = 86_400_000;
@@ -205,12 +189,21 @@ function titleLine(item: ContextItem, shortIds: ReadonlyMap<Uuid, string>): stri
   return `  ${item.title}  [${shortIds.get(item.id) ?? item.id}] · ${marks.join(' · ')}`;
 }
 
+function describeAsserter(item: ContextItem): string {
+  const provenance = item.provenance;
+  if (provenance === undefined) {
+    return `by an unnamed actor (${item.assertedBy.slice(0, 8)})`;
+  }
+  return `by ${provenance.actorDisplayName} (${provenance.actorKind})`;
+}
+
 function staleBlock(stale: StaleItem, shortIds: ReadonlyMap<Uuid, string>): string {
   const verified =
     stale.item.lastVerifiedAt === null
       ? `asserted ${utcDate(stale.window.verifiedAt)}, never re-verified`
       : `last verified ${utcDate(stale.window.verifiedAt)}`;
   const detail = [
+    describeAsserter(stale.item),
     verified,
     `decays after ${describeDuration(stale.window.decayAfter)}`,
     `overdue by ${describeDuration(stale.overdueMs)}`,
@@ -221,14 +214,14 @@ function staleBlock(stale: StaleItem, shortIds: ReadonlyMap<Uuid, string>): stri
 function disputedBlock(entry: DisputedItem, shortIds: ReadonlyMap<Uuid, string>): string {
   return [
     titleLine(entry.item, shortIds),
-    `    unresolved · ${describeDuration(entry.ageMs)} old · asserted ${utcDate(entry.item.assertedAt)}`,
+    `    ${describeAsserter(entry.item)} · unresolved · ${describeDuration(entry.ageMs)} old · asserted ${utcDate(entry.item.assertedAt)}`,
   ].join('\n');
 }
 
 function unansweredBlock(entry: UnansweredItem, shortIds: ReadonlyMap<Uuid, string>): string {
   return [
     titleLine(entry.item, shortIds),
-    `    open ${describeDuration(entry.ageMs)} · asked ${utcDate(entry.item.assertedAt)}`,
+    `    ${describeAsserter(entry.item)} · open ${describeDuration(entry.ageMs)} · asked ${utcDate(entry.item.assertedAt)}`,
   ].join('\n');
 }
 
@@ -283,6 +276,12 @@ function renderHuman(report: StatusReport, config: ProjectConfig, now: Date): st
   return `${blocks.join('\n\n')}\n`;
 }
 
+interface StatusJsonActor {
+  readonly id: Uuid;
+  readonly displayName: string | null;
+  readonly kind: ActorKind | null;
+}
+
 interface StatusJsonItem {
   readonly id: Uuid;
   readonly kind: ItemKind;
@@ -291,6 +290,7 @@ interface StatusJsonItem {
   readonly loadBearing: boolean;
   readonly humanConfirmed: boolean;
   readonly assertedAt: string;
+  readonly assertedBy: StatusJsonActor;
 }
 
 interface StatusJsonStale extends StatusJsonItem {
@@ -313,6 +313,11 @@ function toJsonItem(item: ContextItem): StatusJsonItem {
     loadBearing: item.loadBearing,
     humanConfirmed: item.humanConfirmed,
     assertedAt: item.assertedAt.toISOString(),
+    assertedBy: {
+      id: item.assertedBy,
+      displayName: item.provenance?.actorDisplayName ?? null,
+      kind: item.provenance?.actorKind ?? null,
+    },
   };
 }
 
