@@ -20,9 +20,11 @@ const META_SEPARATOR = ' · ';
 const DISPUTED_MARKER = '**DISPUTED — unresolved, do not rely on this**';
 const LOAD_BEARING_MARKER = '**LOAD-BEARING**';
 const CITATION_HINT = 'Cite an item as `#id` when you use it.';
+const UNATTRIBUTED_ACTOR = 'unattributed';
 
 const LINE_BREAKS = /\r\n|\r/g;
 const WHITESPACE_RUN = /\s+/g;
+const META_FIELD_MARKERS = /[[\]·]/g;
 const HYPHENS = /-/g;
 const ORDERED_LIST_START = /^(\d{1,9})([.)])/;
 const BLOCK_MARKER_START = /^[#>*+=|~`_<-]/;
@@ -116,11 +118,38 @@ function markersFor(item: ContextItem): readonly string[] {
   return markers;
 }
 
+const actorNameFor = (displayName: string): string => {
+  const cleaned = inlineText(displayName.replace(META_FIELD_MARKERS, ' '));
+  return cleaned === '' ? UNATTRIBUTED_ACTOR : cleaned;
+};
+
+function attributionFor(item: ContextItem): readonly string[] {
+  const { provenance } = item;
+
+  if (provenance === undefined) {
+    return [UNATTRIBUTED_ACTOR, item.humanConfirmed ? 'human-confirmed' : 'unconfirmed'];
+  }
+
+  if (provenance.actorKind === 'human') {
+    return [
+      provenance.actorKind,
+      actorNameFor(provenance.actorDisplayName),
+      item.humanConfirmed ? 'confirmed' : 'asserted',
+    ];
+  }
+
+  return [
+    provenance.actorKind,
+    actorNameFor(provenance.actorDisplayName),
+    item.humanConfirmed ? 'human-confirmed' : 'unconfirmed',
+  ];
+}
+
 function metaFor(item: ContextItem, shortIds: ReadonlyMap<Uuid, string>): string {
   const parts = [
     `#${shortIds.get(item.id) ?? item.id}`,
     utcDay(item.assertedAt),
-    item.humanConfirmed ? 'human-confirmed' : 'unconfirmed',
+    ...attributionFor(item),
   ];
 
   if (item.status === 'superseded' || item.status === 'retired') {
