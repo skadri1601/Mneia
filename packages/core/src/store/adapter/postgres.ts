@@ -1141,12 +1141,7 @@ class PostgresScopedStore implements ReviewCapableStore {
       await this.rows(
         `INSERT INTO checkpoint_item (workspace_id, checkpoint_id, item_id, action)
          VALUES ($1, $2, $3, $4)`,
-        [
-          this.scope.workspaceId,
-          checkpoint.id,
-          input.itemId,
-          confirmed ? 'updated' : 'rejected',
-        ],
+        [this.scope.workspaceId, checkpoint.id, input.itemId, confirmed ? 'updated' : 'rejected'],
       );
 
       return {
