@@ -48,6 +48,27 @@ export interface StaleContextItem {
   readonly staleForMs: IntervalMs;
 }
 
+export interface InboxHandoffFilter {
+  readonly projectId: Uuid;
+  readonly limit?: number;
+}
+
+export interface WorkspaceActorFilter {
+  readonly limit?: number;
+}
+
+export interface ProjectSessionFilter {
+  readonly projectId: Uuid;
+  readonly limit?: number;
+}
+
+export interface ProjectSessionSummary {
+  readonly session: Session;
+  readonly actor: Actor;
+  readonly checkpointCount: number;
+  readonly itemCount: number;
+}
+
 export interface ContextItemSearch extends ContextItemFilter {
   readonly embedding?: Embedding;
   readonly embeddingModel?: string;
@@ -291,7 +312,11 @@ export interface ScopedStore {
   receiveHandoff(id: Uuid, receivedBy: Uuid): Promise<Handoff>;
   getHandoff(id: Uuid): Promise<Handoff | null>;
   listOpenHandoffs(projectId: Uuid, limit?: number): Promise<readonly Handoff[]>;
+  listInboxHandoffs(filter: InboxHandoffFilter): Promise<readonly Handoff[]>;
   listHandoffItems(handoffId: Uuid): Promise<readonly HandoffItem[]>;
+
+  listWorkspaceActors(filter?: WorkspaceActorFilter): Promise<readonly Actor[]>;
+  listProjectSessions(filter: ProjectSessionFilter): Promise<readonly ProjectSessionSummary[]>;
 
   recordConflict(conflict: NewConflict): Promise<Conflict>;
   listOpenConflicts(projectId: Uuid): Promise<readonly Conflict[]>;

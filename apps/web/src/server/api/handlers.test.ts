@@ -4,7 +4,11 @@ import type {
   CheckpointWrite,
   CheckpointWriteResult,
   ContextItem,
+  Project,
+  ProjectSessionFilter,
+  ProjectSessionSummary,
   ScopedStore,
+  Session,
   StaleContextItem,
   StaleContextItemFilter,
   TelemetryEmitter,
@@ -16,7 +20,9 @@ import { VerifyContextItemWireSchema } from '@mneia/core';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   ApiRequestError,
+  handleListProjectSessions,
   handleListStaleItems,
+  handleListWorkspaceActors,
   handleVerifyItem,
   handleWriteCheckpoint,
 } from './handlers.js';
@@ -516,5 +522,134 @@ describe('handleListStaleItems', () => {
     await handleListStaleItems(sink.store, { projectId: PROJECT });
 
     expect(sink.filters[0]).toEqual({ projectId: PROJECT });
+  });
+});
+
+const ROSTER_PROJECT: Project = {
+  id: PROJECT,
+  workspaceId: WORKSPACE,
+  teamId: null,
+  slug: 'payments-migration',
+  repoUrl: null,
+  createdAt: NOW,
+};
+
+describe('handleListWorkspaceActors', () => {
+  const rosterHarness = (actors: readonly Actor[]) => {
+    const filters: unknown[] = [];
+    const store = {
+      scope: { workspaceId: WORKSPACE, actorId: HUMAN },
+      listWorkspaceActors: async (filter: unknown) => {
+        filters.push(filter);
+        return actors;
+      },
+    } as unknown as ScopedStore;
+    return { store, filters };
+  };
+
+  it('encodes the roster so --to can name a teammate instead of a raw UUID', async () => {
+    const sink = rosterHarness([actor(HUMAN, 'human'), actor(AGENT, 'agent')]);
+
+    const { actors } = await handleListWorkspaceActors(sink.store, {});
+
+    expect(actors.map((entry) => entry.id)).toEqual([HUMAN, AGENT]);
+    expect(actors.map((entry) => entry.kind)).toEqual(['human', 'agent']);
+    expect(actors[0]?.createdAt).toBe('2026-07-01T00:00:00.000Z');
+  });
+
+  it('passes an empty filter when the caller sent no limit', async () => {
+    const sink = rosterHarness([]);
+
+    await handleListWorkspaceActors(sink.store, {});
+
+    expect(sink.filters[0]).toEqual({});
+  });
+
+  it('forwards the limit when the caller sent one', async () => {
+    const sink = rosterHarness([]);
+
+    await handleListWorkspaceActors(sink.store, { limit: 50 });
+
+    expect(sink.filters[0]).toEqual({ limit: 50 });
+  });
+});
+
+describe('handleListProjectSessions', () => {
+  const session: Session = {
+    id: '12121212-1212-4212-8212-121212121212',
+    workspaceId: WORKSPACE,
+    projectId: PROJECT,
+    actorId: AGENT,
+    tool: 'claude-code',
+    clientName: 'claude-code',
+    clientVersion: '2.0.1',
+    clientSessionRef: '019c-session',
+    clientSessionName: 'MNE-135 lane C',
+    clientSessionUrl: null,
+    startedAt: NOW,
+    endedAt: null,
+  };
+
+  const sessionsHarness = (
+    summaries: readonly ProjectSessionSummary[],
+    project = ROSTER_PROJECT,
+  ) => {
+    const filters: ProjectSessionFilter[] = [];
+    const store = {
+      scope: { workspaceId: WORKSPACE, actorId: HUMAN },
+      getProject: async () => project,
+      getProjectBySlug: async () => project,
+      listProjectSessions: async (filter: ProjectSessionFilter) => {
+        filters.push(filter);
+        return summaries;
+      },
+    } as unknown as ScopedStore;
+    return { store, filters };
+  };
+
+  it('says who worked on the project, with the counts their work produced', async () => {
+    const sink = sessionsHarness([
+      { session, actor: actor(AGENT, 'agent'), checkpointCount: 3, itemCount: 11 },
+    ]);
+
+    const { sessions } = await handleListProjectSessions(sink.store, {
+      project: 'payments-migration',
+    });
+
+    expect(sessions[0]?.actor.id).toBe(AGENT);
+    expect(sessions[0]?.actor.kind).toBe('agent');
+    expect(sessions[0]?.session.clientSessionName).toBe('MNE-135 lane C');
+    expect(sessions[0]?.session.startedAt).toBe('2026-08-07T10:00:00.000Z');
+    expect(sessions[0]?.checkpointCount).toBe(3);
+    expect(sessions[0]?.itemCount).toBe(11);
+  });
+
+  it('resolves the project before it reads, and forwards the limit', async () => {
+    const sink = sessionsHarness([]);
+
+    await handleListProjectSessions(sink.store, { project: 'payments-migration', limit: 10 });
+
+    expect(sink.filters[0]).toEqual({ projectId: PROJECT, limit: 10 });
+  });
+
+  it('omits a limit the caller did not send', async () => {
+    const sink = sessionsHarness([]);
+
+    await handleListProjectSessions(sink.store, { project: 'payments-migration' });
+
+    expect(sink.filters[0]).toEqual({ projectId: PROJECT });
+  });
+
+  it('reports an unknown project with a message naming the fix', async () => {
+    const store = {
+      scope: { workspaceId: WORKSPACE, actorId: HUMAN },
+      getProject: async () => null,
+      getProjectBySlug: async () => null,
+      listProjectSessions: async () => [],
+    } as unknown as ScopedStore;
+
+    await expect(handleListProjectSessions(store, { project: 'nope' })).rejects.toBeInstanceOf(
+      ApiRequestError,
+    );
   });
 });

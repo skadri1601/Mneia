@@ -313,3 +313,99 @@ describe('remote store re-verification', () => {
     expect(result.previousLastVerifiedAt).toBeNull();
   });
 });
+
+const ACTOR_OTHER = '66666666-6666-4666-8666-666666666666';
+const HANDOFF = '77777777-7777-4777-8777-777777777777';
+const SESSION = '88888888-8888-4888-8888-888888888888';
+
+const actorWire = (id: string, displayName: string) => ({
+  id,
+  workspaceId: SCOPE.workspaceId,
+  kind: 'human' as const,
+  displayName,
+  externalRef: null,
+  createdAt: '2026-08-01T09:00:00.000Z',
+});
+
+describe('remote store multiplayer reads', () => {
+  it('asks the hosted API for the inbox rather than every open handoff', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        handoffs: [
+          {
+            id: HANDOFF,
+            workspaceId: SCOPE.workspaceId,
+            projectId: PROJECT,
+            fromActor: ACTOR_OTHER,
+            toActor: SCOPE.actorId,
+            createdAt: '2026-08-20T10:00:00.000Z',
+            receivedAt: null,
+            nextAction: 'Wire the retry path',
+            rendered: '# Handoff',
+          },
+        ],
+      },
+    }));
+
+    const inbox = await store.listInboxHandoffs({ projectId: PROJECT, limit: 5 });
+
+    expect(calls[0]?.url).toBe('https://app.mneia.dev/api/v1/handoff/inbox');
+    expect(calls[0]?.body).toEqual({ project: PROJECT, limit: 5 });
+    expect(inbox[0]?.toActor).toBe(SCOPE.actorId);
+    expect(inbox[0]?.createdAt).toEqual(new Date('2026-08-20T10:00:00.000Z'));
+  });
+
+  it('asks the hosted API for the workspace roster, and omits a limit it was not given', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: { actors: [actorWire(ACTOR_OTHER, 'Alice'), actorWire(SCOPE.actorId, 'Bob')] },
+    }));
+
+    const actors = await store.listWorkspaceActors();
+
+    expect(calls[0]?.url).toBe('https://app.mneia.dev/api/v1/actors/list');
+    expect(calls[0]?.body).toEqual({});
+    expect(actors.map((actor) => actor.displayName)).toEqual(['Alice', 'Bob']);
+    expect(actors[0]?.kind).toBe('human');
+  });
+
+  it('decodes a project session summary with its actor and its counts', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        sessions: [
+          {
+            session: {
+              id: SESSION,
+              workspaceId: SCOPE.workspaceId,
+              projectId: PROJECT,
+              actorId: ACTOR_OTHER,
+              tool: 'claude-code',
+              clientName: 'claude-code',
+              clientVersion: '2.0.1',
+              clientSessionRef: '019c-session',
+              clientSessionName: 'MNE-135 lane C',
+              clientSessionUrl: null,
+              startedAt: '2026-08-20T09:00:00.000Z',
+              endedAt: null,
+            },
+            actor: actorWire(ACTOR_OTHER, 'Alice'),
+            checkpointCount: 3,
+            itemCount: 11,
+          },
+        ],
+      },
+    }));
+
+    const sessions = await store.listProjectSessions({ projectId: PROJECT, limit: 20 });
+
+    expect(calls[0]?.url).toBe('https://app.mneia.dev/api/v1/sessions/list');
+    expect(calls[0]?.body).toEqual({ project: PROJECT, limit: 20 });
+    expect(sessions[0]?.actor.displayName).toBe('Alice');
+    expect(sessions[0]?.session.clientSessionName).toBe('MNE-135 lane C');
+    expect(sessions[0]?.session.startedAt).toEqual(new Date('2026-08-20T09:00:00.000Z'));
+    expect(sessions[0]?.checkpointCount).toBe(3);
+    expect(sessions[0]?.itemCount).toBe(11);
+  });
+});

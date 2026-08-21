@@ -16,6 +16,7 @@ import type { ScoredItem, Slice } from '../rehydrate/types.js';
 import type {
   CheckpointWriteResult,
   ContextItemVerification,
+  ProjectSessionSummary,
   StaleContextItem,
   VerifyContextItemResult,
 } from '../store/adapter/types.js';
@@ -772,3 +773,50 @@ export const ListOpenHandoffsWireSchema = z.object({
 });
 
 export type ListOpenHandoffsWire = z.infer<typeof ListOpenHandoffsWireSchema>;
+
+export const ListInboxHandoffsWireSchema = z.object({
+  project: z.string().min(1),
+  limit: z.number().int().min(1).max(MAX_ITEM_LIMIT).optional(),
+});
+
+export type ListInboxHandoffsWire = z.infer<typeof ListInboxHandoffsWireSchema>;
+
+export const ListWorkspaceActorsWireSchema = z.object({
+  limit: z.number().int().min(1).max(MAX_ITEM_LIMIT).optional(),
+});
+
+export type ListWorkspaceActorsWire = z.infer<typeof ListWorkspaceActorsWireSchema>;
+
+export const ListProjectSessionsWireSchema = z.object({
+  project: z.string().min(1),
+  limit: z.number().int().min(1).max(MAX_ITEM_LIMIT).optional(),
+});
+
+export type ListProjectSessionsWire = z.infer<typeof ListProjectSessionsWireSchema>;
+
+export const ProjectSessionSummaryWireSchema = z.object({
+  session: SessionWireSchema,
+  actor: ActorWireSchema,
+  checkpointCount: z.number().int().nonnegative(),
+  itemCount: z.number().int().nonnegative(),
+});
+
+export type ProjectSessionSummaryWire = z.infer<typeof ProjectSessionSummaryWireSchema>;
+
+export const encodeProjectSessionSummary = (
+  summary: ProjectSessionSummary,
+): ProjectSessionSummaryWire => ({
+  session: encodeSession(summary.session),
+  actor: encodeActor(summary.actor),
+  checkpointCount: summary.checkpointCount,
+  itemCount: summary.itemCount,
+});
+
+export const decodeProjectSessionSummary = (
+  wire: ProjectSessionSummaryWire,
+): ProjectSessionSummary => ({
+  session: decodeSession(wire.session),
+  actor: decodeActor(wire.actor),
+  checkpointCount: wire.checkpointCount,
+  itemCount: wire.itemCount,
+});

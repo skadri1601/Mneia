@@ -9,7 +9,10 @@ import type {
   ContextItemWire,
   Embedding,
   EmbeddingProvider,
+  ListProjectSessionsWire,
+  ListWorkspaceActorsWire,
   NewProjectWire,
+  ProjectSessionSummaryWire,
   ProjectWire,
   RehydrateRequestWire,
   RetireContextItemWire,
@@ -32,6 +35,7 @@ import {
   encodeCheckpointWriteResult,
   encodeContextItem,
   encodeProject,
+  encodeProjectSessionSummary,
   encodeSession,
   encodeSlice,
   encodeStaleContextItem,
@@ -151,6 +155,35 @@ export const handleCreateSession = async (
     ...(input.clientSessionUrl === undefined ? {} : { clientSessionUrl: input.clientSessionUrl }),
   });
   return { session: encodeSession(session) };
+};
+
+export const handleListWorkspaceActors = async (
+  store: ScopedStore,
+  input: ListWorkspaceActorsWire,
+): Promise<{ actors: readonly ActorWire[] }> => {
+  const actors = await store.listWorkspaceActors(
+    input.limit === undefined ? {} : { limit: input.limit },
+  );
+  return { actors: actors.map(encodeActor) };
+};
+
+export const handleListProjectSessions = async (
+  store: ScopedStore,
+  input: ListProjectSessionsWire,
+): Promise<{ sessions: readonly ProjectSessionSummaryWire[] }> => {
+  const project = await resolveProject(store, input.project);
+  if (project === null) {
+    throw new ApiRequestError(
+      'not_found',
+      `expected project "${input.project}" to name a project visible in this workspace; found none — check the slug with mneia status`,
+    );
+  }
+
+  const sessions = await store.listProjectSessions({
+    projectId: project.id,
+    ...(input.limit === undefined ? {} : { limit: input.limit }),
+  });
+  return { sessions: sessions.map(encodeProjectSessionSummary) };
 };
 
 export const handleGetItem = async (

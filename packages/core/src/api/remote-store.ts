@@ -17,8 +17,11 @@ import type {
   ContextItemFilter,
   ContextItemSearch,
   HandoffItem,
+  InboxHandoffFilter,
   NewContextItem,
   NewProject,
+  ProjectSessionFilter,
+  ProjectSessionSummary,
   RetireContextItemInput,
   RetireContextItemResult,
   ScopedStore,
@@ -27,6 +30,7 @@ import type {
   StaleContextItemFilter,
   VerifyContextItemInput,
   VerifyContextItemResult,
+  WorkspaceActorFilter,
   WorkspaceScope,
 } from '../store/adapter/types.js';
 import { ApiError, type HttpTransport } from './http.js';
@@ -41,12 +45,14 @@ import {
   decodeContextItem,
   decodeHandoff,
   decodeProject,
+  decodeProjectSessionSummary,
   decodeSession,
   decodeSlice,
   decodeStaleContextItem,
   decodeVerifyContextItemResult,
   HandoffWireSchema,
   type NewContextItemWire,
+  ProjectSessionSummaryWireSchema,
   ProjectWireSchema,
   SessionWireSchema,
   SliceWireSchema,
@@ -75,6 +81,10 @@ const HandoffItemsEnvelope = z.object({
   items: z.array(z.object({ section: z.string(), item: ContextItemWireSchema })),
 });
 const NullableHandoffEnvelope = z.object({ handoff: nullable(HandoffWireSchema) });
+const ActorsEnvelope = z.object({ actors: z.array(ActorWireSchema) });
+const ProjectSessionsEnvelope = z.object({
+  sessions: z.array(ProjectSessionSummaryWireSchema),
+});
 
 export interface RemoteStoreOptions {
   readonly transport: HttpTransport;
@@ -329,6 +339,32 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
         ...(limit === undefined ? {} : { limit }),
       });
       return handoffs.map(decodeHandoff);
+    },
+    async listInboxHandoffs(filter: InboxHandoffFilter): Promise<readonly Handoff[]> {
+      const { handoffs } = await transport.request('/api/v1/handoff/inbox', HandoffsEnvelope, {
+        project: filter.projectId,
+        ...(filter.limit === undefined ? {} : { limit: filter.limit }),
+      });
+      return handoffs.map(decodeHandoff);
+    },
+    async listWorkspaceActors(filter: WorkspaceActorFilter = {}): Promise<readonly Actor[]> {
+      const { actors } = await transport.request('/api/v1/actors/list', ActorsEnvelope, {
+        ...(filter.limit === undefined ? {} : { limit: filter.limit }),
+      });
+      return actors.map(decodeActor);
+    },
+    async listProjectSessions(
+      filter: ProjectSessionFilter,
+    ): Promise<readonly ProjectSessionSummary[]> {
+      const { sessions } = await transport.request(
+        '/api/v1/sessions/list',
+        ProjectSessionsEnvelope,
+        {
+          project: filter.projectId,
+          ...(filter.limit === undefined ? {} : { limit: filter.limit }),
+        },
+      );
+      return sessions.map(decodeProjectSessionSummary);
     },
     async handoff(request: RemoteCreateHandoffRequest): Promise<Handoff> {
       const { handoff } = await transport.request('/api/v1/handoff', HandoffEnvelope, {

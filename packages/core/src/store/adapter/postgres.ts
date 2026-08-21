@@ -57,12 +57,15 @@ import type {
   ContextItemReviewOutcomeKind,
   ContextItemSearch,
   HandoffItem,
+  InboxHandoffFilter,
   NewConflict,
   NewContextItem,
   NewHandoff,
   NewProject,
   PendingReviewFilter,
   PendingReviewItem,
+  ProjectSessionFilter,
+  ProjectSessionSummary,
   RehydrationCandidateGroups,
   RehydrationCandidateRequest,
   RetireContextItemInput,
@@ -76,6 +79,7 @@ import type {
   StoreAdapter,
   VerifyContextItemInput,
   VerifyContextItemResult,
+  WorkspaceActorFilter,
   WorkspaceScope,
 } from './types.js';
 
@@ -121,6 +125,16 @@ const SESSION_COLUMNS =
 const CHECKPOINT_COLUMNS =
   'id, workspace_id, project_id, session_id, actor_id, "trigger", created_at, summary';
 const CHECKPOINT_ITEM_COLUMNS = 'workspace_id, checkpoint_id, item_id, action';
+const PROJECT_SESSION_COLUMNS = `session.id, session.workspace_id, session.project_id,
+       session.actor_id, session.tool, session.client_name, session.client_version,
+       session.client_session_ref, session.client_session_name, session.client_session_url,
+       session.started_at, session.ended_at,
+       session_actor.id AS session_actor_id,
+       session_actor.workspace_id AS session_actor_workspace_id,
+       session_actor.kind AS session_actor_kind,
+       session_actor.display_name AS session_actor_display_name,
+       session_actor.external_ref AS session_actor_external_ref,
+       session_actor.created_at AS session_actor_created_at`;
 const HANDOFF_COLUMNS =
   'id, workspace_id, project_id, from_actor, to_actor, created_at, received_at, next_action, rendered';
 const CONFLICT_COLUMNS =
@@ -1728,6 +1742,107 @@ class PostgresScopedStore implements ReviewCapableStore {
       [this.scope.workspaceId, projectId, resolveLimit(limit, 'limit')],
     );
     return rows.map(toHandoff);
+  }
+
+  async listInboxHandoffs(filter: InboxHandoffFilter): Promise<readonly Handoff[]> {
+    assertUuid(filter.projectId, 'filter.projectId');
+
+    const rows = await this.rows(
+      `SELECT ${HANDOFF_COLUMNS}
+         FROM handoff
+        WHERE workspace_id = $1
+          AND project_id = $2
+          AND received_at IS NULL
+          AND (to_actor = $3 OR to_actor IS NULL)
+        ORDER BY created_at DESC, id DESC
+        LIMIT $4`,
+      [
+        this.scope.workspaceId,
+        filter.projectId,
+        this.scope.actorId,
+        resolveLimit(filter.limit, 'filter.limit'),
+      ],
+    );
+    return rows.map(toHandoff);
+  }
+
+  async listWorkspaceActors(filter: WorkspaceActorFilter = {}): Promise<readonly Actor[]> {
+    const rows = await this.rows(
+      `SELECT ${ACTOR_COLUMNS}
+         FROM actor
+        WHERE workspace_id = $1
+        ORDER BY display_name ASC, id ASC
+        LIMIT $2`,
+      [this.scope.workspaceId, resolveLimit(filter.limit, 'filter.limit')],
+    );
+    return rows.map(toActor);
+  }
+
+  async listProjectSessions(
+    filter: ProjectSessionFilter,
+  ): Promise<readonly ProjectSessionSummary[]> {
+    assertUuid(filter.projectId, 'filter.projectId');
+
+    const params = new SqlParams();
+    const workspace = params.add(this.scope.workspaceId);
+    const project = params.add(filter.projectId);
+
+    const visibility = visibilityPredicate({
+      scope: this.scope,
+      actorTeamIds: await this.actorTeamIds(),
+      projectId: filter.projectId,
+      paramOffset: params.length,
+      itemAlias: 'context_item',
+    });
+    params.addAll(visibility.params);
+
+    const limit = params.add(resolveLimit(filter.limit, 'filter.limit'));
+
+    const rows = await this.rows(
+      `SELECT ${PROJECT_SESSION_COLUMNS},
+              counts.checkpoint_count,
+              counts.item_count
+         FROM session
+         JOIN actor AS session_actor
+           ON session_actor.workspace_id = session.workspace_id
+          AND session_actor.id = session.actor_id
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*)::int AS checkpoint_count,
+                  COALESCE(SUM(visible.item_count), 0)::int AS item_count
+             FROM checkpoint
+             LEFT JOIN LATERAL (
+               SELECT COUNT(*)::int AS item_count
+                 FROM checkpoint_item
+                 JOIN context_item
+                   ON context_item.workspace_id = checkpoint_item.workspace_id
+                  AND context_item.id = checkpoint_item.item_id
+                WHERE checkpoint_item.workspace_id = checkpoint.workspace_id
+                  AND checkpoint_item.checkpoint_id = checkpoint.id
+                  AND ${visibility.sql}
+             ) AS visible ON TRUE
+            WHERE checkpoint.workspace_id = session.workspace_id
+              AND checkpoint.session_id = session.id
+         ) AS counts ON TRUE
+        WHERE session.workspace_id = ${workspace}
+          AND session.project_id = ${project}
+        ORDER BY session.started_at DESC, session.id DESC
+        LIMIT ${limit}`,
+      params.list(),
+    );
+
+    return rows.map((row) => ({
+      session: toSession(row),
+      actor: {
+        id: toUuid(row, 'session_actor_id'),
+        workspaceId: toUuid(row, 'session_actor_workspace_id'),
+        kind: toEnum(row, 'session_actor_kind', ACTOR_KINDS),
+        displayName: toText(row, 'session_actor_display_name'),
+        externalRef: toNullableText(row, 'session_actor_external_ref'),
+        createdAt: toDate(row, 'session_actor_created_at'),
+      },
+      checkpointCount: toNumber(row, 'checkpoint_count'),
+      itemCount: toNumber(row, 'item_count'),
+    }));
   }
 
   async recordConflict(conflict: NewConflict): Promise<Conflict> {

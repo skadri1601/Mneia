@@ -171,6 +171,7 @@ export type {
   ContextItemSearch,
   ContextItemVerification,
   HandoffItem,
+  InboxHandoffFilter,
   NewCheckpoint,
   NewConflict,
   NewContextItem,
@@ -179,6 +180,8 @@ export type {
   NewProject,
   PendingReviewFilter,
   PendingReviewItem,
+  ProjectSessionFilter,
+  ProjectSessionSummary,
   RetireContextItemInput,
   RetireContextItemResult,
   ReviewCapableStore,
@@ -191,6 +194,7 @@ export type {
   StoreAdapter,
   VerifyContextItemInput,
   VerifyContextItemResult,
+  WorkspaceActorFilter,
   WorkspaceScope,
 } from './store/adapter/types.js';
 export type { MigrationDriver, SqlExecutor, SqlResult, SqlValue } from './store/driver.js';

@@ -25,7 +25,10 @@ const READS = [
   'listCheckpoints',
   'getHandoff',
   'listOpenHandoffs',
+  'listInboxHandoffs',
   'listHandoffItems',
+  'listWorkspaceActors',
+  'listProjectSessions',
   'listOpenConflicts',
 ] as const;
 
