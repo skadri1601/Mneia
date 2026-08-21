@@ -13,7 +13,7 @@ on:
       - 'packages/cli/src/**'
       - 'packages/mcp-server/src/**'
       - 'apps/web/src/server/**'
-      - 'tests/integration/**'
+      - 'tests/**'
       - 'scripts/db-migrate.mjs'
       - 'scripts/db-version.mjs'
       - 'scripts/schema-version.mjs'
@@ -21,7 +21,9 @@ on:
       - 'scripts/db-snapshot.mjs'
       - 'scripts/db-provision-app-role.mjs'
       - 'scripts/waitlist-purge.mjs'
-      - 'tests/waitlist-purge.test.ts'
+      - 'scripts/waitlist-notify.mjs'
+      - 'scripts/waitlist-campaigns.mjs'
+      - 'scripts/audit-workspace-membership.mjs'
       - '.github/workflows/database.yml'
   push:
     branches: [main]
@@ -36,7 +38,7 @@ on:
       - 'packages/cli/src/**'
       - 'packages/mcp-server/src/**'
       - 'apps/web/src/server/**'
-      - 'tests/integration/**'
+      - 'tests/**'
       - 'scripts/db-migrate.mjs'
       - 'scripts/db-version.mjs'
       - 'scripts/schema-version.mjs'
@@ -44,7 +46,9 @@ on:
       - 'scripts/db-snapshot.mjs'
       - 'scripts/db-provision-app-role.mjs'
       - 'scripts/waitlist-purge.mjs'
-      - 'tests/waitlist-purge.test.ts'
+      - 'scripts/waitlist-notify.mjs'
+      - 'scripts/waitlist-campaigns.mjs'
+      - 'scripts/audit-workspace-membership.mjs'
       - '.github/workflows/database.yml'
 
 concurrency:

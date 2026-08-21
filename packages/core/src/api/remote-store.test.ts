@@ -408,4 +408,78 @@ describe('remote store multiplayer reads', () => {
     expect(sessions[0]?.checkpointCount).toBe(3);
     expect(sessions[0]?.itemCount).toBe(11);
   });
+
+  it('reads the pending review queue over GET, so the CLI and the web app share one route', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        items: [
+          {
+            id: ITEM,
+            projectId: PROJECT,
+            kind: 'decision',
+            title: 'Postgres RLS is mandatory',
+            body: 'shared schema, workspace_id on every row',
+            confidence: 0.8,
+            loadBearing: true,
+            accessScope: 'project',
+            assertedBy: ACTOR_OTHER,
+            assertedByKind: 'agent',
+            assertedByName: 'lane C agent',
+            assertedAt: '2026-08-20T09:00:00.000Z',
+            sourceRef: 'vision.md §11.3',
+            originCheckpointId: CHECKPOINT,
+          },
+        ],
+      },
+    }));
+
+    const items = await store.listPendingReviewItems({ projectId: PROJECT, limit: 20 });
+
+    expect(calls[0]?.method).toBe('GET');
+    expect(calls[0]?.url).toBe(
+      `https://app.mneia.dev/api/v1/review/pending?projectId=${PROJECT}&limit=20`,
+    );
+    expect(items[0]?.assertedAt).toEqual(new Date('2026-08-20T09:00:00.000Z'));
+    expect(items[0]?.assertedByKind).toBe('agent');
+    expect(items[0]?.originCheckpointId).toBe(CHECKPOINT);
+  });
+
+  it('submits a review over POST and never sends human_confirmed or asserted_by', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        result: {
+          checkpoint: {
+            id: CHECKPOINT,
+            workspaceId: SCOPE.workspaceId,
+            projectId: PROJECT,
+            sessionId: null,
+            actorId: SCOPE.actorId,
+            trigger: 'manual',
+            createdAt: '2026-08-20T10:00:00.000Z',
+            summary: '1 confirmed',
+          },
+          outcomes: [{ itemId: ITEM, outcome: 'edited', fieldsChanged: ['title'] }],
+        },
+      },
+    }));
+
+    const result = await store.reviewPendingItems({
+      projectId: PROJECT,
+      reviews: [{ itemId: ITEM, decision: 'accept', title: 'RLS is mandatory', loadBearing: true }],
+      summary: '1 confirmed',
+    });
+
+    expect(calls[0]?.method).toBe('POST');
+    expect(calls[0]?.url).toBe('https://app.mneia.dev/api/v1/review');
+    expect(calls[0]?.body).toEqual({
+      projectId: PROJECT,
+      reviews: [{ itemId: ITEM, decision: 'accept', title: 'RLS is mandatory', loadBearing: true }],
+      summary: '1 confirmed',
+    });
+    expect(JSON.stringify(calls[0]?.body)).not.toMatch(/human_?[Cc]onfirmed|asserted_?[Bb]y/);
+    expect(result.checkpoint.createdAt).toEqual(new Date('2026-08-20T10:00:00.000Z'));
+    expect(result.outcomes[0]?.outcome).toBe('edited');
+  });
 });

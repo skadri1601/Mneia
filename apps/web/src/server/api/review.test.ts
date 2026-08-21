@@ -1,6 +1,7 @@
 import type {
   Checkpoint,
   ContextItemReviewOutcome,
+  PendingReviewItem,
   ReviewCapableStore,
   ReviewPendingItemsInput,
   TelemetryEmitter,
@@ -10,7 +11,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
-const { listPendingReview, reviewPendingItems } = await import('./review.js');
+const { handleListPendingReview, handleReviewPendingItems, listPendingReview, reviewPendingItems } =
+  await import('./review.js');
 
 const WORKSPACE = '22222222-2222-4222-8222-222222222222';
 const PROJECT = '33333333-3333-4333-8333-333333333333';
@@ -34,16 +36,22 @@ interface Harness {
   readonly events: TelemetryEvent[];
   readonly telemetry: TelemetryEmitter;
   readonly calls: ReviewPendingItemsInput[];
+  readonly filters: unknown[];
 }
 
-const harness = (outcomes: readonly ContextItemReviewOutcome[]): Harness => {
+const harness = (
+  outcomes: readonly ContextItemReviewOutcome[],
+  pending: readonly PendingReviewItem[] = [],
+): Harness => {
   const events: TelemetryEvent[] = [];
   const calls: ReviewPendingItemsInput[] = [];
+  const filters: unknown[] = [];
 
   const store = {
     scope: { workspaceId: WORKSPACE, actorId: REVIEWER },
-    async listPendingReviewItems() {
-      return [];
+    async listPendingReviewItems(filter: unknown) {
+      filters.push(filter);
+      return pending;
     },
     async reviewPendingItems(input: ReviewPendingItemsInput) {
       calls.push(input);
@@ -57,7 +65,7 @@ const harness = (outcomes: readonly ContextItemReviewOutcome[]): Harness => {
     },
   } as unknown as TelemetryEmitter;
 
-  return { store, events, telemetry, calls };
+  return { store, events, telemetry, calls, filters };
 };
 
 const deps = (telemetry: TelemetryEmitter) => ({ telemetry, now: () => NOW });
@@ -180,5 +188,91 @@ describe('listPendingReview', () => {
     const sink = harness([]);
     const { items } = await listPendingReview(sink.store, { projectId: PROJECT });
     expect(items).toEqual([]);
+  });
+});
+
+const ITEM = '11111111-1111-4111-8111-111111111111';
+
+const pendingItem: PendingReviewItem = {
+  id: ITEM,
+  projectId: PROJECT,
+  kind: 'constraint',
+  title: 'never auto-supersede a human-confirmed item',
+  body: 'vision.md §10.1',
+  confidence: 0.72,
+  loadBearing: true,
+  accessScope: 'project',
+  assertedBy: '99999999-9999-4999-8999-999999999999',
+  assertedByKind: 'agent',
+  assertedByName: 'lane C agent',
+  assertedAt: NOW,
+  sourceRef: null,
+  originCheckpointId: CHECKPOINT,
+};
+
+describe('the hosted review handlers', () => {
+  it('serves the CLI the same queue the web page reads, through the same store call', async () => {
+    const sink = harness([], [pendingItem]);
+
+    const overWire = await handleListPendingReview(sink.store, { projectId: PROJECT, limit: 20 });
+    const inProcess = await listPendingReview(sink.store, { projectId: PROJECT, limit: 20 });
+
+    expect(sink.filters).toEqual([
+      { projectId: PROJECT, limit: 20 },
+      { projectId: PROJECT, limit: 20 },
+    ]);
+    expect(overWire.items).toEqual([{ ...pendingItem, assertedAt: NOW.toISOString() }]);
+    expect(inProcess.items).toEqual([pendingItem]);
+  });
+
+  it('emits the same three §17 events for the CLI as the web app, because it is the same handler', async () => {
+    const sink = harness([
+      { itemId: 'item-a', outcome: 'confirmed', fieldsChanged: [] },
+      { itemId: 'item-b', outcome: 'edited', fieldsChanged: ['title'] },
+      { itemId: 'item-c', outcome: 'rejected', fieldsChanged: [] },
+    ]);
+
+    const { result } = await handleReviewPendingItems(
+      sink.store,
+      {
+        projectId: PROJECT,
+        reviews: [
+          { itemId: 'item-a', decision: 'accept' },
+          { itemId: 'item-b', decision: 'accept', title: 'edited title' },
+          { itemId: 'item-c', decision: 'reject' },
+        ],
+        summary: '2 accepted, 1 rejected',
+      },
+      deps(sink.telemetry),
+    );
+
+    expect(sink.events.map((event) => event.name)).toEqual([
+      'checkpoint.item_confirmed',
+      'checkpoint.item_edited',
+      'checkpoint.item_rejected',
+    ]);
+    expect(result.checkpoint.id).toBe(CHECKPOINT);
+    expect(result.checkpoint.createdAt).toBe(NOW.toISOString());
+    expect(result.outcomes).toEqual([
+      { itemId: 'item-a', outcome: 'confirmed', fieldsChanged: [] },
+      { itemId: 'item-b', outcome: 'edited', fieldsChanged: ['title'] },
+      { itemId: 'item-c', outcome: 'rejected', fieldsChanged: [] },
+    ]);
+  });
+
+  it('hands the store only the review fields, never a confirmation flag or an author', async () => {
+    const sink = harness([{ itemId: ITEM, outcome: 'confirmed', fieldsChanged: [] }]);
+
+    await handleReviewPendingItems(
+      sink.store,
+      { projectId: PROJECT, reviews: [{ itemId: ITEM, decision: 'accept' }] },
+      deps(sink.telemetry),
+    );
+
+    expect(sink.calls[0]).toEqual({
+      projectId: PROJECT,
+      reviews: [{ itemId: ITEM, decision: 'accept' }],
+    });
+    expect(JSON.stringify(sink.calls[0])).not.toMatch(/human_?[Cc]onfirmed|asserted_?[Bb]y/);
   });
 });

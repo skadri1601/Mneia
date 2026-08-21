@@ -13,11 +13,17 @@ import type {
   Uuid,
 } from '@mneia/core';
 import {
+  ApiError,
   CheckpointProposalWireSchema,
   createHttpTransport,
   createRemoteStore,
+  decodePendingReviewItem,
   discoverTrajectories,
   fetchIdentity,
+  PendingReviewItemWireSchema,
+  REVIEW_PATH,
+  REVIEW_PENDING_PATH,
+  ReviewPendingItemsResultWireSchema,
   readTrajectory,
   readTrajectoryFile,
   reduceTrajectory,
@@ -46,6 +52,13 @@ import type {
 } from './commands/handoff.js';
 import type { AttachRequest, AttachResult, InitApi } from './commands/init.js';
 import type { LogApi, LogChainPage, LogChainRequest, LogPage, LogRequest } from './commands/log.js';
+import type {
+  PendingQueue,
+  PendingQueueRequest,
+  ReviewApi,
+  ReviewReceipt,
+  SubmitReviewRequest,
+} from './commands/review.js';
 import type { SessionsApi, SessionsReport, SessionsRequest } from './commands/sessions.js';
 import type { StatusApi, StatusReport, StatusRequest } from './commands/status.js';
 import type { Roster, RosterRequest, TeamApi } from './commands/team.js';
@@ -56,8 +69,8 @@ import type {
   VerifyOutcome,
   VerifyRequest,
 } from './commands/verify.js';
-import { MAX_CHAIN_REVISIONS, matchItemIds } from './item-ids.js';
 import { resolveToken } from './config.js';
+import { MAX_CHAIN_REVISIONS, matchItemIds } from './item-ids.js';
 
 const STATUS_ITEM_LIMIT = 500;
 
@@ -459,6 +472,75 @@ export const httpVerifyApi: VerifyApi = {
       verification: result.verification,
       previousLastVerifiedAt: result.previousLastVerifiedAt,
     };
+  },
+};
+
+export const REVIEW_PENDING_ROUTE = REVIEW_PENDING_PATH;
+export const REVIEW_ROUTE = REVIEW_PATH;
+
+const PendingReviewEnvelope = z.object({ items: z.array(PendingReviewItemWireSchema) });
+
+const ReviewResultEnvelope = z.object({ result: ReviewPendingItemsResultWireSchema });
+
+function reviewRouteMissing(endpoint: string, route: string): CliError {
+  return new CliError(
+    'failed',
+    `the Mneia API at ${endpoint} serves no ${route}, so mneia review has nothing to call — the deployment is older than the release that added the review routes`,
+    'upgrade the workspace to a build that serves the review routes, or drain the queue from the project review page in the web app',
+  );
+}
+
+async function reviewRequest<T>(
+  transport: HttpTransport,
+  endpoint: string,
+  route: string,
+  path: string,
+  schema: z.ZodType<T>,
+  body?: unknown,
+): Promise<T> {
+  try {
+    return await transport.request(path, schema, body);
+  } catch (error) {
+    if (error instanceof ApiError && (error.status === 404 || error.code === 'unsupported')) {
+      throw reviewRouteMissing(endpoint, route);
+    }
+    throw error;
+  }
+}
+
+export const httpReviewApi: ReviewApi = {
+  async pending(request: PendingQueueRequest): Promise<PendingQueue> {
+    const { store, transport } = await connect(request.config);
+    const project = await requireProject(store, request.config, 'review');
+
+    const { items } = await reviewRequest(
+      transport,
+      request.config.endpoint,
+      REVIEW_PENDING_ROUTE,
+      `${REVIEW_PENDING_ROUTE}?projectId=${encodeURIComponent(project.id)}&limit=${request.limit}`,
+      PendingReviewEnvelope,
+    );
+
+    return { projectId: project.id, items: items.map(decodePendingReviewItem) };
+  },
+
+  async submit(request: SubmitReviewRequest): Promise<ReviewReceipt> {
+    const { transport } = await connect(request.config);
+
+    const { result } = await reviewRequest(
+      transport,
+      request.config.endpoint,
+      REVIEW_ROUTE,
+      REVIEW_ROUTE,
+      ReviewResultEnvelope,
+      {
+        projectId: request.projectId,
+        reviews: request.reviews,
+        summary: request.summary,
+      },
+    );
+
+    return { checkpointId: result.checkpoint.id, outcomes: result.outcomes };
   },
 };
 

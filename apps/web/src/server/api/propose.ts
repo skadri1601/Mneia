@@ -2,9 +2,9 @@ import 'server-only';
 
 import type {
   CheckpointProposalWire,
-  ExtractionIncompleteReason,
   CheckpointProposeWire,
   ExtractionCandidate,
+  ExtractionIncompleteReason,
   ScopedStore,
   TrajectoryTurn,
 } from '@mneia/core';
