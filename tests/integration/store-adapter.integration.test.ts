@@ -1147,6 +1147,177 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
     });
   });
 
+  it('shows an actor only the handoffs addressed to them, plus the open ones', async () => {
+    await withAdapter(async (adapter) => {
+      const handoffs = await adapter.withScope(SCOPE_A, async (store) => {
+        const toAgent = await store.createHandoff({
+          projectId: PROJECT_A,
+          fromActor: ACTOR_A,
+          toActor: AGENT_A,
+          nextAction: 'Wire the retry path',
+          rendered: '# Handoff: for the agent',
+        });
+        const toLead = await store.createHandoff({
+          projectId: PROJECT_A,
+          fromActor: ACTOR_A,
+          toActor: ACTOR_A,
+          nextAction: 'Review the retry path',
+          rendered: '# Handoff: for the lead',
+        });
+        const open = await store.createHandoff({
+          projectId: PROJECT_A,
+          fromActor: ACTOR_A,
+          nextAction: 'Anyone can take this',
+          rendered: '# Handoff: open',
+        });
+        return { toAgent, toLead, open };
+      });
+
+      await adapter.withScope(SCOPE_AGENT_A, async (store) => {
+        const inbox = await store.listInboxHandoffs({ projectId: PROJECT_A });
+        const ids = inbox.map((entry) => entry.id);
+
+        expect(ids).toContain(handoffs.toAgent.id);
+        expect(ids).toContain(handoffs.open.id);
+        expect(ids).not.toContain(handoffs.toLead.id);
+      });
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const inbox = await store.listInboxHandoffs({ projectId: PROJECT_A });
+        const ids = inbox.map((entry) => entry.id);
+
+        expect(ids).toContain(handoffs.toLead.id);
+        expect(ids).toContain(handoffs.open.id);
+        expect(ids).not.toContain(handoffs.toAgent.id);
+      });
+
+      await adapter.withScope(SCOPE_B, async (store) => {
+        expect(await store.listInboxHandoffs({ projectId: PROJECT_A })).toHaveLength(0);
+      });
+    });
+  });
+
+  it('refuses a pickup by an actor the handoff was not addressed to, and allows an open one', async () => {
+    await withAdapter(async (adapter) => {
+      const { addressed, open } = await adapter.withScope(SCOPE_A, async (store) => ({
+        addressed: await store.createHandoff({
+          projectId: PROJECT_A,
+          fromActor: ACTOR_A,
+          toActor: ACTOR_A,
+          nextAction: 'Review the retry path',
+          rendered: '# Handoff: for the lead',
+        }),
+        open: await store.createHandoff({
+          projectId: PROJECT_A,
+          fromActor: ACTOR_A,
+          nextAction: 'Anyone can take this',
+          rendered: '# Handoff: open',
+        }),
+      }));
+
+      await adapter.withScope(SCOPE_AGENT_A, async (store) => {
+        await expect(store.receiveHandoff(addressed.id, AGENT_A)).rejects.toThrow(
+          new RegExp(`expected handoff ${addressed.id} to be received by actor ${ACTOR_A}`),
+        );
+
+        const received = await store.receiveHandoff(open.id, AGENT_A);
+        expect(received.toActor).toBe(AGENT_A);
+        expect(received.receivedAt).not.toBeNull();
+      });
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const still = await store.getHandoff(addressed.id);
+        expect(still?.receivedAt).toBeNull();
+      });
+    });
+  });
+
+  it('lists the workspace roster and never another workspace actors', async () => {
+    await withAdapter(async (adapter) => {
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const roster = await store.listWorkspaceActors();
+        const ids = roster.map((entry) => entry.id);
+
+        expect(ids).toContain(ACTOR_A);
+        expect(ids).toContain(AGENT_A);
+        expect(ids).not.toContain(ACTOR_B);
+        expect(roster.map((entry) => entry.displayName)).toEqual([
+          'acme coding agent',
+          'acme lead',
+        ]);
+        expect(roster.map((entry) => entry.kind)).toEqual(['agent', 'human']);
+        expect(roster.every((entry) => entry.workspaceId === WS_A)).toBe(true);
+      });
+
+      await adapter.withScope(SCOPE_B, async (store) => {
+        const roster = await store.listWorkspaceActors();
+        expect(roster.map((entry) => entry.id)).toEqual([ACTOR_B]);
+      });
+    });
+  });
+
+  it('says who worked on a project, with counts, and never crosses a workspace', async () => {
+    await withAdapter(async (adapter) => {
+      const agentSession = await adapter.withScope(SCOPE_AGENT_A, async (store) => {
+        const session = await store.createSession(PROJECT_A, 'mcp', {
+          clientName: 'claude-code',
+          clientSessionName: 'MNE-135 lane C',
+        });
+        await store.writeCheckpoint({
+          checkpoint: {
+            projectId: PROJECT_A,
+            sessionId: session.id,
+            actorId: AGENT_A,
+            trigger: 'task_boundary',
+          },
+          items: [
+            {
+              action: 'created',
+              item: newItem(PROJECT_A, AGENT_A, 'the inbox filters on to_actor'),
+            },
+            {
+              action: 'created',
+              item: {
+                ...newItem(PROJECT_A, AGENT_A, 'the agent keeps this to itself'),
+                accessScope: 'private' as const,
+              },
+            },
+          ],
+        });
+        return session;
+      });
+
+      await adapter.withScope(SCOPE_B, async (store) => {
+        await store.createSession(PROJECT_B, 'mcp');
+      });
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const sessions = await store.listProjectSessions({ projectId: PROJECT_A });
+
+        expect(sessions).toHaveLength(1);
+        expect(sessions[0]?.session.id).toBe(agentSession.id);
+        expect(sessions[0]?.session.clientSessionName).toBe('MNE-135 lane C');
+        expect(sessions[0]?.actor.id).toBe(AGENT_A);
+        expect(sessions[0]?.actor.kind).toBe('agent');
+        expect(sessions[0]?.actor.displayName).toBe('acme coding agent');
+        expect(sessions[0]?.checkpointCount).toBe(1);
+        expect(sessions[0]?.itemCount).toBe(1);
+
+        expect(await store.listProjectSessions({ projectId: PROJECT_B })).toHaveLength(0);
+      });
+
+      await adapter.withScope(SCOPE_AGENT_A, async (store) => {
+        const sessions = await store.listProjectSessions({ projectId: PROJECT_A });
+        expect(sessions[0]?.itemCount).toBe(2);
+      });
+
+      await adapter.withScope(SCOPE_B, async (store) => {
+        expect(await store.listProjectSessions({ projectId: PROJECT_A })).toHaveLength(0);
+        expect(await store.listProjectSessions({ projectId: PROJECT_B })).toHaveLength(1);
+      });
+    });
+  });
+
   it('refuses arguments that are not UUIDs before they reach SQL', async () => {
     await withAdapter(async (adapter) => {
       await adapter.withScope(SCOPE_A, async (store) => {

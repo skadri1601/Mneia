@@ -1,4 +1,4 @@
-import type { Handoff, ScopedStore } from '@mneia/core';
+import type { Actor, ActorKind, Handoff, ScopedStore } from '@mneia/core';
 import { ApiError } from '@mneia/core';
 import { describe, expect, it, vi } from 'vitest';
 import { handoffCreateTool, handoffReceiveTool } from './handoff.js';
@@ -8,6 +8,7 @@ const WORKSPACE = '22222222-2222-4222-8222-222222222222';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const SENDER = '44444444-4444-4444-8444-444444444444';
 const RECEIVER = '55555555-5555-4555-8555-555555555555';
+const SECOND_HUMAN = '77777777-7777-4777-8777-777777777777';
 const HANDOFF_ID = '66666666-6666-4666-8666-666666666666';
 const NOW = new Date('2026-08-08T12:00:00.000Z');
 
@@ -25,6 +26,25 @@ const handoff = (overrides: Partial<Handoff> = {}): Handoff => ({
   rendered: '# Handoff: payments-migration\n\n## Next action\nWire the retry path.',
   ...overrides,
 });
+
+const actorOf = (
+  id: string,
+  displayName: string,
+  kind: ActorKind,
+  externalRef: string | null,
+): Actor => ({
+  id,
+  workspaceId: WORKSPACE,
+  kind,
+  displayName,
+  externalRef,
+  createdAt: NOW,
+});
+
+const ROSTER: readonly Actor[] = [
+  actorOf(RECEIVER, 'Alex Rivera', 'human', 'alex@example.com'),
+  actorOf(SENDER, 'claude-code', 'agent', null),
+];
 
 const contextWith = (store: Partial<ScopedStore> & Record<string, unknown> = {}): ToolContext =>
   ({
@@ -71,10 +91,64 @@ describe('mneia_handoff_create', () => {
     );
   });
 
-  it('rejects a toActor that is not an actor id', () => {
-    expect(() => handoffCreateTool.parse({ nextAction: NEXT_ACTION, toActor: 'alex' })).toThrow(
-      /toActor must be an actor id/,
+  it('rejects an empty toActor rather than silently leaving the handoff open', () => {
+    expect(() => handoffCreateTool.parse({ nextAction: NEXT_ACTION, toActor: '   ' })).toThrow(
+      /toActor must name somebody in this workspace/,
     );
+  });
+
+  it('addresses a handoff to a teammate named rather than to a uuid', async () => {
+    const create = vi.fn(async () => handoff({ toActor: RECEIVER }));
+    const context = contextWith({
+      handoff: create,
+      listWorkspaceActors: vi.fn(async () => ROSTER),
+    });
+
+    const result = await handoffCreateTool.run(
+      handoffCreateTool.parse({ nextAction: NEXT_ACTION, toActor: 'Alex Rivera' }),
+      context,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ toActor: RECEIVER }));
+    expect(textOf(result)).toContain('Alex Rivera (human)');
+  });
+
+  it('refuses a name nobody in the workspace answers to, and says who is there', async () => {
+    const create = vi.fn(async () => handoff());
+    const context = contextWith({
+      handoff: create,
+      listWorkspaceActors: vi.fn(async () => ROSTER),
+    });
+
+    const result = await handoffCreateTool.run(
+      handoffCreateTool.parse({ nextAction: NEXT_ACTION, toActor: 'nobody-here' }),
+      context,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ error: { code: 'actor_not_found' } });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('refuses an ambiguous name rather than picking one of two people', async () => {
+    const create = vi.fn(async () => handoff());
+    const context = contextWith({
+      handoff: create,
+      listWorkspaceActors: vi.fn(async () => [
+        ...ROSTER,
+        actorOf(SECOND_HUMAN, 'Alexis Chen', 'human', 'alexis@example.com'),
+      ]),
+    });
+
+    const result = await handoffCreateTool.run(
+      handoffCreateTool.parse({ nextAction: NEXT_ACTION, toActor: 'alex' }),
+      context,
+    );
+
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent).toMatchObject({ error: { code: 'actor_ambiguous' } });
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('says which project is missing when none is supplied and none is bound', async () => {

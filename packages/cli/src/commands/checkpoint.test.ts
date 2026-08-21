@@ -11,13 +11,16 @@ import {
   type CheckpointReceipt,
   type CommitRequest,
   createCheckpointCommand,
+  type DiscoveredSession,
   emitReviewEvents,
   needsHuman,
+  type ProposeRequest,
   partitionCandidates,
   type ReviewedCandidate,
   readTrigger,
   renderCandidate,
   reviewCandidates,
+  type SessionDiscovery,
   whyAsked,
 } from './checkpoint.js';
 
@@ -113,6 +116,9 @@ function proposalOf(candidates: readonly CheckpointCandidate[]): CheckpointPropo
     projectId: PROJECT_ID,
     actorId: ACTOR_ID,
     sessionId: null,
+    source: 'claude-code',
+    sourceSessionRef: 'session-newest',
+    watermark: null,
     candidates,
     pendingTurns: 0,
     incompleteReason: null,
@@ -131,11 +137,35 @@ function receiptFor(candidates: readonly CheckpointCandidate[]): CheckpointRecei
   };
 }
 
+const NEWEST_SESSION: DiscoveredSession = {
+  source: 'claude-code',
+  sessionRef: 'session-newest',
+  lastActivityAt: new Date('2026-08-20T16:41:00.000Z'),
+};
+
+const OLDER_SESSION: DiscoveredSession = {
+  source: 'cursor',
+  sessionRef: 'session-older',
+  lastActivityAt: new Date('2026-08-19T09:10:00.000Z'),
+};
+
 class FakeApi implements CheckpointApi {
   readonly commits: CommitRequest[] = [];
+  readonly proposals: ProposeRequest[] = [];
+  sessions: readonly DiscoveredSession[] = [NEWEST_SESSION];
+  failOn: string | null = null;
+
   constructor(private readonly proposal: CheckpointProposal) {}
 
-  propose(): Promise<CheckpointProposal> {
+  discover(): Promise<SessionDiscovery> {
+    return Promise.resolve({ sessions: this.sessions, blocked: [] });
+  }
+
+  propose(request: ProposeRequest): Promise<CheckpointProposal> {
+    this.proposals.push(request);
+    if (this.failOn !== null && request.sessionRef === this.failOn) {
+      return Promise.reject(new CliError('network', 'the API could not be reached', 'retry'));
+    }
     return Promise.resolve(this.proposal);
   }
 
@@ -650,5 +680,167 @@ describe('mneia checkpoint', () => {
     expect(code).toBe(0);
     expect(api.commits).toHaveLength(0);
     expect(sink.out.join('')).toContain('Nothing to checkpoint');
+  });
+});
+
+describe('mneia checkpoint across sessions', () => {
+  const commandFor = (api: FakeApi, prompter = new ScriptedPrompter([])) =>
+    createCheckpointCommand({ api, loadConfig: () => CONFIG, prompter });
+
+  it('still reads only the newest session by default', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    const code = await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
+
+    expect(code).toBe(0);
+    expect(api.proposals.map((request) => request.sessionRef)).toEqual(['session-newest']);
+  });
+
+  it('tells you how many other sessions it did not read, and how to reach them', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
+
+    const warned = sink.err.join('');
+    expect(warned).toContain('1 other agent session');
+    expect(warned).toContain('--all-sessions');
+    expect(warned).toContain('--session');
+  });
+
+  it('says nothing extra when there is only one session', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    const sink = capture();
+
+    await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
+
+    expect(sink.err.join('')).not.toContain('--all-sessions');
+  });
+
+  it('reads the session you name', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    await commandFor(api).run({
+      args: [],
+      flags: { session: 'older' },
+      json: false,
+      io: sink.io,
+    });
+
+    expect(api.proposals.map((request) => request.sessionRef)).toEqual(['session-older']);
+  });
+
+  it('lists the discovered refs when --session matches none of them', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    await expect(
+      commandFor(api).run({ args: [], flags: { session: 'nope' }, json: false, io: sink.io }),
+    ).rejects.toThrow(/matches none of the 2 sessions.*session-newest.*session-older/s);
+  });
+
+  it('refuses to guess when --session matches more than one', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    await expect(
+      commandFor(api).run({ args: [], flags: { session: 'session-' }, json: false, io: sink.io }),
+    ).rejects.toThrow(/matches 2 discovered sessions/);
+  });
+
+  it('refuses --session together with --all-sessions', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    const sink = capture();
+
+    await expect(
+      commandFor(api).run({
+        args: [],
+        flags: { session: 'x', 'all-sessions': true },
+        json: false,
+        io: sink.io,
+      }),
+    ).rejects.toThrow(/cannot be combined/);
+  });
+
+  it('checkpoints every discovered session under --all-sessions', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    const code = await commandFor(api).run({
+      args: [],
+      flags: { 'all-sessions': true },
+      json: false,
+      io: sink.io,
+    });
+
+    expect(code).toBe(0);
+    expect(api.proposals.map((request) => request.sessionRef)).toEqual([
+      'session-newest',
+      'session-older',
+    ]);
+    expect(api.commits).toHaveLength(2);
+    expect(sink.out.join('')).toContain('2 of 2 sessions recorded a checkpoint');
+  });
+
+  it('reports a per-session failure and carries on rather than dying on the first', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    api.failOn = 'session-newest';
+    const sink = capture();
+
+    const code = await commandFor(api).run({
+      args: [],
+      flags: { 'all-sessions': true },
+      json: false,
+      io: sink.io,
+    });
+
+    expect(code).toBe(1);
+    expect(api.commits).toHaveLength(1);
+    const printed = sink.out.join('');
+    expect(printed).toContain('failed: the API could not be reached');
+    expect(printed).toContain('1 of 2 sessions recorded a checkpoint');
+    expect(printed).toContain('resumes from its own watermark');
+  });
+
+  it('reports every session separately under --json', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    api.failOn = 'session-older';
+    const sink = capture();
+
+    await commandFor(api).run({
+      args: [],
+      flags: { 'all-sessions': true },
+      json: true,
+      io: sink.io,
+    });
+
+    expect(JSON.parse(sink.out.join(''))).toMatchObject({
+      discovered: 2,
+      processed: 2,
+      sessions: [
+        { sessionRef: 'session-newest', checkpointId: CHECKPOINT_ID, error: null },
+        { sessionRef: 'session-older', checkpointId: null },
+      ],
+    });
+  });
+
+  it('names the directory when no agent session was found at all', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [];
+    const sink = capture();
+
+    await expect(
+      commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io }),
+    ).rejects.toThrow(/found no agent session for \/repo/);
   });
 });

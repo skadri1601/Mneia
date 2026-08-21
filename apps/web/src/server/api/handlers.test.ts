@@ -1,14 +1,31 @@
 import type {
   Actor,
+  Checkpoint,
   CheckpointWrite,
   CheckpointWriteResult,
   ContextItem,
+  Project,
+  ProjectSessionFilter,
+  ProjectSessionSummary,
   ScopedStore,
+  Session,
+  StaleContextItem,
+  StaleContextItemFilter,
   TelemetryEmitter,
   TelemetryEvent,
+  VerifyContextItemInput,
+  VerifyContextItemResult,
 } from '@mneia/core';
+import { VerifyContextItemWireSchema } from '@mneia/core';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { ApiRequestError, handleWriteCheckpoint } from './handlers.js';
+import {
+  ApiRequestError,
+  handleListProjectSessions,
+  handleListStaleItems,
+  handleListWorkspaceActors,
+  handleVerifyItem,
+  handleWriteCheckpoint,
+} from './handlers.js';
 
 const WORKSPACE = '22222222-2222-4222-8222-222222222222';
 const PROJECT = '33333333-3333-4333-8333-333333333333';
@@ -275,5 +292,364 @@ describe('handleWriteCheckpoint embeddings', () => {
     });
 
     expect(sink.writes[0]?.items[0]?.item.embedding).toBeNull();
+  });
+});
+
+const HUMAN = '99999999-9999-4999-8999-999999999999';
+const CHECKPOINT = '88888888-8888-4888-8888-888888888888';
+const ITEM = '77777777-7777-4777-8777-777777777777';
+const NOW = new Date('2026-08-07T10:00:00.000Z');
+
+const verificationCheckpoint: Checkpoint = {
+  id: CHECKPOINT,
+  workspaceId: WORKSPACE,
+  projectId: PROJECT,
+  sessionId: null,
+  actorId: HUMAN,
+  trigger: 'manual',
+  createdAt: NOW,
+  summary: 'Re-verified: still holds',
+};
+
+interface VerifyHarness {
+  readonly store: ScopedStore;
+  readonly calls: VerifyContextItemInput[];
+  readonly events: TelemetryEvent[];
+  readonly telemetry: TelemetryEmitter;
+}
+
+const verifyHarness = (verification: VerifyContextItemResult['verification']): VerifyHarness => {
+  const calls: VerifyContextItemInput[] = [];
+  const events: TelemetryEvent[] = [];
+
+  const store = {
+    scope: { workspaceId: WORKSPACE, actorId: HUMAN },
+    verifyContextItem: async (input: VerifyContextItemInput): Promise<VerifyContextItemResult> => {
+      calls.push(input);
+      return {
+        checkpoint: verificationCheckpoint,
+        item: writtenItem({
+          id: ITEM,
+          humanConfirmed: verification === 'confirmed',
+          status: verification === 'confirmed' ? 'active' : 'retired',
+          lastVerifiedAt: NOW,
+          body: 'the rationale nobody may leak',
+        }),
+        verification,
+        previousLastVerifiedAt: new Date('2026-07-01T00:00:00.000Z'),
+      };
+    },
+  } as unknown as ScopedStore;
+
+  const telemetry = {
+    emit: async (event: TelemetryEvent) => {
+      events.push(event);
+    },
+  } as unknown as TelemetryEmitter;
+
+  return { store, calls, events, telemetry };
+};
+
+describe('handleVerifyItem', () => {
+  it('emits checkpoint.item_confirmed when the human says the item still holds', async () => {
+    const sink = verifyHarness('confirmed');
+
+    await handleVerifyItem(
+      sink.store,
+      { projectId: PROJECT, itemId: ITEM, verification: 'confirmed' },
+      deps(sink.telemetry),
+    );
+
+    expect(sink.events.map((event) => event.name)).toEqual(['checkpoint.item_confirmed']);
+    expect(sink.events[0]).toMatchObject({
+      workspaceId: WORKSPACE,
+      projectId: PROJECT,
+      actorId: HUMAN,
+      checkpointId: CHECKPOINT,
+      itemId: ITEM,
+    });
+  });
+
+  it('emits checkpoint.item_rejected when the human denies it', async () => {
+    const sink = verifyHarness('denied');
+
+    await handleVerifyItem(
+      sink.store,
+      { projectId: PROJECT, itemId: ITEM, verification: 'denied', reason: 'we moved off Redis' },
+      deps(sink.telemetry),
+    );
+
+    expect(sink.events.map((event) => event.name)).toEqual(['checkpoint.item_rejected']);
+  });
+
+  it('carries no item body into the event payload', async () => {
+    const sink = verifyHarness('confirmed');
+
+    await handleVerifyItem(
+      sink.store,
+      { projectId: PROJECT, itemId: ITEM, verification: 'confirmed' },
+      deps(sink.telemetry),
+    );
+
+    expect(JSON.stringify(sink.events)).not.toContain('the rationale nobody may leak');
+  });
+
+  it('refuses a denial with no reason, before touching the store', async () => {
+    const sink = verifyHarness('denied');
+
+    await expect(
+      handleVerifyItem(
+        sink.store,
+        { projectId: PROJECT, itemId: ITEM, verification: 'denied', reason: '   ' },
+        deps(sink.telemetry),
+      ),
+    ).rejects.toBeInstanceOf(ApiRequestError);
+
+    expect(sink.calls).toEqual([]);
+    expect(sink.events).toEqual([]);
+  });
+
+  it('drops humanConfirmed and assertedBy at the schema, before the handler ever sees them', () => {
+    const parsed = VerifyContextItemWireSchema.parse({
+      projectId: PROJECT,
+      itemId: ITEM,
+      verification: 'confirmed',
+      humanConfirmed: true,
+      assertedBy: IMPERSONATED,
+    });
+
+    expect(parsed).toEqual({ projectId: PROJECT, itemId: ITEM, verification: 'confirmed' });
+  });
+
+  it('passes only projectId, itemId, verification and reason to the store', async () => {
+    const sink = verifyHarness('confirmed');
+
+    const smuggled = {
+      projectId: PROJECT,
+      itemId: ITEM,
+      verification: 'confirmed',
+      humanConfirmed: true,
+      assertedBy: IMPERSONATED,
+    } as unknown as Parameters<typeof handleVerifyItem>[1];
+
+    await handleVerifyItem(sink.store, smuggled, deps(sink.telemetry));
+
+    expect(sink.calls[0]).toEqual({
+      projectId: PROJECT,
+      itemId: ITEM,
+      verification: 'confirmed',
+      reason: null,
+    });
+  });
+
+  it('returns the wire result, with the previous verification instant as an ISO string', async () => {
+    const sink = verifyHarness('confirmed');
+
+    const result = await handleVerifyItem(
+      sink.store,
+      { projectId: PROJECT, itemId: ITEM, verification: 'confirmed' },
+      deps(sink.telemetry),
+    );
+
+    expect(result.verification).toBe('confirmed');
+    expect(result.previousLastVerifiedAt).toBe('2026-07-01T00:00:00.000Z');
+    expect(result.checkpoint.id).toBe(CHECKPOINT);
+    expect(result.item.id).toBe(ITEM);
+  });
+
+  it('still returns the result when the telemetry sink throws', async () => {
+    const sink = verifyHarness('confirmed');
+    const failing = {
+      emit: async () => {
+        throw new Error('sink is down');
+      },
+    } as unknown as TelemetryEmitter;
+
+    const result = await handleVerifyItem(
+      sink.store,
+      { projectId: PROJECT, itemId: ITEM, verification: 'confirmed' },
+      deps(failing),
+    );
+
+    expect(result.checkpoint.id).toBe(CHECKPOINT);
+  });
+});
+
+describe('handleListStaleItems', () => {
+  const staleHarness = (stale: readonly StaleContextItem[]) => {
+    const filters: StaleContextItemFilter[] = [];
+    const store = {
+      scope: { workspaceId: WORKSPACE, actorId: HUMAN },
+      listStaleContextItems: async (filter: StaleContextItemFilter) => {
+        filters.push(filter);
+        return stale;
+      },
+    } as unknown as ScopedStore;
+    return { store, filters };
+  };
+
+  it('encodes staleSince as an ISO string and keeps staleForMs', async () => {
+    const sink = staleHarness([
+      {
+        item: writtenItem({ id: ITEM }),
+        staleSince: new Date('2026-08-01T00:00:00.000Z'),
+        staleForMs: 518_400_000,
+      },
+    ]);
+
+    const { items } = await handleListStaleItems(sink.store, { projectId: PROJECT });
+
+    expect(items[0]?.staleSince).toBe('2026-08-01T00:00:00.000Z');
+    expect(items[0]?.staleForMs).toBe(518_400_000);
+    expect(items[0]?.item.id).toBe(ITEM);
+  });
+
+  it('decodes asOf into a Date and forwards the limit', async () => {
+    const sink = staleHarness([]);
+
+    await handleListStaleItems(sink.store, {
+      projectId: PROJECT,
+      asOf: '2026-08-07T10:00:00.000Z',
+      limit: 25,
+    });
+
+    expect(sink.filters[0]).toEqual({ projectId: PROJECT, asOf: NOW, limit: 25 });
+  });
+
+  it('omits asOf and limit entirely when the caller sent neither', async () => {
+    const sink = staleHarness([]);
+
+    await handleListStaleItems(sink.store, { projectId: PROJECT });
+
+    expect(sink.filters[0]).toEqual({ projectId: PROJECT });
+  });
+});
+
+const ROSTER_PROJECT: Project = {
+  id: PROJECT,
+  workspaceId: WORKSPACE,
+  teamId: null,
+  slug: 'payments-migration',
+  repoUrl: null,
+  createdAt: NOW,
+};
+
+describe('handleListWorkspaceActors', () => {
+  const rosterHarness = (actors: readonly Actor[]) => {
+    const filters: unknown[] = [];
+    const store = {
+      scope: { workspaceId: WORKSPACE, actorId: HUMAN },
+      listWorkspaceActors: async (filter: unknown) => {
+        filters.push(filter);
+        return actors;
+      },
+    } as unknown as ScopedStore;
+    return { store, filters };
+  };
+
+  it('encodes the roster so --to can name a teammate instead of a raw UUID', async () => {
+    const sink = rosterHarness([actor(HUMAN, 'human'), actor(AGENT, 'agent')]);
+
+    const { actors } = await handleListWorkspaceActors(sink.store, {});
+
+    expect(actors.map((entry) => entry.id)).toEqual([HUMAN, AGENT]);
+    expect(actors.map((entry) => entry.kind)).toEqual(['human', 'agent']);
+    expect(actors[0]?.createdAt).toBe('2026-07-01T00:00:00.000Z');
+  });
+
+  it('passes an empty filter when the caller sent no limit', async () => {
+    const sink = rosterHarness([]);
+
+    await handleListWorkspaceActors(sink.store, {});
+
+    expect(sink.filters[0]).toEqual({});
+  });
+
+  it('forwards the limit when the caller sent one', async () => {
+    const sink = rosterHarness([]);
+
+    await handleListWorkspaceActors(sink.store, { limit: 50 });
+
+    expect(sink.filters[0]).toEqual({ limit: 50 });
+  });
+});
+
+describe('handleListProjectSessions', () => {
+  const session: Session = {
+    id: '12121212-1212-4212-8212-121212121212',
+    workspaceId: WORKSPACE,
+    projectId: PROJECT,
+    actorId: AGENT,
+    tool: 'claude-code',
+    clientName: 'claude-code',
+    clientVersion: '2.0.1',
+    clientSessionRef: '019c-session',
+    clientSessionName: 'MNE-135 lane C',
+    clientSessionUrl: null,
+    startedAt: NOW,
+    endedAt: null,
+  };
+
+  const sessionsHarness = (
+    summaries: readonly ProjectSessionSummary[],
+    project = ROSTER_PROJECT,
+  ) => {
+    const filters: ProjectSessionFilter[] = [];
+    const store = {
+      scope: { workspaceId: WORKSPACE, actorId: HUMAN },
+      getProject: async () => project,
+      getProjectBySlug: async () => project,
+      listProjectSessions: async (filter: ProjectSessionFilter) => {
+        filters.push(filter);
+        return summaries;
+      },
+    } as unknown as ScopedStore;
+    return { store, filters };
+  };
+
+  it('says who worked on the project, with the counts their work produced', async () => {
+    const sink = sessionsHarness([
+      { session, actor: actor(AGENT, 'agent'), checkpointCount: 3, itemCount: 11 },
+    ]);
+
+    const { sessions } = await handleListProjectSessions(sink.store, {
+      project: 'payments-migration',
+    });
+
+    expect(sessions[0]?.actor.id).toBe(AGENT);
+    expect(sessions[0]?.actor.kind).toBe('agent');
+    expect(sessions[0]?.session.clientSessionName).toBe('MNE-135 lane C');
+    expect(sessions[0]?.session.startedAt).toBe('2026-08-07T10:00:00.000Z');
+    expect(sessions[0]?.checkpointCount).toBe(3);
+    expect(sessions[0]?.itemCount).toBe(11);
+  });
+
+  it('resolves the project before it reads, and forwards the limit', async () => {
+    const sink = sessionsHarness([]);
+
+    await handleListProjectSessions(sink.store, { project: 'payments-migration', limit: 10 });
+
+    expect(sink.filters[0]).toEqual({ projectId: PROJECT, limit: 10 });
+  });
+
+  it('omits a limit the caller did not send', async () => {
+    const sink = sessionsHarness([]);
+
+    await handleListProjectSessions(sink.store, { project: 'payments-migration' });
+
+    expect(sink.filters[0]).toEqual({ projectId: PROJECT });
+  });
+
+  it('reports an unknown project with a message naming the fix', async () => {
+    const store = {
+      scope: { workspaceId: WORKSPACE, actorId: HUMAN },
+      getProject: async () => null,
+      getProjectBySlug: async () => null,
+      listProjectSessions: async () => [],
+    } as unknown as ScopedStore;
+
+    await expect(handleListProjectSessions(store, { project: 'nope' })).rejects.toBeInstanceOf(
+      ApiRequestError,
+    );
   });
 });

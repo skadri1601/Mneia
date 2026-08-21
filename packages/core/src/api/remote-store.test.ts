@@ -167,3 +167,245 @@ describe('remote store transport', () => {
     await expect(store.getActor(SCOPE.actorId)).rejects.toThrow(/newer API than this client/);
   });
 });
+
+const PROJECT = '33333333-3333-4333-8333-333333333333';
+const ITEM = '11111111-1111-4111-8111-111111111111';
+const CHECKPOINT = '66666666-6666-4666-8666-666666666666';
+
+const itemWire = (overrides: Record<string, unknown> = {}) => ({
+  id: ITEM,
+  workspaceId: SCOPE.workspaceId,
+  projectId: PROJECT,
+  kind: 'fact',
+  title: 'the deploy gate fails closed on a stale schema',
+  body: null,
+  status: 'active',
+  assertedBy: SCOPE.actorId,
+  assertedAt: '2026-08-01T10:00:00.000Z',
+  sourceSessionId: null,
+  sourceRef: null,
+  confidence: 0.9,
+  humanConfirmed: false,
+  loadBearing: false,
+  lastVerifiedAt: null,
+  decayAfter: 86_400_000,
+  validFrom: '2026-08-01T10:00:00.000Z',
+  validTo: null,
+  supersedesId: null,
+  supersededById: null,
+  supersedeReason: null,
+  accessScope: 'project',
+  ...overrides,
+});
+
+describe('remote store re-verification', () => {
+  it('asks the hosted API for the stale list and decodes the instants', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        items: [
+          {
+            item: itemWire(),
+            staleSince: '2026-08-02T10:00:00.000Z',
+            staleForMs: 432_000_000,
+          },
+        ],
+      },
+    }));
+
+    const stale = await store.listStaleContextItems({
+      projectId: PROJECT,
+      asOf: new Date('2026-08-07T10:00:00.000Z'),
+      limit: 10,
+    });
+
+    expect(calls[0]?.url).toBe('https://app.mneia.dev/api/v1/items/stale');
+    expect(calls[0]?.body).toEqual({
+      projectId: PROJECT,
+      asOf: '2026-08-07T10:00:00.000Z',
+      limit: 10,
+    });
+    expect(stale[0]?.staleSince).toEqual(new Date('2026-08-02T10:00:00.000Z'));
+    expect(stale[0]?.staleForMs).toBe(432_000_000);
+    expect(stale[0]?.item.id).toBe(ITEM);
+  });
+
+  it('omits asOf and limit when the caller gave neither', async () => {
+    const { calls, store } = stub(() => ({ status: 200, body: { items: [] } }));
+
+    await store.listStaleContextItems({ projectId: PROJECT });
+
+    expect(calls[0]?.body).toEqual({ projectId: PROJECT });
+  });
+
+  it('posts a verification and decodes the result', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        checkpoint: {
+          id: CHECKPOINT,
+          workspaceId: SCOPE.workspaceId,
+          projectId: PROJECT,
+          sessionId: null,
+          actorId: SCOPE.actorId,
+          trigger: 'manual',
+          createdAt: '2026-08-07T10:00:00.000Z',
+          summary: 'Re-verified: still holds',
+        },
+        item: itemWire({ humanConfirmed: true, lastVerifiedAt: '2026-08-07T10:00:00.000Z' }),
+        verification: 'confirmed',
+        previousLastVerifiedAt: '2026-08-02T10:00:00.000Z',
+      },
+    }));
+
+    const result = await store.verifyContextItem({
+      projectId: PROJECT,
+      itemId: ITEM,
+      verification: 'confirmed',
+    });
+
+    expect(calls[0]?.url).toBe('https://app.mneia.dev/api/v1/items/verify');
+    expect(calls[0]?.body).toEqual({
+      projectId: PROJECT,
+      itemId: ITEM,
+      verification: 'confirmed',
+    });
+    expect(result.verification).toBe('confirmed');
+    expect(result.item.humanConfirmed).toBe(true);
+    expect(result.previousLastVerifiedAt).toEqual(new Date('2026-08-02T10:00:00.000Z'));
+    expect(result.checkpoint.id).toBe(CHECKPOINT);
+  });
+
+  it('sends the reason with a denial', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        checkpoint: {
+          id: CHECKPOINT,
+          workspaceId: SCOPE.workspaceId,
+          projectId: PROJECT,
+          sessionId: null,
+          actorId: SCOPE.actorId,
+          trigger: 'manual',
+          createdAt: '2026-08-07T10:00:00.000Z',
+          summary: 'Verification denied: we moved off Redis',
+        },
+        item: itemWire({ status: 'retired', validTo: '2026-08-07T10:00:00.000Z' }),
+        verification: 'denied',
+        previousLastVerifiedAt: null,
+      },
+    }));
+
+    const result = await store.verifyContextItem({
+      projectId: PROJECT,
+      itemId: ITEM,
+      verification: 'denied',
+      reason: 'we moved off Redis',
+    });
+
+    expect(calls[0]?.body).toEqual({
+      projectId: PROJECT,
+      itemId: ITEM,
+      verification: 'denied',
+      reason: 'we moved off Redis',
+    });
+    expect(result.item.status).toBe('retired');
+    expect(result.previousLastVerifiedAt).toBeNull();
+  });
+});
+
+const ACTOR_OTHER = '66666666-6666-4666-8666-666666666666';
+const HANDOFF = '77777777-7777-4777-8777-777777777777';
+const SESSION = '88888888-8888-4888-8888-888888888888';
+
+const actorWire = (id: string, displayName: string) => ({
+  id,
+  workspaceId: SCOPE.workspaceId,
+  kind: 'human' as const,
+  displayName,
+  externalRef: null,
+  createdAt: '2026-08-01T09:00:00.000Z',
+});
+
+describe('remote store multiplayer reads', () => {
+  it('asks the hosted API for the inbox rather than every open handoff', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        handoffs: [
+          {
+            id: HANDOFF,
+            workspaceId: SCOPE.workspaceId,
+            projectId: PROJECT,
+            fromActor: ACTOR_OTHER,
+            toActor: SCOPE.actorId,
+            createdAt: '2026-08-20T10:00:00.000Z',
+            receivedAt: null,
+            nextAction: 'Wire the retry path',
+            rendered: '# Handoff',
+          },
+        ],
+      },
+    }));
+
+    const inbox = await store.listInboxHandoffs({ projectId: PROJECT, limit: 5 });
+
+    expect(calls[0]?.url).toBe('https://app.mneia.dev/api/v1/handoff/inbox');
+    expect(calls[0]?.body).toEqual({ project: PROJECT, limit: 5 });
+    expect(inbox[0]?.toActor).toBe(SCOPE.actorId);
+    expect(inbox[0]?.createdAt).toEqual(new Date('2026-08-20T10:00:00.000Z'));
+  });
+
+  it('asks the hosted API for the workspace roster, and omits a limit it was not given', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: { actors: [actorWire(ACTOR_OTHER, 'Alice'), actorWire(SCOPE.actorId, 'Bob')] },
+    }));
+
+    const actors = await store.listWorkspaceActors();
+
+    expect(calls[0]?.url).toBe('https://app.mneia.dev/api/v1/actors/list');
+    expect(calls[0]?.body).toEqual({});
+    expect(actors.map((actor) => actor.displayName)).toEqual(['Alice', 'Bob']);
+    expect(actors[0]?.kind).toBe('human');
+  });
+
+  it('decodes a project session summary with its actor and its counts', async () => {
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        sessions: [
+          {
+            session: {
+              id: SESSION,
+              workspaceId: SCOPE.workspaceId,
+              projectId: PROJECT,
+              actorId: ACTOR_OTHER,
+              tool: 'claude-code',
+              clientName: 'claude-code',
+              clientVersion: '2.0.1',
+              clientSessionRef: '019c-session',
+              clientSessionName: 'MNE-135 lane C',
+              clientSessionUrl: null,
+              startedAt: '2026-08-20T09:00:00.000Z',
+              endedAt: null,
+            },
+            actor: actorWire(ACTOR_OTHER, 'Alice'),
+            checkpointCount: 3,
+            itemCount: 11,
+          },
+        ],
+      },
+    }));
+
+    const sessions = await store.listProjectSessions({ projectId: PROJECT, limit: 20 });
+
+    expect(calls[0]?.url).toBe('https://app.mneia.dev/api/v1/sessions/list');
+    expect(calls[0]?.body).toEqual({ project: PROJECT, limit: 20 });
+    expect(sessions[0]?.actor.displayName).toBe('Alice');
+    expect(sessions[0]?.session.clientSessionName).toBe('MNE-135 lane C');
+    expect(sessions[0]?.session.startedAt).toEqual(new Date('2026-08-20T09:00:00.000Z'));
+    expect(sessions[0]?.checkpointCount).toBe(3);
+    expect(sessions[0]?.itemCount).toBe(11);
+  });
+});

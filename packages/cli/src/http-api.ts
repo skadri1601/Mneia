@@ -1,6 +1,8 @@
 import type {
   Actor,
   ContextItem,
+  DiscoveredTrajectory,
+  Handoff,
   HostedIdentity,
   HttpTransport,
   NewContextItem,
@@ -30,19 +32,31 @@ import type {
   CheckpointProposal,
   CheckpointReceipt,
   CommitRequest,
+  DiscoverRequest,
   ProposeRequest,
   ReviewedCandidate,
+  SessionDiscovery,
 } from './commands/checkpoint.js';
 import type {
   CreateHandoffRequest,
   HandoffApi,
-  ListOpenHandoffsRequest,
+  HandoffInbox,
+  InboxRequest,
   PickupRequest,
 } from './commands/handoff.js';
 import type { AttachRequest, AttachResult, InitApi } from './commands/init.js';
 import type { LogApi, LogChainPage, LogChainRequest, LogPage, LogRequest } from './commands/log.js';
 import { MAX_CHAIN_REVISIONS, matchItemIds } from './commands/log.js';
+import type { SessionsApi, SessionsReport, SessionsRequest } from './commands/sessions.js';
 import type { StatusApi, StatusReport, StatusRequest } from './commands/status.js';
+import type { Roster, RosterRequest, TeamApi } from './commands/team.js';
+import type {
+  StaleList,
+  StaleListRequest,
+  VerifyApi,
+  VerifyOutcome,
+  VerifyRequest,
+} from './commands/verify.js';
 import { resolveToken } from './config.js';
 
 const STATUS_ITEM_LIMIT = 500;
@@ -66,22 +80,39 @@ async function connect(config: ProjectConfig): Promise<Connection> {
 
 const ProposalEnvelope = z.object({ proposal: CheckpointProposalWireSchema });
 
-export async function selectTrajectory(cwd: string): Promise<Trajectory> {
-  const discovered = await discoverTrajectories({ cwd, limit: 1 });
-  const usable = discovered.find((entry) => entry.unavailable === null);
+export const SESSION_DISCOVERY_LIMIT = 50;
 
-  if (usable === undefined) {
-    const blocked = discovered
-      .filter((entry) => entry.unavailable !== null)
-      .map((entry) => `${entry.source}: ${entry.unavailable}`);
+const blockedReasons = (discovered: readonly DiscoveredTrajectory[]): readonly string[] =>
+  discovered
+    .filter((entry) => entry.unavailable !== null)
+    .map((entry) => `${entry.source}: ${entry.unavailable ?? 'unavailable'}`);
+
+export async function selectTrajectory(cwd: string, sessionRef?: string): Promise<Trajectory> {
+  const discovered = await discoverTrajectories({ cwd, limit: SESSION_DISCOVERY_LIMIT });
+  const usable = discovered.filter((entry) => entry.unavailable === null);
+  const chosen =
+    sessionRef === undefined ? usable[0] : usable.find((entry) => entry.sessionRef === sessionRef);
+
+  if (chosen === undefined) {
+    const blocked = blockedReasons(discovered);
+    const suffix = blocked.length === 0 ? '' : ` (${blocked.join('; ')})`;
+
+    if (sessionRef !== undefined) {
+      throw new CliError(
+        'not_configured',
+        `mneia checkpoint expected an agent session with ref ${sessionRef} under ${cwd}, and found ${usable.length === 0 ? 'none at all' : `only ${usable.map((entry) => entry.sessionRef).join(', ')}`}${suffix}`,
+        'run mneia checkpoint --all-sessions to see and cover every session discovered here',
+      );
+    }
+
     throw new CliError(
       'not_configured',
-      `mneia checkpoint found no agent session for ${cwd}${blocked.length === 0 ? '' : ` (${blocked.join('; ')})`}`,
+      `mneia checkpoint found no agent session for ${cwd}${suffix}`,
       'run this from the directory your agent session is working in, or pass a transcript with --from-file',
     );
   }
 
-  return readTrajectory(usable.source, usable.sessionRef);
+  return readTrajectory(chosen.source, chosen.sessionRef);
 }
 
 async function requireProject(store: ScopedStore, config: ProjectConfig, command: string) {
@@ -209,10 +240,52 @@ export const httpHandoffApi: HandoffApi = {
     const { store } = await connect(request.config);
     return store.receiveHandoff(request.id, store.scope.actorId);
   },
-  async listOpen(request: ListOpenHandoffsRequest) {
-    const { store } = await connect(request.config);
+  async inbox(request: InboxRequest): Promise<HandoffInbox> {
+    const { store, identity } = await connect(request.config);
     const project = await requireProject(store, request.config, 'pickup');
-    return store.listOpenHandoffs(project.id);
+
+    const waiting = await store.listInboxHandoffs({
+      projectId: project.id,
+      limit: request.limit,
+    });
+
+    const mine = (handoff: Handoff): boolean => handoff.toActor === identity.actorId;
+
+    return {
+      viewerId: identity.actorId,
+      addressed: waiting.filter(mine),
+      open: waiting.filter((handoff) => handoff.toActor === null),
+      actors: await actorsFor(
+        store,
+        waiting.flatMap((handoff) =>
+          handoff.toActor === null ? [handoff.fromActor] : [handoff.fromActor, handoff.toActor],
+        ),
+      ),
+    };
+  },
+};
+
+export const httpTeamApi: TeamApi = {
+  async roster(request: RosterRequest): Promise<Roster> {
+    const { store, identity } = await connect(request.config);
+    const actors = await store.listWorkspaceActors({ limit: request.limit });
+    return { viewerId: identity.actorId, actors };
+  },
+};
+
+export const httpSessionsApi: SessionsApi = {
+  async sessions(request: SessionsRequest): Promise<SessionsReport> {
+    const { store, identity } = await connect(request.config);
+    const project = await requireProject(store, request.config, 'sessions');
+
+    return {
+      projectId: project.id,
+      viewerId: identity.actorId,
+      sessions: await store.listProjectSessions({
+        projectId: project.id,
+        limit: request.limit,
+      }),
+    };
   },
 };
 
@@ -348,6 +421,47 @@ export const httpStatusApi: StatusApi = {
   },
 };
 
+export const httpVerifyApi: VerifyApi = {
+  async stale(request: StaleListRequest): Promise<StaleList> {
+    const { store } = await connect(request.config);
+    const project = await requireProject(store, request.config, 'verify');
+
+    const due = await store.listStaleContextItems({
+      projectId: project.id,
+      asOf: request.asOf,
+      limit: request.limit,
+    });
+
+    return {
+      projectId: project.id,
+      entries: due.map((entry) => ({
+        item: entry.item,
+        staleSince: entry.staleSince,
+        staleForMs: entry.staleForMs,
+      })),
+    };
+  },
+
+  async verify(request: VerifyRequest): Promise<VerifyOutcome> {
+    const { store } = await connect(request.config);
+    const project = await requireProject(store, request.config, 'verify');
+
+    const result = await store.verifyContextItem({
+      projectId: project.id,
+      itemId: request.itemId,
+      verification: request.verification,
+      reason: request.reason,
+    });
+
+    return {
+      checkpointId: result.checkpoint.id,
+      item: result.item,
+      verification: result.verification,
+      previousLastVerifiedAt: result.previousLastVerifiedAt,
+    };
+  },
+};
+
 interface CommitEntry {
   readonly candidate: CheckpointCandidate;
   readonly overrides: ReviewedCandidate | undefined;
@@ -403,12 +517,30 @@ export function uploadableFrom(
 }
 
 export const httpCheckpointApi: CheckpointApi = {
+  async discover(request: DiscoverRequest): Promise<SessionDiscovery> {
+    const discovered = await discoverTrajectories({
+      cwd: request.cwd,
+      limit: SESSION_DISCOVERY_LIMIT,
+    });
+
+    return {
+      sessions: discovered
+        .filter((entry) => entry.unavailable === null)
+        .map((entry) => ({
+          source: entry.source,
+          sessionRef: entry.sessionRef,
+          lastActivityAt: entry.lastActivityAt,
+        })),
+      blocked: blockedReasons(discovered),
+    };
+  },
+
   async propose(request: ProposeRequest): Promise<CheckpointProposal> {
     const { transport } = await connect(request.config);
 
     const trajectory =
       request.fromFile === undefined
-        ? await selectTrajectory(request.cwd ?? process.cwd())
+        ? await selectTrajectory(request.cwd ?? process.cwd(), request.sessionRef)
         : await readTrajectoryFile(request.fromFile);
 
     const reduced = reduceTrajectory(trajectory, { maxChars: Number.MAX_SAFE_INTEGER });

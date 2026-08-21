@@ -15,7 +15,16 @@ Tools are `mneia_*`. Shipping order matters — do not build ahead of the milest
 |---|---|
 | M1 | `mneia_rehydrate`, `mneia_assert`, `mneia_retire`, `mneia_checkpoint`, `mneia_search` |
 | M2 | `mneia_handoff_create`, `mneia_handoff_receive` |
-| M4 | `mneia_conflicts` |
+| M4 | `mneia_handoff_inbox`, `mneia_team`, `mneia_sessions`, `mneia_conflicts` |
+
+`SHIPPED_TOOL_NAMES` in `registry.ts` is the truth — count that array, not this table, which
+has been wrong before. **A tool registered but missing from it refuses the WHOLE server at
+startup**, so unit tests are not sufficient evidence: start the server and call `tools/list`.
+
+**The three collaboration tools are M4 surface shipped early**, under MNE-135. A directed
+handoff is unusable without a way to name the recipient, and §2.1 calls that the scenario the
+product is named for. They are read-only; `mneia_handoff_create` was extended to resolve a
+name or email rather than a second create tool being added.
 
 ## The 300ms budget
 

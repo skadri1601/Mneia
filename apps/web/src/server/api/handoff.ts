@@ -5,6 +5,7 @@ import type {
   CreateHandoffWire,
   Handoff,
   HandoffWire,
+  ListInboxHandoffsWire,
   ListOpenHandoffsWire,
   ReceiveHandoffWire,
   ScopedStore,
@@ -133,6 +134,25 @@ export const handleListOpenHandoffs = async (
     project.id,
     ...(input.limit === undefined ? [] : [input.limit]),
   );
+  return { handoffs: handoffs.map(encodeHandoff) };
+};
+
+export const handleListInboxHandoffs = async (
+  store: ScopedStore,
+  input: ListInboxHandoffsWire,
+): Promise<{ handoffs: readonly HandoffWire[] }> => {
+  const project = await resolveProject(store, input.project);
+  if (project === null) {
+    throw new ApiRequestError(
+      'not_found',
+      `expected project "${input.project}" to name a project visible in this workspace; found none — check the slug with mneia status`,
+    );
+  }
+
+  const handoffs = await store.listInboxHandoffs({
+    projectId: project.id,
+    ...(input.limit === undefined ? {} : { limit: input.limit }),
+  });
   return { handoffs: handoffs.map(encodeHandoff) };
 };
 

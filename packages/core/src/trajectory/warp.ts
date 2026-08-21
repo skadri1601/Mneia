@@ -3,7 +3,9 @@ import { localAppDataDir, matchesCwd } from './paths.js';
 import { createRefFactory } from './refs.js';
 import { openReadOnly, type SqliteDatabase } from './sqlite.js';
 import {
+  compareByRecency,
   type ListTrajectoriesRequest,
+  reportUnplaced,
   type Trajectory,
   TrajectoryError,
   type TrajectoryReader,
@@ -154,6 +156,23 @@ const workingDirectoryFor = (database: SqliteDatabase, conversationId: string): 
   }
 };
 
+const workingDirectories = (database: SqliteDatabase): ReadonlyMap<string, string> => {
+  const latest = new Map<string, string>();
+  const rows = database
+    .prepare(
+      'SELECT conversation_id, working_directory FROM ai_queries WHERE working_directory IS NOT NULL ORDER BY start_ts ASC',
+    )
+    .all();
+  for (const row of rows) {
+    const conversationId = asString(row.conversation_id);
+    const directory = asString(row.working_directory);
+    if (conversationId !== null && directory !== null) {
+      latest.set(conversationId, directory);
+    }
+  }
+  return latest;
+};
+
 export function createWarpReader(options: WarpReaderOptions = {}): TrajectoryReader {
   const path = options.databasePath ?? defaultDatabasePath();
 
@@ -163,8 +182,21 @@ export function createWarpReader(options: WarpReaderOptions = {}): TrajectoryRea
     async list(request: ListTrajectoriesRequest = {}): Promise<readonly TrajectorySummary[]> {
       const database = await openReadOnly(path, 'warp');
       const summaries: TrajectorySummary[] = [];
+      const unplaced: string[] = [];
 
       try {
+        let directories: ReadonlyMap<string, string>;
+        try {
+          directories = workingDirectories(database);
+        } catch (cause) {
+          throw new TrajectoryError(
+            'unrecognised_format',
+            'warp',
+            `expected ${path} to hold an ai_queries table carrying conversation_id, working_directory and start_ts; the query failed (${cause instanceof Error ? cause.message : String(cause)}) — report this with your Warp version so the reader can be updated`,
+            { cause },
+          );
+        }
+
         const rows = database
           .prepare(
             'SELECT conversation_id, last_modified_at FROM agent_conversations ORDER BY last_modified_at DESC',
@@ -174,9 +206,19 @@ export function createWarpReader(options: WarpReaderOptions = {}): TrajectoryRea
         for (const row of rows) {
           const conversationId = asString(row.conversation_id);
           if (conversationId === null) {
+            request.onUnavailable?.({
+              source: 'warp',
+              sessionRef: null,
+              code: 'unrecognised_format',
+              reason: `expected every agent_conversations row in ${path} to carry a text conversation_id; one carries none — report this with your Warp version so the reader can be updated`,
+            });
             continue;
           }
-          const cwd = workingDirectoryFor(database, conversationId);
+          const cwd = directories.get(conversationId) ?? null;
+          if (cwd === null && request.cwd !== undefined) {
+            unplaced.push(conversationId);
+            continue;
+          }
           if (!matchesCwd(cwd, request.cwd)) {
             continue;
           }
@@ -193,6 +235,14 @@ export function createWarpReader(options: WarpReaderOptions = {}): TrajectoryRea
         database.close();
       }
 
+      reportUnplaced(
+        request,
+        'warp',
+        unplaced,
+        'no ai_queries row records one — pass it with --from-file if it belongs to this repository',
+      );
+
+      summaries.sort(compareByRecency);
       return request.limit === undefined ? summaries : summaries.slice(0, request.limit);
     },
 

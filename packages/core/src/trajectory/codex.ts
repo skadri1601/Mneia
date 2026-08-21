@@ -4,13 +4,16 @@ import { join } from 'node:path';
 import { matchesCwd } from './paths.js';
 import { createRefFactory } from './refs.js';
 import {
+  compareByRecency,
   type ListTrajectoriesRequest,
+  reportUnplaced,
   type Trajectory,
   TrajectoryError,
   type TrajectoryReader,
   type TrajectorySummary,
   type TrajectoryTurn,
 } from './types.js';
+import { readTranscriptWindows } from './windows.js';
 
 const TEXT_BLOCK_TYPES = new Set(['input_text', 'output_text', 'summary_text', 'text']);
 
@@ -182,34 +185,64 @@ export function createCodexReader(options: CodexReaderOptions = {}): TrajectoryR
 
     async list(request: ListTrajectoriesRequest = {}): Promise<readonly TrajectorySummary[]> {
       const summaries: TrajectorySummary[] = [];
+      const unplaced: string[] = [];
 
       for (const file of await listRolloutFiles(root)) {
-        let raw: string;
+        let windows: Awaited<ReturnType<typeof readTranscriptWindows>>;
         try {
-          raw = await readFile(file, 'utf8');
-        } catch {
+          windows = await readTranscriptWindows(file);
+        } catch (cause) {
+          request.onUnavailable?.({
+            source: 'codex',
+            sessionRef: file,
+            code: 'unreadable',
+            reason: `expected to read the Codex rollout at ${file}; the read failed (${cause instanceof Error ? cause.message : String(cause)}) — check the file is not locked by another process`,
+          });
           continue;
         }
-        const parsed = parseCodexRollout(raw, file);
-        if (parsed.turns.length === 0) {
+
+        const opening = parseCodexRollout(windows.head, file);
+        const closing = windows.tail.length === 0 ? opening : parseCodexRollout(windows.tail, file);
+
+        if (opening.turns.length === 0 && closing.turns.length === 0) {
+          if (windows.bytes > 0) {
+            request.onUnavailable?.({
+              source: 'codex',
+              sessionRef: file,
+              code: 'unrecognised_format',
+              reason: `expected ${file} to hold Codex rollout lines; ${windows.bytes} bytes produced no turns — report this with your Codex version so the reader can be updated`,
+            });
+          }
           continue;
         }
-        if (!matchesCwd(parsed.cwd, request.cwd)) {
+
+        if (opening.cwd === null && request.cwd !== undefined) {
+          unplaced.push(opening.sessionRef);
           continue;
         }
+
+        if (!matchesCwd(opening.cwd, request.cwd)) {
+          continue;
+        }
+
+        const lastTurn = closing.turns[closing.turns.length - 1] ?? null;
         summaries.push({
           source: 'codex',
-          sessionRef: parsed.sessionRef,
-          cwd: parsed.cwd,
-          startedAt: parsed.turns[0]?.at ?? null,
-          lastActivityAt: parsed.turns[parsed.turns.length - 1]?.at ?? null,
+          sessionRef: opening.sessionRef,
+          cwd: opening.cwd,
+          startedAt: opening.turns[0]?.at ?? null,
+          lastActivityAt: lastTurn?.at ?? windows.modified,
         });
       }
 
-      summaries.sort(
-        (left, right) =>
-          (right.lastActivityAt?.getTime() ?? 0) - (left.lastActivityAt?.getTime() ?? 0),
+      reportUnplaced(
+        request,
+        'codex',
+        unplaced,
+        'open one with --from-file if it belongs to this repository',
       );
+
+      summaries.sort(compareByRecency);
       return request.limit === undefined ? summaries : summaries.slice(0, request.limit);
     },
 

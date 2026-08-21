@@ -169,7 +169,9 @@ export type {
   ContextItemReviewOutcome,
   ContextItemReviewOutcomeKind,
   ContextItemSearch,
+  ContextItemVerification,
   HandoffItem,
+  InboxHandoffFilter,
   NewCheckpoint,
   NewConflict,
   NewContextItem,
@@ -178,6 +180,8 @@ export type {
   NewProject,
   PendingReviewFilter,
   PendingReviewItem,
+  ProjectSessionFilter,
+  ProjectSessionSummary,
   RetireContextItemInput,
   RetireContextItemResult,
   ReviewCapableStore,
@@ -185,7 +189,12 @@ export type {
   ReviewPendingItemsResult,
   ScopedStore,
   SessionClientProvenance,
+  StaleContextItem,
+  StaleContextItemFilter,
   StoreAdapter,
+  VerifyContextItemInput,
+  VerifyContextItemResult,
+  WorkspaceActorFilter,
   WorkspaceScope,
 } from './store/adapter/types.js';
 export type { MigrationDriver, SqlExecutor, SqlResult, SqlValue } from './store/driver.js';
@@ -312,8 +321,13 @@ export {
 } from './trajectory/claude-desktop.js';
 export { createCodexReader, parseCodexRollout } from './trajectory/codex.js';
 export { composerFolders, createCursorReader } from './trajectory/cursor.js';
-export type { DiscoveredTrajectory } from './trajectory/discover.js';
-export { createReaders, discoverTrajectories, readTrajectory } from './trajectory/discover.js';
+export type { DiscoveredTrajectory, TrajectoryDiscovery } from './trajectory/discover.js';
+export {
+  createReaders,
+  discoverTrajectories,
+  discoverTrajectorySessions,
+  readTrajectory,
+} from './trajectory/discover.js';
 export { readTrajectoryFile } from './trajectory/jsonl.js';
 export type { ReducedTrajectory, ReduceOptions } from './trajectory/reduce.js';
 export {
@@ -333,6 +347,8 @@ export type {
   TrajectorySource,
   TrajectorySummary,
   TrajectoryTurn,
+  TrajectoryUnavailable,
+  TrajectoryUnavailableReporter,
   TurnKind,
   TurnRole,
   TurnsSinceResult,

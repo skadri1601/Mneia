@@ -7,10 +7,13 @@ export const SHIPPED_COMMAND_NAMES = [
   'checkpoint',
   'log',
   'status',
+  'verify',
   'login',
   'whoami',
   'handoff',
   'pickup',
+  'team',
+  'sessions',
 ] as const;
 
 export type ShippedCommandName = (typeof SHIPPED_COMMAND_NAMES)[number];

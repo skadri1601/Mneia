@@ -12,8 +12,13 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('server-only', () => ({}));
 
-const { handleCreateHandoff, handleGetHandoff, handleListHandoffItems, handleReceiveHandoff } =
-  await import('./handoff.js');
+const {
+  handleCreateHandoff,
+  handleGetHandoff,
+  handleListHandoffItems,
+  handleListInboxHandoffs,
+  handleReceiveHandoff,
+} = await import('./handoff.js');
 
 const WORKSPACE = '22222222-2222-4222-8222-222222222222';
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
@@ -248,5 +253,43 @@ describe('handleListHandoffItems', () => {
     await expect(handleListHandoffItems(store, HANDOFF_ID)).rejects.toMatchObject({
       code: 'not_found',
     });
+  });
+});
+
+describe('handleListInboxHandoffs', () => {
+  it('asks the store for the inbox, resolving the project first', async () => {
+    const mine = handoff({ toActor: SENDER });
+    const open = handoff({ id: RECIPIENT, toActor: null });
+    const listInboxHandoffs = vi.fn(async () => [mine, open]);
+    const { store } = harness({ listInboxHandoffs } as unknown as Partial<ScopedStore>);
+
+    const { handoffs } = await handleListInboxHandoffs(store, {
+      project: 'payments-migration',
+      limit: 5,
+    });
+
+    expect(listInboxHandoffs).toHaveBeenCalledWith({ projectId: PROJECT_ID, limit: 5 });
+    expect(handoffs.map((entry) => entry.toActor)).toEqual([SENDER, null]);
+  });
+
+  it('omits a limit the caller did not send', async () => {
+    const listInboxHandoffs = vi.fn(async () => []);
+    const { store } = harness({ listInboxHandoffs } as unknown as Partial<ScopedStore>);
+
+    await handleListInboxHandoffs(store, { project: 'payments-migration' });
+
+    expect(listInboxHandoffs).toHaveBeenCalledWith({ projectId: PROJECT_ID });
+  });
+
+  it('reports an unknown project with a message naming the fix', async () => {
+    const { store } = harness({
+      getProjectBySlug: vi.fn(async () => null),
+      getProject: vi.fn(async () => null),
+      listInboxHandoffs: vi.fn(async () => []),
+    } as unknown as Partial<ScopedStore>);
+
+    await expect(handleListInboxHandoffs(store, { project: 'nope' })).rejects.toThrow(
+      /mneia status/,
+    );
   });
 });
