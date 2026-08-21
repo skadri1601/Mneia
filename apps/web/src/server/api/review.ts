@@ -2,12 +2,22 @@ import 'server-only';
 
 import type {
   ContextItemReview,
+  PendingReviewFilterWire,
   PendingReviewItem,
+  PendingReviewItemWire,
   ReviewCapableStore,
   ReviewPendingItemsResult,
+  ReviewPendingItemsResultWire,
+  ReviewPendingItemsWire,
   TelemetryEmitter,
   TelemetryEvent,
   Uuid,
+} from '@mneia/core';
+import {
+  decodeContextItemReview,
+  decodePendingReviewFilter,
+  encodePendingReviewItem,
+  encodeReviewPendingItemsResult,
 } from '@mneia/core';
 
 export interface ReviewDependencies {
@@ -86,4 +96,29 @@ export const reviewPendingItems = async (
   }
 
   return { result };
+};
+
+export const handleListPendingReview = async (
+  store: ReviewCapableStore,
+  filter: PendingReviewFilterWire,
+): Promise<{ items: readonly PendingReviewItemWire[] }> => {
+  const { items } = await listPendingReview(store, decodePendingReviewFilter(filter));
+  return { items: items.map(encodePendingReviewItem) };
+};
+
+export const handleReviewPendingItems = async (
+  store: ReviewCapableStore,
+  input: ReviewPendingItemsWire,
+  deps: ReviewDependencies,
+): Promise<{ result: ReviewPendingItemsResultWire }> => {
+  const { result } = await reviewPendingItems(
+    store,
+    {
+      projectId: input.projectId,
+      reviews: input.reviews.map(decodeContextItemReview),
+      ...(input.summary === undefined ? {} : { summary: input.summary }),
+    },
+    deps,
+  );
+  return { result: encodeReviewPendingItemsResult(result) };
 };

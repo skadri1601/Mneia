@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { Buffer } from 'node:buffer';
-import type { ScopedStore } from '@mneia/core';
+import type { ReviewCapableStore } from '@mneia/core';
 import { StoreError, SupersedeNotAllowedError } from '@mneia/core';
 import type { z } from 'zod';
 import { ApiAuthError, apiError, apiOk, resolveBearerIdentity } from '../api-auth.js';
@@ -29,7 +29,7 @@ export interface ServeOptions<TInput> {
   readonly request: Request;
   readonly schema?: z.ZodType<TInput> | undefined;
   readonly input?: TInput | undefined;
-  readonly run: (store: ScopedStore, input: TInput) => Promise<unknown>;
+  readonly run: (store: ReviewCapableStore, input: TInput) => Promise<unknown>;
   readonly cost?: RequestCost | undefined;
   readonly limits?: RateLimitDependencies | undefined;
 }

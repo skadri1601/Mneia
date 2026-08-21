@@ -6,7 +6,6 @@ import type {
   HostedIdentity,
   HttpTransport,
   NewContextItem,
-  PendingReviewItem,
   RemoteStore,
   ScopedStore,
   Trajectory,
@@ -14,16 +13,17 @@ import type {
   Uuid,
 } from '@mneia/core';
 import {
-  ACCESS_SCOPES,
-  ACTOR_KINDS,
   ApiError,
   CheckpointProposalWireSchema,
-  CheckpointWireSchema,
   createHttpTransport,
   createRemoteStore,
+  decodePendingReviewItem,
   discoverTrajectories,
   fetchIdentity,
-  ITEM_KINDS,
+  PendingReviewItemWireSchema,
+  REVIEW_PATH,
+  REVIEW_PENDING_PATH,
+  ReviewPendingItemsResultWireSchema,
   readTrajectory,
   readTrajectoryFile,
   reduceTrajectory,
@@ -475,65 +475,18 @@ export const httpVerifyApi: VerifyApi = {
   },
 };
 
-export const REVIEW_PENDING_ROUTE = '/api/v1/review/pending';
-export const REVIEW_ROUTE = '/api/v1/review';
-
-const PendingReviewItemWireSchema = z.object({
-  id: z.string(),
-  projectId: z.string(),
-  kind: z.enum(ITEM_KINDS),
-  title: z.string(),
-  body: z.string().nullable(),
-  confidence: z.number(),
-  loadBearing: z.boolean(),
-  accessScope: z.enum(ACCESS_SCOPES),
-  assertedBy: z.string(),
-  assertedByKind: z.enum(ACTOR_KINDS),
-  assertedByName: z.string(),
-  assertedAt: z.string(),
-  sourceRef: z.string().nullable(),
-  originCheckpointId: z.string().nullable(),
-});
+export const REVIEW_PENDING_ROUTE = REVIEW_PENDING_PATH;
+export const REVIEW_ROUTE = REVIEW_PATH;
 
 const PendingReviewEnvelope = z.object({ items: z.array(PendingReviewItemWireSchema) });
 
-const ReviewOutcomeWireSchema = z.object({
-  itemId: z.string(),
-  outcome: z.enum(['confirmed', 'edited', 'rejected']),
-  fieldsChanged: z.array(z.string()),
-});
-
-const ReviewResultEnvelope = z.object({
-  result: z.object({
-    checkpoint: CheckpointWireSchema,
-    outcomes: z.array(ReviewOutcomeWireSchema),
-  }),
-});
-
-type PendingReviewItemWire = z.infer<typeof PendingReviewItemWireSchema>;
-
-const decodePendingReviewItem = (wire: PendingReviewItemWire): PendingReviewItem => ({
-  id: wire.id,
-  projectId: wire.projectId,
-  kind: wire.kind,
-  title: wire.title,
-  body: wire.body,
-  confidence: wire.confidence,
-  loadBearing: wire.loadBearing,
-  accessScope: wire.accessScope,
-  assertedBy: wire.assertedBy,
-  assertedByKind: wire.assertedByKind,
-  assertedByName: wire.assertedByName,
-  assertedAt: new Date(wire.assertedAt),
-  sourceRef: wire.sourceRef,
-  originCheckpointId: wire.originCheckpointId,
-});
+const ReviewResultEnvelope = z.object({ result: ReviewPendingItemsResultWireSchema });
 
 function reviewRouteMissing(endpoint: string, route: string): CliError {
   return new CliError(
     'failed',
-    `the Mneia API at ${endpoint} serves no ${route}, so mneia review has nothing to call — MNE-273 shipped the store methods and the MCP queue reader, and the hosted review endpoints are still open`,
-    'open the project review page in the web app and drain the queue there until that route ships',
+    `the Mneia API at ${endpoint} serves no ${route}, so mneia review has nothing to call — the deployment is older than the release that added the review routes`,
+    'upgrade the workspace to a build that serves the review routes, or drain the queue from the project review page in the web app',
   );
 }
 
