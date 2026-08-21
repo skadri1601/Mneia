@@ -7,7 +7,7 @@ import { httpHandoffApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
 import type { HandoffApi } from './handoff.js';
 import { type HandoffInbox, toJsonActor } from './handoff.js';
-import { matchItemIds } from './log.js';
+import { matchItemIds } from '../item-ids.js';
 
 export interface PickupDeps {
   readonly api: HandoffApi;
@@ -18,7 +18,7 @@ export const DEFAULT_INBOX_LIMIT = 50;
 export const MAX_INBOX_LIMIT = 200;
 export const MIN_HANDOFF_REFERENCE_LENGTH = 4;
 
-const USAGE = 'mneia pickup [<handoff-id>] [--limit <count>] [--json]';
+const USAGE = 'mneia pickup [<handoff-id>] [--read] [--limit <count>] [--json]';
 
 const HYPHENS = /-/g;
 const HANDOFF_REFERENCE = /^[0-9a-f-]+$/;
@@ -45,6 +45,17 @@ function readReference(invocation: CommandInvocation): string | null {
     );
   }
   return value;
+}
+
+function readPeek(flags: CommandInvocation['flags']): boolean {
+  const raw = flags.read;
+  if (raw === undefined) {
+    return false;
+  }
+  if (raw !== true) {
+    throw usageError('--read takes no value; it reads the handoff without receiving it');
+  }
+  return true;
 }
 
 function readLimit(flags: CommandInvocation['flags']): number {
@@ -160,6 +171,18 @@ function renderReceived(handoff: Handoff, inbox: HandoffInbox): string {
   ].join('\n');
 }
 
+function renderPeeked(handoff: Handoff, inbox: HandoffInbox): string {
+  return [
+    handoff.rendered.trim(),
+    '',
+    '---',
+    'not received: this was a read, so the handoff is still waiting',
+    `handed over by: ${describeSender(inbox, handoff)}`,
+    `receive it with: mneia pickup ${handoff.id}`,
+    '',
+  ].join('\n');
+}
+
 function toJsonHandoff(handoff: Handoff, inbox: HandoffInbox) {
   return {
     id: handoff.id,
@@ -238,10 +261,11 @@ export function resolveInboxHandoff(reference: string, inbox: HandoffInbox): Han
 export function createPickupCommand(deps: PickupDeps): CommandDefinition {
   return {
     name: 'pickup',
-    summary: 'Receive a handoff addressed to you, or list what is waiting when no id is given.',
+    summary: 'Receive a handoff addressed to you, list what is waiting, or read one with --read.',
     usage: USAGE,
     async run(invocation: CommandInvocation): Promise<number> {
       const reference = readReference(invocation);
+      const peek = readPeek(invocation.flags);
       const limit = readLimit(invocation.flags);
       const config = await deps.loadConfig(invocation.io.cwd, invocation.io.env);
 
@@ -257,6 +281,14 @@ export function createPickupCommand(deps: PickupDeps): CommandDefinition {
       }
 
       const target = resolveInboxHandoff(reference, inbox);
+
+      if (peek) {
+        invocation.io.stdout(
+          invocation.json ? renderReceivedJson(target, inbox) : renderPeeked(target, inbox),
+        );
+        return EXIT_OK;
+      }
+
       const handoff = await callApi(config.endpoint, 'pickup', () =>
         deps.api.receive({ config, id: target.id }),
       );
