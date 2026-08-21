@@ -1,3 +1,4 @@
+import { sanitizeActorName, UNATTRIBUTED_ACTOR } from '../domain/attribution.js';
 import type { Actor, ContextItem, Project, Uuid } from '../domain/types.js';
 import type { ItemKind } from '../store/schema.js';
 
@@ -30,11 +31,9 @@ const NEXT_ACTION_HEADING = 'Next action';
 const META_SEPARATOR = ' · ';
 const BODY_INDENT = '  ';
 const OPEN_RECIPIENT = 'open';
-const UNATTRIBUTED_ACTOR = 'unattributed';
 
 const LINE_BREAKS = /\r\n|\r/g;
 const WHITESPACE_RUN = /\s+/g;
-const META_FIELD_MARKERS = /[[\]()·]/g;
 const ORDERED_LIST_START = /^(\d{1,9})([.)])/;
 const BLOCK_MARKER_START = /^[#>*+=|~`_<-]/;
 
@@ -47,11 +46,6 @@ const utcMinute = (value: Date): string =>
   `${utcDay(value)} ${pad(value.getUTCHours(), 2)}:${pad(value.getUTCMinutes(), 2)} UTC`;
 
 const inlineText = (value: string): string => value.replace(WHITESPACE_RUN, ' ').trim();
-
-const actorNameFor = (displayName: string): string => {
-  const cleaned = inlineText(displayName.replace(META_FIELD_MARKERS, ' '));
-  return cleaned === '' ? UNATTRIBUTED_ACTOR : cleaned;
-};
 
 function assertValidDate(value: Date, what: string): void {
   if (Number.isNaN(value.getTime())) {
@@ -95,7 +89,7 @@ export function provenanceLine(item: ContextItem, input: RenderHandoffInput): st
         ? `human-confirmed ${utcDay(item.assertedAt)}`
         : 'unconfirmed';
 
-  return `[${[actor.kind, actorNameFor(actor.displayName), confirmation].join(META_SEPARATOR)}]`;
+  return `[${[actor.kind, sanitizeActorName(actor.displayName), confirmation].join(META_SEPARATOR)}]`;
 }
 
 const isLive = (item: ContextItem): boolean =>
@@ -205,9 +199,11 @@ function budgetLine(budget: HandoffBudget, itemCount: number): string {
 }
 
 function renderHeader(input: RenderHandoffInput): string {
-  const from = `${actorNameFor(input.from.displayName)} (${input.from.kind})`;
+  const from = `${sanitizeActorName(input.from.displayName)} (${input.from.kind})`;
   const to =
-    input.to === null ? OPEN_RECIPIENT : `${actorNameFor(input.to.displayName)} (${input.to.kind})`;
+    input.to === null
+      ? OPEN_RECIPIENT
+      : `${sanitizeActorName(input.to.displayName)} (${input.to.kind})`;
 
   const lines = [
     `# Handoff: ${inlineText(input.project.slug)}`,

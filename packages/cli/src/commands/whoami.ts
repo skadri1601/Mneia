@@ -1,3 +1,4 @@
+import { actorNameFor } from '../attribution.js';
 import { type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import { resolveAuthUrl, resolveToken } from '../config.js';
 import { type Fetch, fetchIdentity, type Identity } from './device-auth.js';
@@ -10,7 +11,7 @@ export interface WhoamiDeps {
 const render = (identity: Identity): string =>
   [
     '',
-    `  Actor      ${identity.actor.displayName} (${identity.actor.kind})`,
+    `  Actor      ${actorNameFor(identity.actor.displayName)} (${identity.actor.kind})`,
     `  Workspace  ${identity.workspace.displayName} (${identity.workspace.slug})`,
     `  Team       ${identity.team.displayName}`,
     '',

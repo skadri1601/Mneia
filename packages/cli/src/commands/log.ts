@@ -1,6 +1,7 @@
 import type { Actor, ActorKind, ContextItem, ItemKind, ItemStatus, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
+import { confirmationMark, describeActorAttribution } from '../attribution.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import { httpLogApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
@@ -220,17 +221,11 @@ const utcDate = (at: Date): string => at.toISOString().slice(0, 10);
 const utcTime = (at: Date): string => at.toISOString().slice(11, 16);
 
 function describeActor(view: Provenanced): string {
-  if (view.actor === undefined) {
-    return `an actor outside this page (${view.item.assertedBy.slice(0, 8)})`;
-  }
-  return `${view.actor.displayName} (${view.actor.kind})`;
+  return describeActorAttribution(view.actor, view.item.assertedBy);
 }
 
 function provenanceLine(view: Provenanced): string {
-  const parts = [`by ${describeActor(view)}`];
-  if (view.item.humanConfirmed) {
-    parts.push('human-confirmed');
-  }
+  const parts = [`by ${describeActor(view)}`, confirmationMark(view.item.humanConfirmed)];
   if (view.item.loadBearing) {
     parts.push('load-bearing');
   }

@@ -26,6 +26,7 @@
     "db:provision-app-role": "node scripts/db-provision-app-role.mjs",
     "bootstrap:local": "node scripts/bootstrap-local.mjs",
     "waitlist:notify": "node scripts/waitlist-notify.mjs",
+    "waitlist:purge": "node scripts/waitlist-purge.mjs",
     "db:snapshot": "node scripts/db-snapshot.mjs",
     "db:version": "node scripts/db-version.mjs",
     "dogfood:report": "node scripts/dogfood-report.mjs",

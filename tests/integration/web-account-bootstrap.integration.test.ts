@@ -191,6 +191,8 @@ interface AccountCounts {
   readonly actors: number;
   readonly teams: number;
   readonly memberships: number;
+  readonly identities: number;
+  readonly workspaceMembers: number;
   readonly projects: number;
 }
 
@@ -201,6 +203,8 @@ async function accountCounts(admin: Client): Promise<AccountCounts> {
        (SELECT count(*)::int FROM actor) AS actors,
        (SELECT count(*)::int FROM team) AS teams,
        (SELECT count(*)::int FROM team_member) AS memberships,
+       (SELECT count(*)::int FROM identity) AS "identities",
+       (SELECT count(*)::int FROM workspace_member) AS "workspaceMembers",
        (SELECT count(*)::int FROM project) AS projects`,
   );
   const row = result.rows[0];
@@ -208,6 +212,36 @@ async function accountCounts(admin: Client): Promise<AccountCounts> {
     throw new Error('expected the account count query to return one row; received none');
   }
   return row;
+}
+
+interface OwnerMembershipRow {
+  readonly workspace_id: string;
+  readonly role: string;
+  readonly identity_id: string;
+  readonly subject: string;
+  readonly actor_identity_id: string | null;
+}
+
+async function ownerMemberships(
+  admin: Client,
+  workspaceId: string,
+): Promise<readonly OwnerMembershipRow[]> {
+  const result = await new PgDriver(admin).execute<OwnerMembershipRow>(
+    `SELECT workspace_member.workspace_id,
+            workspace_member.role::text AS role,
+            workspace_member.identity_id,
+            identity.subject,
+            actor.identity_id AS actor_identity_id
+       FROM workspace_member
+       JOIN identity ON identity.id = workspace_member.identity_id
+       LEFT JOIN actor
+         ON actor.workspace_id = workspace_member.workspace_id
+        AND actor.identity_id = workspace_member.identity_id
+      WHERE workspace_member.workspace_id = $1
+      ORDER BY workspace_member.identity_id`,
+    [workspaceId],
+  );
+  return result.rows;
 }
 
 const fixedIds = (values: readonly string[]): (() => string) => {
@@ -255,7 +289,10 @@ async function scopedEntityIds(
   });
 }
 
-async function installWriteFailure(admin: Client, table: 'team' | 'team_member'): Promise<void> {
+async function installWriteFailure(
+  admin: Client,
+  table: 'identity' | 'workspace_member' | 'team' | 'team_member',
+): Promise<void> {
   const functionName = `fail_${table}_write`;
   await admin.query(
     `CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -563,6 +600,55 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
         actors: 1,
         teams: 1,
         memberships: 1,
+        identities: 1,
+        workspaceMembers: 1,
+        projects: 0,
+      });
+    });
+  });
+
+  it('puts the self-serve creator in workspace_member as the owner, with a matching identity', async () => {
+    await withAccountSchema(async ({ admin, source }) => {
+      const store = await accountStore(source);
+
+      const created = await store.bootstrapSoloAccount({
+        subject: SUBJECT_A,
+        displayName: 'Ada Lovelace',
+      });
+
+      const rows = await ownerMemberships(admin, created.workspace.id);
+      expect(rows).toHaveLength(1);
+      const owner = rows[0] as OwnerMembershipRow;
+      expect(owner.role).toBe('owner');
+      expect(owner.subject).toBe(SUBJECT_A);
+      expect(owner.actor_identity_id).toBe(owner.identity_id);
+    });
+  });
+
+  it('gives two self-serve creators one owner row each, keyed on separate identities', async () => {
+    await withAccountSchema(async ({ admin, source }) => {
+      const store = await accountStore(source);
+
+      const first = await store.bootstrapSoloAccount({
+        subject: SUBJECT_A,
+        displayName: 'Ada Lovelace',
+      });
+      const second = await store.bootstrapSoloAccount({
+        subject: SUBJECT_B,
+        displayName: 'Grace Hopper',
+      });
+
+      expect(second.workspace.id).not.toBe(first.workspace.id);
+      const firstOwner = (await ownerMemberships(admin, first.workspace.id))[0];
+      const secondOwner = (await ownerMemberships(admin, second.workspace.id))[0];
+      expect(firstOwner?.identity_id).not.toBe(secondOwner?.identity_id);
+      expect(await accountCounts(admin)).toEqual({
+        workspaces: 2,
+        actors: 2,
+        teams: 2,
+        memberships: 2,
+        identities: 2,
+        workspaceMembers: 2,
         projects: 0,
       });
     });
@@ -591,6 +677,8 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
         actors: 1,
         teams: 1,
         memberships: 1,
+        identities: 1,
+        workspaceMembers: 1,
         projects: 0,
       });
     });
@@ -630,7 +718,7 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
     });
   });
 
-  it.each(['team', 'team_member'] as const)(
+  it.each(['identity', 'workspace_member', 'team', 'team_member'] as const)(
     'rolls back the entire account when the %s write fails',
     async (table) => {
       await withAccountSchema(async ({ admin, source }) => {
@@ -649,6 +737,8 @@ describe.skipIf(connectionString === undefined)('web account bootstrap against P
           actors: 0,
           teams: 0,
           memberships: 0,
+          identities: 0,
+          workspaceMembers: 0,
           projects: 0,
         });
       });

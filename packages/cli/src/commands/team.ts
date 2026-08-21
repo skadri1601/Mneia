@@ -1,6 +1,7 @@
 import type { Actor, ActorKind, Uuid } from '@mneia/core';
 import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
+import { actorNameFor, describeActorAttribution } from '../attribution.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import { httpTeamApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
@@ -83,7 +84,7 @@ export function orderRoster(actors: readonly Actor[]): readonly Actor[] {
 }
 
 export function describeActor(actor: Actor, shortIds: ReadonlyMap<Uuid, string>): string {
-  return `${actor.displayName} (${actor.kind}) [${shortActorId(actor, shortIds)}]`;
+  return `${describeActorAttribution(actor, actor.id)} [${shortActorId(actor, shortIds)}]`;
 }
 
 interface ReferenceMatch {
@@ -178,7 +179,7 @@ function rosterLine(
   if (actor.externalRef !== null && actor.externalRef.trim().length > 0) {
     marks.push(actor.externalRef.trim());
   }
-  return `  [${shortActorId(actor, shortIds)}]  ${actor.displayName.padEnd(nameWidth)}  ${marks.join(' · ')}`;
+  return `  [${shortActorId(actor, shortIds)}]  ${actorNameFor(actor.displayName).padEnd(nameWidth)}  ${marks.join(' · ')}`;
 }
 
 function renderEmpty(config: ProjectConfig): string {
@@ -198,7 +199,7 @@ function renderHuman(roster: Roster, config: ProjectConfig, limit: number): stri
   const ordered = orderRoster(roster.actors);
   const shortIds = shortActorIds(roster.actors);
   const nameWidth = ordered.reduce(
-    (widest, actor) => Math.max(widest, actor.displayName.length),
+    (widest, actor) => Math.max(widest, actorNameFor(actor.displayName).length),
     0,
   );
   const example = ordered.find((actor) => actor.id !== roster.viewerId) ?? ordered[0];

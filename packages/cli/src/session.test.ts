@@ -231,8 +231,9 @@ describe('bannerLines', () => {
       accent: (s) => `<a>${s}</a>`,
       bold: (s) => `<b>${s}</b>`,
       dim: (s) => `<d>${s}</d>`,
+      inverse: (s) => `<i>${s}</i>`,
     }).join('\n');
-    expect(painted.replace(/<\/?[abd]>/g, '')).toBe(bannerLines(CONTEXT, '0.2.0').join('\n'));
+    expect(painted.replace(/<\/?[abdi]>/g, '')).toBe(bannerLines(CONTEXT, '0.2.0').join('\n'));
   });
 });
 

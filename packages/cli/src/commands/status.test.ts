@@ -576,7 +576,7 @@ describe('mneia status', () => {
 
     const result = await run(commandWith(recordingApi(report([orphaned]))));
 
-    expect(result.out).toContain('by an unnamed actor (99999999) · open 7 days');
+    expect(result.out).toContain('by an unnamed actor (kind unknown, 99999999) · open 7 days');
     expect(result.out).not.toContain('undefined');
   });
 

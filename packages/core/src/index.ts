@@ -1,6 +1,7 @@
 export const VERSION = '0.8.0';
 
 export * from './api/index.js';
+export { sanitizeActorName, UNATTRIBUTED_ACTOR } from './domain/attribution.js';
 export { isStorableText, NULL_BYTE_ERROR } from './domain/text.js';
 export type {
   Actor,

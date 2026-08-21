@@ -301,7 +301,7 @@ describe('mneia log', () => {
     expect(result.out).toContain(
       'by Priya Raman (human) · human-confirmed · load-bearing · confidence 0.95',
     );
-    expect(result.out).toContain('by claude-code (agent) · confidence 0.72');
+    expect(result.out).toContain('by claude-code (agent) · not human-confirmed · confidence 0.72');
   });
 
   it('shows a superseded decision alongside what replaced it', async () => {
@@ -574,7 +574,8 @@ describe('mneia log --chain', () => {
 
     expect(occurrences(result.out, 'by claude-code (agent)')).toBe(1);
     expect(occurrences(result.out, 'by Priya Raman (human)')).toBe(2);
-    expect(occurrences(result.out, 'human-confirmed')).toBe(2);
+    expect(occurrences(result.out, '· human-confirmed')).toBe(2);
+    expect(occurrences(result.out, '· not human-confirmed')).toBe(1);
     expect(occurrences(result.out, 'confidence ')).toBe(3);
     expect(result.out).not.toContain('flagged:');
   });

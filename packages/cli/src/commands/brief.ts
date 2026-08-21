@@ -1,4 +1,4 @@
-import type { ItemKind, ItemStatus, ScoredItem, Slice } from '@mneia/core';
+import type { ActorKind, ItemKind, ItemStatus, ScoredItem, Slice } from '@mneia/core';
 import { callApi } from '../api.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import { httpBriefApi } from '../http-api.js';
@@ -97,6 +97,12 @@ function renderHuman(slice: Slice, requested: string): string {
   return `${lines.join('\n')}\n`;
 }
 
+interface BriefJsonActor {
+  readonly id: string;
+  readonly displayName: string | null;
+  readonly kind: ActorKind | null;
+}
+
 interface BriefJsonItem {
   readonly id: string;
   readonly kind: ItemKind;
@@ -107,6 +113,7 @@ interface BriefJsonItem {
   readonly humanConfirmed: boolean;
   readonly loadBearing: boolean;
   readonly assertedAt: string;
+  readonly assertedBy: BriefJsonActor;
   readonly score: number;
 }
 
@@ -122,6 +129,11 @@ function toJsonItem(scored: ScoredItem): BriefJsonItem {
     humanConfirmed: item.humanConfirmed,
     loadBearing: item.loadBearing,
     assertedAt: item.assertedAt.toISOString(),
+    assertedBy: {
+      id: item.assertedBy,
+      displayName: item.provenance?.actorDisplayName ?? null,
+      kind: item.provenance?.actorKind ?? null,
+    },
     score: scored.score,
   };
 }

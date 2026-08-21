@@ -1,5 +1,6 @@
 import type { ActorKind, ProjectSessionSummary, Uuid } from '@mneia/core';
 import { callApi } from '../api.js';
+import { describeActorAttribution } from '../attribution.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import { httpSessionsApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
@@ -124,7 +125,7 @@ function describeYield(summary: ProjectSessionSummary): string {
 }
 
 function sessionBlock(summary: ProjectSessionSummary, viewerId: Uuid, windowWidth: number): string {
-  const marks: string[] = [`${summary.actor.displayName} (${summary.actor.kind})`];
+  const marks: string[] = [describeActorAttribution(summary.actor, summary.actor.id)];
   if (summary.actor.id === viewerId) {
     marks.push('you');
   }

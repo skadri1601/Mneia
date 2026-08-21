@@ -1,3 +1,4 @@
+import { sanitizeActorName, UNATTRIBUTED_ACTOR } from '../domain/attribution.js';
 import type { ContextItem, Uuid } from '../domain/types.js';
 import type { ItemKind } from '../store/schema.js';
 import type { PackedSlice } from './types.js';
@@ -20,11 +21,9 @@ const META_SEPARATOR = ' · ';
 const DISPUTED_MARKER = '**DISPUTED — unresolved, do not rely on this**';
 const LOAD_BEARING_MARKER = '**LOAD-BEARING**';
 const CITATION_HINT = 'Cite an item as `#id` when you use it.';
-const UNATTRIBUTED_ACTOR = 'unattributed';
 
 const LINE_BREAKS = /\r\n|\r/g;
 const WHITESPACE_RUN = /\s+/g;
-const META_FIELD_MARKERS = /[[\]·]/g;
 const HYPHENS = /-/g;
 const ORDERED_LIST_START = /^(\d{1,9})([.)])/;
 const BLOCK_MARKER_START = /^[#>*+=|~`_<-]/;
@@ -118,11 +117,6 @@ function markersFor(item: ContextItem): readonly string[] {
   return markers;
 }
 
-const actorNameFor = (displayName: string): string => {
-  const cleaned = inlineText(displayName.replace(META_FIELD_MARKERS, ' '));
-  return cleaned === '' ? UNATTRIBUTED_ACTOR : cleaned;
-};
-
 function attributionFor(item: ContextItem): readonly string[] {
   const { provenance } = item;
 
@@ -133,14 +127,14 @@ function attributionFor(item: ContextItem): readonly string[] {
   if (provenance.actorKind === 'human') {
     return [
       provenance.actorKind,
-      actorNameFor(provenance.actorDisplayName),
+      sanitizeActorName(provenance.actorDisplayName),
       item.humanConfirmed ? 'confirmed' : 'asserted',
     ];
   }
 
   return [
     provenance.actorKind,
-    actorNameFor(provenance.actorDisplayName),
+    sanitizeActorName(provenance.actorDisplayName),
     item.humanConfirmed ? 'human-confirmed' : 'unconfirmed',
   ];
 }
