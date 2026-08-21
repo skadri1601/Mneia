@@ -321,8 +321,13 @@ export {
 } from './trajectory/claude-desktop.js';
 export { createCodexReader, parseCodexRollout } from './trajectory/codex.js';
 export { composerFolders, createCursorReader } from './trajectory/cursor.js';
-export type { DiscoveredTrajectory } from './trajectory/discover.js';
-export { createReaders, discoverTrajectories, readTrajectory } from './trajectory/discover.js';
+export type { DiscoveredTrajectory, TrajectoryDiscovery } from './trajectory/discover.js';
+export {
+  createReaders,
+  discoverTrajectories,
+  discoverTrajectorySessions,
+  readTrajectory,
+} from './trajectory/discover.js';
 export { readTrajectoryFile } from './trajectory/jsonl.js';
 export type { ReducedTrajectory, ReduceOptions } from './trajectory/reduce.js';
 export {
@@ -342,6 +347,8 @@ export type {
   TrajectorySource,
   TrajectorySummary,
   TrajectoryTurn,
+  TrajectoryUnavailable,
+  TrajectoryUnavailableReporter,
   TurnKind,
   TurnRole,
   TurnsSinceResult,
