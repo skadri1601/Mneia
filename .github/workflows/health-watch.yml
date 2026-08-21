@@ -1,0 +1,108 @@
+name: health-watch
+
+# Asks production what came up, on a clock rather than only when somebody deploys.
+#
+# billing read not_configured for days after five people were invited to use the product, through
+# at least three deploys, and nobody saw it (MNE-141). The state was on /api/health the whole time.
+# Nothing read the endpoint on a schedule, status still said ok, and the one automated reader --
+# deploy-web's verify step -- checked a hand-kept list of field names that billing had never been
+# added to.
+#
+# So the split is deliberate, and the two halves answer different questions:
+#
+#   deploy-web  "may this build ship?"     required capabilities fail it, advisory ones warn
+#   health-watch "is production actually working?"  ANY capability short fails it
+#
+# Failing here blocks nothing. It costs a curl, it turns a line buried in a deploy log into a red
+# run that reappears every six hours until somebody fixes or deliberately retires the capability,
+# and it cannot be answered by disabling the check -- the deploy does not depend on it.
+
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: health-watch
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    name: ask production what came up
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read the health report
+        env:
+          HEALTH_URL: ${{ vars.MNEIA_APP_ORIGIN || 'https://app.mneia.dev' }}/api/health
+        run: |
+          if ! curl -sS --max-time 20 -o /tmp/health.json "${HEALTH_URL}"; then
+            echo "::error::${HEALTH_URL} did not answer at all. Either production is down or the origin is wrong; set the MNEIA_APP_ORIGIN repository variable if it moved."
+            exit 1
+          fi
+
+          cat /tmp/health.json
+          echo
+
+          reader="${GITHUB_WORKSPACE}/scripts/read-health-field.mjs"
+
+          read_field() {
+            node "${reader}" "$1" < /tmp/health.json 2>/dev/null || echo "absent"
+          }
+
+          status=$(read_field status)
+          if [ "${status}" = "absent" ]; then
+            echo "::error::${HEALTH_URL} answered with something that is not a health report. Refusing to call production healthy on an unreadable body:"
+            head -c 500 /tmp/health.json
+            exit 1
+          fi
+
+          failing=$(read_field capabilities.failing)
+          unconfigured=$(read_field capabilities.unconfigured)
+
+          if [ "${failing}" = "absent" ] || [ "${unconfigured}" = "absent" ]; then
+            echo "::warning::the build running at ${HEALTH_URL} predates the capability manifest, so this run can only report status=${status} and nothing about what came up. Deploy the build that reports capabilities.failing and capabilities.unconfigured; until then this watch is decorative."
+            exit 0
+          fi
+
+          detail=$(read_field detail)
+          if [ "${detail}" = "absent" ]; then
+            detail="the report gave no detail."
+          fi
+
+          short="${failing}"
+          if [ -n "${unconfigured}" ]; then
+            if [ -n "${short}" ]; then
+              short="${short},${unconfigured}"
+            else
+              short="${unconfigured}"
+            fi
+          fi
+
+          if [ -z "${short}" ]; then
+            echo "::notice::every capability came up: $(read_field capabilities.ready)"
+            exit 0
+          fi
+
+          echo "::error::production is missing a capability: ${short//,/, }. The report says: ${detail}"
+          {
+            echo "### Production is missing a capability"
+            echo
+            echo "\`${HEALTH_URL}\` reports \`status: ${status}\`. Note that status answers whether the app can serve requests, not whether every capability came up - the table below is the one that answers that."
+            echo
+            echo "| Capability | Tier |"
+            echo "| --- | --- |"
+            for name in ${failing//,/ }; do
+              echo "| \`${name}\` | required |"
+            done
+            for name in ${unconfigured//,/ }; do
+              echo "| \`${name}\` | advisory |"
+            done
+            echo
+            echo "${detail}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit 1
