@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LOAD_BEARING_SIGNALS } from '../extract/load-bearing.js';
 import { CHECKPOINT_TRIGGERS, CONFLICT_RESOLUTIONS, ITEM_KINDS } from '../store/schema.js';
 import { redactEvent } from './redact.js';
 import type {
@@ -82,6 +83,17 @@ const EVENT_SCHEMAS: Record<TelemetryEventName, z.ZodType> = {
     ...context,
     checkpointId: id,
     itemId: id,
+  }),
+  'checkpoint.load_bearing_overridden': z.strictObject({
+    name: z.literal('checkpoint.load_bearing_overridden'),
+    ...context,
+    checkpointId: id,
+    itemId: id,
+    kind: z.enum(ITEM_KINDS),
+    suggested: z.boolean(),
+    chosen: z.boolean(),
+    signal: z.enum(LOAD_BEARING_SIGNALS),
+    confidence: z.number().min(0).max(1),
   }),
   'conflict.detected': z.strictObject({
     name: z.literal('conflict.detected'),

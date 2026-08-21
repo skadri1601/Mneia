@@ -1,0 +1,84 @@
+name: Latency
+
+on:
+  pull_request:
+    paths:
+      - 'packages/core/src/rehydrate/**'
+      - 'packages/core/src/store/adapter/**'
+      - 'packages/core/src/store/scope.ts'
+      - 'packages/core/src/store/schema.ts'
+      - 'packages/core/src/store/migrations/**'
+      - 'packages/core/src/domain/**'
+      - 'scripts/rehydrate-budget.mjs'
+      - '.github/workflows/latency.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/core/src/rehydrate/**'
+      - 'packages/core/src/store/adapter/**'
+      - 'packages/core/src/store/scope.ts'
+      - 'packages/core/src/store/schema.ts'
+      - 'packages/core/src/store/migrations/**'
+      - 'packages/core/src/domain/**'
+      - 'scripts/rehydrate-budget.mjs'
+      - '.github/workflows/latency.yml'
+  workflow_dispatch:
+    inputs:
+      items:
+        description: 'corpus size; the default is the six-month figure the gate ships with'
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  budget:
+    name: rehydrate p95 budget
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mneia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/mneia
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: build
+        run: pnpm build
+
+      - name: migrate the throwaway database
+        run: pnpm db:migrate
+
+      - name: where the corpus size comes from
+        run: pnpm latency:budget --explain
+
+      - name: mneia_rehydrate p95 stays under 300ms
+        run: pnpm latency:budget ${{ inputs.items && format('--items={0}', inputs.items) || '' }}

@@ -30,6 +30,7 @@
     "db:version": "node scripts/db-version.mjs",
     "dogfood:report": "node scripts/dogfood-report.mjs",
     "latency:rehydrate": "node scripts/rehydrate-latency.mjs",
+    "latency:budget": "node scripts/rehydrate-budget.mjs",
     "funnel:report": "node scripts/funnel-report.mjs",
     "changeset": "changeset",
     "version:packages": "changeset version && node scripts/sync-version.mjs",

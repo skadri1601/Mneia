@@ -46,6 +46,7 @@ export type {
   ItemReferencedEvent,
   ItemRejectedEvent,
   ItemSupersededEvent,
+  LoadBearingOverriddenEvent,
   SliceShownEvent,
   TelemetryContext,
   TelemetryEmitter,

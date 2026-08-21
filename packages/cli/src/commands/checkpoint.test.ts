@@ -268,6 +268,65 @@ describe('reviewCandidates', () => {
     expect(prompter.edits).toEqual(['  title']);
   });
 
+  it('overrides load-bearing in one keystroke from the confirm loop', async () => {
+    const prompter = new ScriptedPrompter(['l', 'y']);
+    const reviewed = await reviewCandidates([candidate({ loadBearing: true })], prompter, sink.io);
+
+    expect(reviewed[0]?.loadBearing).toBe(false);
+    expect(reviewed[0]?.decision).toBe('edited');
+    expect(reviewed[0]?.fieldsChanged).toEqual(['loadBearing']);
+    expect(sink.out.join('')).toContain('load-bearing is now no');
+  });
+
+  it('promotes in one keystroke too, and says what was suggested', async () => {
+    const prompter = new ScriptedPrompter(['l', 'y']);
+    const reviewed = await reviewCandidates(
+      [
+        candidate({
+          loadBearing: false,
+          supersedes: {
+            id: EXISTING_ID,
+            title: 'Use Adyen',
+            humanConfirmed: false,
+            loadBearing: false,
+          },
+        }),
+      ],
+      prompter,
+      sink.io,
+    );
+
+    expect(reviewed[0]?.loadBearing).toBe(true);
+    expect(reviewed[0]?.fieldsChanged).toEqual(['loadBearing']);
+    expect(sink.out.join('')).toContain('the extraction suggested no');
+  });
+
+  it('treats a toggle and a toggle back as no override at all', async () => {
+    const prompter = new ScriptedPrompter(['l', 'l', 'y']);
+    const reviewed = await reviewCandidates([candidate({ loadBearing: true })], prompter, sink.io);
+
+    expect(reviewed[0]?.decision).toBe('confirmed');
+    expect(reviewed[0]?.fieldsChanged).toEqual([]);
+  });
+
+  it('shows the signal behind the suggestion, so the override is informed', async () => {
+    const prompter = new ScriptedPrompter(['?', 'y']);
+    await reviewCandidates(
+      [
+        candidate({
+          kind: 'constraint',
+          title: 'Rehydration p95 stays under 300ms',
+          loadBearing: true,
+        }),
+      ],
+      prompter,
+      sink.io,
+    );
+
+    expect(sink.out.join('')).toContain('threshold');
+    expect(sink.out.join('')).toContain('Press l');
+  });
+
   it('records a load-bearing toggle as an edit', async () => {
     const prompter = new ScriptedPrompter(['e', 'l', 'd']);
     const reviewed = await reviewCandidates([candidate({ loadBearing: true })], prompter, sink.io);
@@ -352,6 +411,169 @@ describe('emitReviewEvents', () => {
       expect(event.projectId).toBe(PROJECT_ID);
       expect(event.actorId).toBe(ACTOR_ID);
     }
+  });
+
+  it('emits exactly one override event in either direction, and none when the human agrees', async () => {
+    const events: TelemetryEvent[] = [];
+    const telemetry = {
+      emit: (event: TelemetryEvent) => {
+        events.push(event);
+        return Promise.resolve();
+      },
+      flush: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    };
+
+    const candidates = [
+      candidate({
+        index: 0,
+        kind: 'constraint',
+        title: 'Rehydration p95 stays under 300ms',
+        loadBearing: true,
+      }),
+      candidate({ index: 1, kind: 'fact', title: 'The dashboard lives under /projects' }),
+      candidate({ index: 2, loadBearing: true }),
+    ];
+
+    const reviewed: ReviewedCandidate[] = [
+      {
+        candidate: candidates[0] as CheckpointCandidate,
+        decision: 'edited',
+        title: 'Rehydration p95 stays under 300ms',
+        body: null,
+        loadBearing: false,
+        fieldsChanged: ['loadBearing'],
+      },
+      {
+        candidate: candidates[1] as CheckpointCandidate,
+        decision: 'edited',
+        title: 'The dashboard lives under /projects',
+        body: null,
+        loadBearing: true,
+        fieldsChanged: ['loadBearing'],
+      },
+      {
+        candidate: candidates[2] as CheckpointCandidate,
+        decision: 'confirmed',
+        title: 'Use Stripe for billing',
+        body: null,
+        loadBearing: true,
+        fieldsChanged: [],
+      },
+    ];
+
+    await emitReviewEvents(telemetry, {
+      proposal: proposalOf(candidates),
+      receipt: receiptFor(candidates),
+      reviewed,
+      occurredAt: new Date('2026-08-03T00:00:00.000Z'),
+    });
+
+    const overrides = events.filter((event) => event.name === 'checkpoint.load_bearing_overridden');
+
+    expect(overrides).toHaveLength(2);
+    expect(
+      overrides.map((event) =>
+        event.name === 'checkpoint.load_bearing_overridden'
+          ? [event.suggested, event.chosen, event.signal, event.kind]
+          : null,
+      ),
+    ).toEqual([
+      [true, false, 'threshold', 'constraint'],
+      [false, true, 'none', 'fact'],
+    ]);
+  });
+
+  it('carries no title, body, or rationale in an override event', async () => {
+    const events: TelemetryEvent[] = [];
+    const telemetry = {
+      emit: (event: TelemetryEvent) => {
+        events.push(event);
+        return Promise.resolve();
+      },
+      flush: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    };
+
+    const candidates = [
+      candidate({
+        index: 0,
+        kind: 'constraint',
+        title: 'Never log user content',
+        loadBearing: true,
+      }),
+    ];
+
+    await emitReviewEvents(telemetry, {
+      proposal: proposalOf(candidates),
+      receipt: receiptFor(candidates),
+      reviewed: [
+        {
+          candidate: candidates[0] as CheckpointCandidate,
+          decision: 'edited',
+          title: 'Never log user content',
+          body: 'Because §17 events carry ids only.',
+          loadBearing: false,
+          fieldsChanged: ['loadBearing'],
+        },
+      ],
+      occurredAt: new Date('2026-08-03T00:00:00.000Z'),
+    });
+
+    const override = events.find((event) => event.name === 'checkpoint.load_bearing_overridden');
+
+    expect(override).toBeDefined();
+    expect(Object.keys(override ?? {}).sort()).toEqual(
+      [
+        'actorId',
+        'checkpointId',
+        'chosen',
+        'confidence',
+        'itemId',
+        'kind',
+        'name',
+        'occurredAt',
+        'projectId',
+        'sessionId',
+        'signal',
+        'suggested',
+        'workspaceId',
+      ].sort(),
+    );
+    expect(JSON.stringify(override)).not.toContain('Never log user content');
+    expect(JSON.stringify(override)).not.toContain('§17 events carry ids only');
+  });
+
+  it('does not emit an override for a rejected item, which decided nothing about the flag', async () => {
+    const events: TelemetryEvent[] = [];
+    const telemetry = {
+      emit: (event: TelemetryEvent) => {
+        events.push(event);
+        return Promise.resolve();
+      },
+      flush: () => Promise.resolve(),
+      close: () => Promise.resolve(),
+    };
+
+    const candidates = [candidate({ index: 0, loadBearing: true })];
+
+    await emitReviewEvents(telemetry, {
+      proposal: proposalOf(candidates),
+      receipt: receiptFor(candidates),
+      reviewed: [
+        {
+          candidate: candidates[0] as CheckpointCandidate,
+          decision: 'rejected',
+          title: 'Use Stripe for billing',
+          body: null,
+          loadBearing: false,
+          fieldsChanged: [],
+        },
+      ],
+      occurredAt: new Date('2026-08-03T00:00:00.000Z'),
+    });
+
+    expect(events.map((event) => event.name)).toEqual(['checkpoint.item_rejected']);
   });
 
   it('does not fail the checkpoint when a sink throws', async () => {

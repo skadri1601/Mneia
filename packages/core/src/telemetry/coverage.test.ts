@@ -58,6 +58,10 @@ const EXEMPT_CALLS: Readonly<Record<string, string>> = {
     'hosted client, not the write path — apps/web/src/server/api/handoff.ts emits handoff.received when the API serves this call, and emitting here as well would double-count the arbitration dataset',
 };
 
+const LOAD_BEARING_OVERRIDE_EVENT = 'checkpoint.load_bearing_overridden';
+
+const LOAD_BEARING_OVERRIDE_MARKER = 'toggle load-bearing';
+
 const exempted = (path: string, method: string): boolean =>
   Object.hasOwn(EXEMPT_CALLS, `${path}::${method}`);
 
@@ -150,6 +154,22 @@ describe('§17 coverage — every write path emits its event', () => {
       expect(path).toMatch(/\.tsx?$/);
       expect(Object.keys(WRITES)).toContain(method);
     }
+  });
+
+  it('requires every surface that offers a load-bearing override to emit the override event', async () => {
+    const files = await allSurfaceFiles();
+    const offering = files.filter((file) => file.source.includes(LOAD_BEARING_OVERRIDE_MARKER));
+
+    expect(offering.length).toBeGreaterThan(0);
+    expect(
+      offering
+        .filter((file) => !file.source.includes(`'${LOAD_BEARING_OVERRIDE_EVENT}'`))
+        .map((file) => relative('.', file.path)),
+    ).toEqual([]);
+  });
+
+  it('keeps the load-bearing override event in the §17 spine it claims to belong to', () => {
+    expect(TELEMETRY_EVENT_NAMES).toContain(LOAD_BEARING_OVERRIDE_EVENT);
   });
 
   it('keeps at least one instrumented write path, so the scan cannot pass by finding nothing', async () => {

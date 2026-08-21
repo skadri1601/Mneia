@@ -169,11 +169,12 @@ describe('parseExtractionOutput', () => {
 });
 
 describe('applyPrecisionFilter', () => {
-  it('keeps a substantive candidate untouched', () => {
-    const item = candidate({ title: 'Use Postgres for the store rather than adding Redis' });
+  it('keeps a substantive candidate untouched when no load-bearing signal fires', () => {
+    const item = candidate({ title: 'Embeddings are written one row per model identity' });
     const result = applyPrecisionFilter([item]);
 
     expect(result.kept).toEqual([item]);
+    expect(result.kept[0]).toBe(item);
     expect(result.rejected).toHaveLength(0);
   });
 
@@ -253,7 +254,8 @@ describe('applyPrecisionFilter', () => {
 
     const result = applyPrecisionFilter([first, second]);
 
-    expect(result.kept).toEqual([first]);
+    expect(result.kept).toHaveLength(1);
+    expect(result.kept[0]?.title).toBe(first.title);
     expect(result.rejected).toHaveLength(1);
     expect(result.rejected[0]?.candidate).toBe(second);
     expect(result.rejected[0]?.reason).toContain('duplicates');
@@ -298,6 +300,41 @@ describe('applyPrecisionFilter', () => {
 
     expect(result.kept).toHaveLength(2);
     expect(result.rejected).toHaveLength(0);
+  });
+
+  it('suggests load_bearing on a kept candidate the extraction left false', () => {
+    const item = candidate({
+      kind: 'constraint',
+      title: 'Rehydration p95 must stay under 300ms',
+      loadBearing: false,
+    });
+
+    const result = applyPrecisionFilter([item]);
+
+    expect(result.kept[0]?.loadBearing).toBe(true);
+    expect(item.loadBearing).toBe(false);
+  });
+
+  it('never demotes a candidate the extraction marked load-bearing', () => {
+    const item = candidate({
+      kind: 'fact',
+      title: 'The billing dashboard lives under /projects',
+      loadBearing: true,
+    });
+
+    expect(applyPrecisionFilter([item]).kept[0]?.loadBearing).toBe(true);
+  });
+
+  it("can be told to leave the extraction's own answer alone", () => {
+    const item = candidate({
+      kind: 'constraint',
+      title: 'Rehydration p95 must stay under 300ms',
+      loadBearing: false,
+    });
+
+    expect(applyPrecisionFilter([item], { suggestLoadBearing: false }).kept[0]?.loadBearing).toBe(
+      false,
+    );
   });
 
   it('refuses nonsensical options rather than silently correcting them', () => {
@@ -367,6 +404,16 @@ describe('buildExtractionPrompt', () => {
     expect(EXTRACTION_SYSTEM_PROMPT).toContain('"rationale"');
     expect(EXTRACTION_SYSTEM_PROMPT).toContain('supersedes');
     expect(EXTRACTION_SYSTEM_PROMPT).toContain('Precision beats recall');
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('"loadBearing"');
+    for (const cue of [
+      'prohibition or requirement',
+      'security or privacy rule',
+      'irreversible',
+      'numeric budget or limit',
+      'rejected alternative',
+    ]) {
+      expect(EXTRACTION_SYSTEM_PROMPT).toContain(cue);
+    }
     for (const kind of ['decision', 'constraint', 'open_question', 'fact', 'artifact_ref']) {
       expect(EXTRACTION_SYSTEM_PROMPT).toContain(`"${kind}"`);
     }

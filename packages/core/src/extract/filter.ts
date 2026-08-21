@@ -1,3 +1,4 @@
+import { suggestLoadBearing } from './load-bearing.js';
 import type { ExtractionCandidate } from './schema.js';
 import { ExtractionError } from './schema.js';
 import { jaccard, normalizeText, tokenize } from './similarity.js';
@@ -11,6 +12,7 @@ export interface PrecisionFilterOptions {
   readonly confidenceFloor?: number | undefined;
   readonly maxCandidates?: number | undefined;
   readonly requireDecisionRationale?: boolean | undefined;
+  readonly suggestLoadBearing?: boolean | undefined;
 }
 
 export interface RejectedCandidate {
@@ -118,6 +120,14 @@ function rankedOverflow(
   return new Set(byConfidence.slice(maxCandidates).map((survivor) => survivor.position));
 }
 
+function suggested(candidate: ExtractionCandidate): ExtractionCandidate {
+  const suggestion = suggestLoadBearing(candidate);
+  if (suggestion.suggested === candidate.loadBearing) {
+    return candidate;
+  }
+  return { ...candidate, loadBearing: suggestion.suggested };
+}
+
 export function applyPrecisionFilter(
   candidates: readonly ExtractionCandidate[],
   options: PrecisionFilterOptions = {},
@@ -125,6 +135,7 @@ export function applyPrecisionFilter(
   const confidenceFloor = options.confidenceFloor ?? DEFAULT_CONFIDENCE_FLOOR;
   const maxCandidates = options.maxCandidates ?? DEFAULT_MAX_CANDIDATES;
   const requireDecisionRationale = options.requireDecisionRationale ?? true;
+  const withSuggestion = options.suggestLoadBearing ?? true;
   assertOptions(confidenceFloor, maxCandidates);
 
   const rejected: RejectedCandidate[] = [];
@@ -159,7 +170,7 @@ export function applyPrecisionFilter(
       });
       continue;
     }
-    kept.push(survivor.candidate);
+    kept.push(withSuggestion ? suggested(survivor.candidate) : survivor.candidate);
   }
 
   return { kept, rejected };

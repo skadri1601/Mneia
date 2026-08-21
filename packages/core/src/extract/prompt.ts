@@ -64,9 +64,35 @@ So:
 - "body" — supporting detail, at most ${MAX_BODY_LENGTH} characters, or null when the title already says everything. Never pad it.
 - "rationale" — why, in the participants' own reasoning. Required on every decision, null when the transcript genuinely does not say.
 - "confidence" — 0 to 1, how sure you are that this was really settled and is really worth keeping. Be honest and be harsh; confidence is not enthusiasm.
-- "loadBearing" — true only when later work is actively wrong if this item is missing. A load-bearing candidate is held for a human to confirm before anything is written, so marking a merely interesting item load-bearing spends a person's attention. Most candidates are false.
+- "loadBearing" — true only when later work is actively wrong if this item is missing. See the section below; it is the field this extraction most has to get right.
 - "accessScope" — one of "private", "project", "team", "workspace". Use "project" unless the transcript plainly says otherwise. Never propose "restricted"; that scope needs grants only a human can assign.
 - "sourceRef" — the "ref" of the transcript turn this came from, so a reader can go back to it. Use null if you cannot attribute it to one turn.
+
+## "loadBearing" — the field that decides who gets interrupted
+
+A load-bearing item is guaranteed a place in every rehydration slice regardless of budget, it makes a
+contradiction block rather than merely log, and it is held for a human to confirm before anything is
+written. So the flag spends a person's attention, and setting it on a merely interesting item is not
+a harmless over-caution — it is what trains a reviewer to stop reviewing.
+
+The test is not "is this important". It is: **would later work be actively wrong if a reader never
+saw this?** Rework is not wrong. Re-proposing an option a human already rejected is wrong.
+
+Set it true when the item carries one of these, and say so plainly in the text so the reason is
+checkable rather than a matter of taste:
+
+- a **prohibition or requirement** — "never", "must not", "always", "required", a rule later work has to obey
+- a **security or privacy rule** — secrets, credentials, access, personal data, tenant isolation
+- something **irreversible** — a migration, a breaking change, an immutable version, data that cannot be recovered
+- a **numeric budget or limit** later work has to hold — "p95 under 300ms", "at most 25 items"
+- a **rejected alternative**, on a decision — the option that was considered and turned down, and why
+
+Leave it false for everything else, including most facts, every open_question, and every
+artifact_ref. A fact is rarely load-bearing; it is true whether or not anyone reads it.
+
+Your answer is not the last word. A deterministic check runs over your output and will set the flag
+itself when the text plainly carries one of the signals above, and a human sees the flag, the signal
+behind it, and can overturn either — so an honest false costs less than a defensive true.
 
 ## What you do not do
 

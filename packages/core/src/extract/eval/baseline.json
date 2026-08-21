@@ -1,0 +1,61 @@
+{
+  "ticket": "MNE-113",
+  "classifier": "lexical",
+  "total": 28,
+  "exactMatches": 21,
+  "contradiction": {
+    "truePositives": 10,
+    "falsePositives": 4,
+    "falseNegatives": 3,
+    "precision": 0.7143,
+    "recall": 0.7692,
+    "f1": 0.7407
+  },
+  "confusion": {
+    "novel": {
+      "novel": 8,
+      "duplicate": 0,
+      "contradiction": 4
+    },
+    "duplicate": {
+      "novel": 0,
+      "duplicate": 3,
+      "contradiction": 0
+    },
+    "contradiction": {
+      "novel": 2,
+      "duplicate": 1,
+      "contradiction": 10
+    }
+  },
+  "verdicts": {
+    "locality-promise-revoked": "contradiction",
+    "rule-1-auto-supersede-permitted": "contradiction",
+    "rehydrate-budget-raised": "contradiction",
+    "individual-tier-charged": "contradiction",
+    "npm-publishing-automated": "novel",
+    "worktree-creation-permitted": "contradiction",
+    "schema-version-moved": "contradiction",
+    "store-engine-swapped": "novel",
+    "telemetry-content-permitted-with-new-body": "contradiction",
+    "waitlist-retention-extended": "contradiction",
+    "migration-permission-delegated": "contradiction",
+    "rls-posture-flipped": "duplicate",
+    "nearest-match-across-a-crowded-store": "contradiction",
+    "worktree-guard-restates-the-prohibition": "novel",
+    "team-tier-is-not-the-individual-tier": "contradiction",
+    "two-sessions-two-costs": "contradiction",
+    "workspace-id-refined-with-rls-detail": "novel",
+    "p95-and-p99-are-different-aspects": "novel",
+    "revoked-claim-quoted-not-asserted": "novel",
+    "conflict-escalation-restates-the-rule": "contradiction",
+    "send-guard-described-from-the-other-side": "contradiction",
+    "secrets-and-user-content-are-different-rules": "novel",
+    "same-text-different-kind": "novel",
+    "concurrency-bound-given-a-number": "novel",
+    "rationale-recorded-at-last": "novel",
+    "unchanged-decision-recheckpointed": "duplicate",
+    "unchanged-decision-reworded": "duplicate",
+    "unchanged-constraint-with-identical-body": "duplicate"
+  }
+}

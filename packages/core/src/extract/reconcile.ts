@@ -210,14 +210,31 @@ function judge(
 
   const stanceFlipped = stance !== nearest.indexed.stance;
   const valuesDiffer = !sameNumbers(numbers, nearest.indexed.numbers);
+  const valuesConflict = valuesDiffer && numbers.length > 0 && nearest.indexed.numbers.length > 0;
   const nearDuplicate = nearest.similarity >= thresholds.duplicateSimilarity;
-  const bodyChanged = bodyMateriallyDiffers(candidate.body, nearest.indexed.item.body);
 
-  if (bodyChanged) {
+  const signal: ContradictionSignal | null = stanceFlipped
+    ? 'stance_flip'
+    : nearDuplicate && valuesConflict
+      ? 'value_conflict'
+      : null;
+
+  if (signal !== null) {
+    const evidence = evidenceFor(nearest, stance, numbers, tokens, signal);
+    return {
+      index: candidateIndex,
+      candidate,
+      verdict: 'contradiction',
+      evidence,
+      reason: contradictionReason(evidence),
+    };
+  }
+
+  if (bodyMateriallyDiffers(candidate.body, nearest.indexed.item.body)) {
     return asNovel(candidateIndex, candidate);
   }
 
-  if (nearDuplicate && !stanceFlipped && !valuesDiffer) {
+  if (nearDuplicate && !valuesDiffer) {
     const evidence = evidenceFor(nearest, stance, numbers, tokens, null);
     return {
       index: candidateIndex,
@@ -228,24 +245,7 @@ function judge(
     };
   }
 
-  const signal = stanceFlipped
-    ? 'stance_flip'
-    : nearDuplicate && valuesDiffer
-      ? 'value_conflict'
-      : null;
-
-  if (signal === null) {
-    return asNovel(candidateIndex, candidate);
-  }
-
-  const evidence = evidenceFor(nearest, stance, numbers, tokens, signal);
-  return {
-    index: candidateIndex,
-    candidate,
-    verdict: 'contradiction',
-    evidence,
-    reason: contradictionReason(evidence),
-  };
+  return asNovel(candidateIndex, candidate);
 }
 
 export function reconcileCandidates(request: ReconcileRequest): ReconcileResult {

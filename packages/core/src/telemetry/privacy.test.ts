@@ -2,6 +2,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { LOAD_BEARING_SIGNALS } from '../extract/load-bearing.js';
 import { createTelemetryEmitter, TELEMETRY_ENV_VAR } from './emitter.js';
 import { isRedactedKey } from './redact.js';
 import { createJsonlSink } from './sinks/jsonl.js';
@@ -79,6 +80,17 @@ const FIXTURES: Record<TelemetryEventName, TelemetryEvent> = {
     ...context,
     checkpointId: 'cp-1',
     itemId: 'item-3',
+  },
+  'checkpoint.load_bearing_overridden': {
+    name: 'checkpoint.load_bearing_overridden',
+    ...context,
+    checkpointId: 'cp-1',
+    itemId: 'item-1',
+    kind: 'constraint',
+    suggested: true,
+    chosen: false,
+    signal: 'threshold',
+    confidence: 0.61,
   },
   'conflict.detected': {
     name: 'conflict.detected',
@@ -322,5 +334,58 @@ describe('extraction coverage on checkpoint.item_extracted', () => {
   it('is named so redaction does not strip it, which a "reason" field would be', () => {
     expect(isRedactedKey('incompleteCode')).toBe(false);
     expect(isRedactedKey('incompleteReason')).toBe(true);
+  });
+});
+
+describe('MNE-114: the load-bearing override carries the decision, never the item', () => {
+  it('carries only the flags, a bounded signal, and ids', async () => {
+    const sink = createMemorySink();
+    const emitter = createTelemetryEmitter({ sinks: [sink], env: {} });
+
+    await emitter.emit(FIXTURES['checkpoint.load_bearing_overridden']);
+
+    const [event] = sink.events as readonly Record<string, unknown>[];
+
+    expect(event).toBeDefined();
+    expect(event?.suggested).toBe(true);
+    expect(event?.chosen).toBe(false);
+    expect(LOAD_BEARING_SIGNALS).toContain(event?.signal);
+    expect(Object.keys(event ?? {}).sort()).toEqual(
+      [
+        'actorId',
+        'checkpointId',
+        'chosen',
+        'confidence',
+        'itemId',
+        'kind',
+        'name',
+        'occurredAt',
+        'projectId',
+        'sessionId',
+        'signal',
+        'suggested',
+        'workspaceId',
+      ].sort(),
+    );
+  });
+
+  it('names its fields so redaction keeps them, which "reason" or "title" would not be', () => {
+    expect(isRedactedKey('signal')).toBe(false);
+    expect(isRedactedKey('suggested')).toBe(false);
+    expect(isRedactedKey('chosen')).toBe(false);
+    expect(isRedactedKey('overrideReason')).toBe(true);
+  });
+
+  it('refuses a signal outside the bounded set, so it cannot become a free-text channel', () => {
+    const sink = createMemorySink();
+    const emitter = createTelemetryEmitter({ sinks: [sink], env: {} });
+
+    expect(() =>
+      emitter.emit({
+        ...FIXTURES['checkpoint.load_bearing_overridden'],
+        signal: 'because the founder said so',
+      } as unknown as TelemetryEvent),
+    ).toThrow(/signal/);
+    expect(sink.events).toHaveLength(0);
   });
 });

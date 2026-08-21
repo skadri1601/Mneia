@@ -39,6 +39,19 @@ export {
   DEFAULT_CONFIDENCE_FLOOR,
   DEFAULT_MAX_CANDIDATES,
 } from './extract/filter.js';
+export type {
+  DeterministicLoadBearingSignal,
+  LoadBearingInput,
+  LoadBearingSignal,
+  LoadBearingSuggestion,
+} from './extract/load-bearing.js';
+export {
+  detectLoadBearingSignal,
+  explainLoadBearingSignal,
+  LOAD_BEARING_SCAN_LIMIT,
+  LOAD_BEARING_SIGNALS,
+  suggestLoadBearing,
+} from './extract/load-bearing.js';
 export {
   buildExtractionPrompt,
   EXTRACTION_SYSTEM_PROMPT,

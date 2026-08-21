@@ -3,11 +3,12 @@ import type {
   CheckpointAction,
   CheckpointTrigger,
   ItemKind,
+  LoadBearingSuggestion,
   TelemetryEmitter,
   TelemetryEvent,
   Uuid,
 } from '@mneia/core';
-import { CHECKPOINT_TRIGGERS, createNoopEmitter } from '@mneia/core';
+import { CHECKPOINT_TRIGGERS, createNoopEmitter, suggestLoadBearing } from '@mneia/core';
 import { callApi } from '../api.js';
 import {
   CliError,
@@ -112,6 +113,7 @@ const USAGE = 'mneia checkpoint [-m "<summary>"] [--trigger <trigger>] [--json]'
 
 const REVIEW_CHOICES: readonly PromptChoice[] = [
   { key: 'y', label: 'confirm' },
+  { key: 'l', label: 'toggle load-bearing' },
   { key: 'e', label: 'edit' },
   { key: 'r', label: 'reject' },
   { key: '?', label: 'why am I being asked' },
@@ -187,11 +189,21 @@ export function partitionCandidates(candidates: readonly CheckpointCandidate[]):
   return { automatic, review };
 }
 
+export function loadBearingSuggestionFor(candidate: CheckpointCandidate): LoadBearingSuggestion {
+  return suggestLoadBearing({
+    kind: candidate.kind,
+    title: candidate.title,
+    body: candidate.body,
+    loadBearing: candidate.loadBearing,
+  });
+}
+
 export function whyAsked(candidate: CheckpointCandidate): string {
   const reasons: string[] = [];
   if (candidate.loadBearing) {
+    const suggestion = loadBearingSuggestionFor(candidate);
     reasons.push(
-      'It is load-bearing, so later work is wrong if it is missing or wrong. vision.md §10.1 step 5 requires a human to confirm a load-bearing item before a checkpoint writes it.',
+      `It is load-bearing, so later work is wrong if it is missing or wrong. vision.md §10.1 step 5 requires a human to confirm a load-bearing item before a checkpoint writes it. The signal behind that suggestion is "${suggestion.signal}": ${suggestion.explanation} Press l if that reads wrong.`,
     );
   }
   const supersedes = candidate.supersedes;
@@ -216,7 +228,7 @@ export function renderCandidate(
 ): string {
   const marks: string[] = [candidate.kind];
   if (candidate.loadBearing) {
-    marks.push('load-bearing');
+    marks.push(`load-bearing (${loadBearingSuggestionFor(candidate).signal})`);
   }
   if (candidate.supersedes !== null) {
     marks.push(`would replace ${candidate.supersedes.id}`);
@@ -254,12 +266,13 @@ function changed(
 
 async function editCandidate(
   candidate: CheckpointCandidate,
+  startingLoadBearing: boolean,
   prompter: Prompter,
   io: CommandInvocation['io'],
 ): Promise<ReviewedCandidate> {
   let title = candidate.title;
   let body = candidate.body;
-  let loadBearing = candidate.loadBearing;
+  let loadBearing = startingLoadBearing;
 
   for (;;) {
     const key = await prompter.key('  edit which field?', EDIT_CHOICES);
@@ -294,26 +307,63 @@ async function editCandidate(
   };
 }
 
-function confirmedAsIs(candidate: CheckpointCandidate): ReviewedCandidate {
+function confirmedAsIs(candidate: CheckpointCandidate, loadBearing: boolean): ReviewedCandidate {
+  const fieldsChanged = changed(candidate, candidate.title, candidate.body, loadBearing);
   return {
     candidate,
-    decision: 'confirmed',
+    decision: fieldsChanged.length === 0 ? 'confirmed' : 'edited',
     title: candidate.title,
     body: candidate.body,
-    loadBearing: candidate.loadBearing,
-    fieldsChanged: [],
+    loadBearing,
+    fieldsChanged,
   };
 }
 
-function rejected(candidate: CheckpointCandidate): ReviewedCandidate {
+function rejected(candidate: CheckpointCandidate, loadBearing: boolean): ReviewedCandidate {
   return {
     candidate,
     decision: 'rejected',
     title: candidate.title,
     body: candidate.body,
-    loadBearing: candidate.loadBearing,
+    loadBearing,
     fieldsChanged: [],
   };
+}
+
+function toggleLine(candidate: CheckpointCandidate, loadBearing: boolean): string {
+  const suggested = candidate.loadBearing ? 'yes' : 'no';
+  const signal = loadBearingSuggestionFor(candidate).signal;
+  return `  load-bearing is now ${loadBearing ? 'yes' : 'no'}; the extraction suggested ${suggested} from the signal "${signal}"\n`;
+}
+
+async function decideCandidate(
+  candidate: CheckpointCandidate,
+  prompter: Prompter,
+  io: CommandInvocation['io'],
+): Promise<ReviewedCandidate> {
+  let loadBearing = candidate.loadBearing;
+
+  for (;;) {
+    const key = await prompter.key('  confirm this item?', REVIEW_CHOICES);
+
+    if (key === 'y') {
+      return confirmedAsIs(candidate, loadBearing);
+    }
+    if (key === 'r') {
+      return rejected(candidate, loadBearing);
+    }
+    if (key === 'e') {
+      return editCandidate(candidate, loadBearing, prompter, io);
+    }
+    if (key === 'l') {
+      loadBearing = !loadBearing;
+      io.stdout(toggleLine(candidate, loadBearing));
+      continue;
+    }
+    if (key === '?') {
+      io.stdout(`  ${whyAsked(candidate)}\n`);
+    }
+  }
 }
 
 export async function reviewCandidates(
@@ -325,27 +375,7 @@ export async function reviewCandidates(
 
   for (const [position, candidate] of candidates.entries()) {
     io.stdout(`${renderCandidate(candidate, position + 1, candidates.length)}\n`);
-
-    for (;;) {
-      const key = await prompter.key('  confirm this item?', REVIEW_CHOICES);
-
-      if (key === '?') {
-        io.stdout(`  ${whyAsked(candidate)}\n`);
-        continue;
-      }
-      if (key === 'y') {
-        reviewed.push(confirmedAsIs(candidate));
-        break;
-      }
-      if (key === 'r') {
-        reviewed.push(rejected(candidate));
-        break;
-      }
-      if (key === 'e') {
-        reviewed.push(await editCandidate(candidate, prompter, io));
-        break;
-      }
-    }
+    reviewed.push(await decideCandidate(candidate, prompter, io));
   }
 
   return reviewed;
@@ -357,6 +387,10 @@ async function emitQuietly(telemetry: TelemetryEmitter, event: TelemetryEvent): 
   } catch {
     return;
   }
+}
+
+export function overrodeLoadBearing(entry: ReviewedCandidate): boolean {
+  return entry.decision !== 'rejected' && entry.loadBearing !== entry.candidate.loadBearing;
 }
 
 export interface EmitPlan {
@@ -387,6 +421,20 @@ export async function emitReviewEvents(
     const itemId = itemByIndex.get(entry.candidate.index);
     if (itemId === undefined) {
       continue;
+    }
+
+    if (overrodeLoadBearing(entry)) {
+      await emitQuietly(telemetry, {
+        ...base,
+        name: 'checkpoint.load_bearing_overridden',
+        checkpointId: receipt.checkpointId,
+        itemId,
+        kind: entry.candidate.kind,
+        suggested: entry.candidate.loadBearing,
+        chosen: entry.loadBearing,
+        signal: loadBearingSuggestionFor(entry.candidate).signal,
+        confidence: entry.candidate.confidence,
+      });
     }
 
     if (entry.decision === 'edited') {

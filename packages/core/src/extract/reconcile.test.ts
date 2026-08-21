@@ -261,6 +261,66 @@ describe('reconcileCandidates', () => {
     expect(result.novel).toHaveLength(1);
   });
 
+  it('flags a stance flip even when the candidate carries its own reasoning', () => {
+    const result = reconcileCandidates({
+      candidates: [
+        candidate({
+          kind: 'constraint',
+          title: 'Put item content in a telemetry event for debugging',
+          body: 'The redaction step hides the field we need when an extraction goes wrong.',
+        }),
+      ],
+      existing: [
+        existing({
+          id: 'item-9',
+          kind: 'constraint',
+          title: 'Never put item content in a telemetry event',
+          body: 'Redaction strips body text before the event is emitted.',
+        }),
+      ],
+    });
+
+    expect(result.novel).toHaveLength(0);
+    expect(result.contradictions).toHaveLength(1);
+    expect(result.contradictions[0]?.evidence?.signal).toBe('stance_flip');
+  });
+
+  it('treats a value arriving where the recorded item had none as new, not as a conflict', () => {
+    const result = reconcileCandidates({
+      candidates: [
+        candidate({ kind: 'constraint', title: 'Bound the concurrency to 8 when embedding items' }),
+      ],
+      existing: [
+        existing({
+          id: 'item-3',
+          kind: 'constraint',
+          title: 'Bound the concurrency when embedding items',
+        }),
+      ],
+    });
+
+    expect(result.contradictions).toHaveLength(0);
+    expect(result.duplicates).toHaveLength(0);
+    expect(result.novel).toHaveLength(1);
+  });
+
+  it('reads an inflected prohibition as agreeing with the recorded prohibition', () => {
+    const result = reconcileCandidates({
+      candidates: [
+        candidate({
+          kind: 'constraint',
+          title: 'The worktree guard hook refuses any attempt to create a new git worktree',
+        }),
+      ],
+      existing: [
+        existing({ id: 'item-7', kind: 'constraint', title: 'Never create a new git worktree' }),
+      ],
+    });
+
+    expect(result.contradictions).toHaveLength(0);
+    expect(result.novel).toHaveLength(1);
+  });
+
   it('refuses a contradiction threshold above the duplicate threshold', () => {
     expect(() =>
       reconcileCandidates({

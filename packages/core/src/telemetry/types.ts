@@ -1,4 +1,5 @@
 import type { Uuid } from '../domain/types.js';
+import type { LoadBearingSignal } from '../extract/load-bearing.js';
 import type { CheckpointTrigger, ConflictResolution, ItemKind } from '../store/schema.js';
 
 export const TELEMETRY_EVENT_NAMES = [
@@ -9,6 +10,7 @@ export const TELEMETRY_EVENT_NAMES = [
   'checkpoint.item_confirmed',
   'checkpoint.item_edited',
   'checkpoint.item_rejected',
+  'checkpoint.load_bearing_overridden',
   'conflict.detected',
   'conflict.resolved',
   'item.superseded',
@@ -83,6 +85,17 @@ export interface ItemRejectedEvent extends EventBase<'checkpoint.item_rejected'>
   readonly itemId: Uuid;
 }
 
+export interface LoadBearingOverriddenEvent
+  extends EventBase<'checkpoint.load_bearing_overridden'> {
+  readonly checkpointId: Uuid;
+  readonly itemId: Uuid;
+  readonly kind: ItemKind;
+  readonly suggested: boolean;
+  readonly chosen: boolean;
+  readonly signal: LoadBearingSignal;
+  readonly confidence: number;
+}
+
 export interface ConflictDetectedEvent extends EventBase<'conflict.detected'> {
   readonly conflictId: Uuid;
   readonly itemA: Uuid;
@@ -127,6 +140,7 @@ export type TelemetryEvent =
   | ItemConfirmedEvent
   | ItemEditedEvent
   | ItemRejectedEvent
+  | LoadBearingOverriddenEvent
   | ConflictDetectedEvent
   | ConflictResolvedEvent
   | ItemSupersededEvent
