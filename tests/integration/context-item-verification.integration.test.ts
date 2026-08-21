@@ -180,6 +180,44 @@ describe.skipIf(connectionString === undefined)(
       await client.end();
     });
 
+    it('falls back to the per-kind decay default for an item that never set decay_after', async () => {
+      await withAdapter(async (adapter) => {
+        const written = await adapter.withScope(SCOPE_HUMAN, async (store) => ({
+          fact: await store.insertContextItem({
+            projectId: PROJECT_HOME,
+            kind: 'fact',
+            title: 'the staging key rotates weekly',
+          }),
+          constraint: await store.insertContextItem({
+            projectId: PROJECT_HOME,
+            kind: 'constraint',
+            title: 'no downtime window during the cutover',
+          }),
+        }));
+
+        expect(written.fact.decayAfter).toBeNull();
+        expect(written.constraint.decayAfter).toBeNull();
+
+        const beforeDefault = await adapter.withScope(SCOPE_HUMAN, async (store) =>
+          store.listStaleContextItems({
+            projectId: PROJECT_HOME,
+            asOf: new Date(Date.now() + ONE_DAY_MS),
+          }),
+        );
+        expect(beforeDefault.map((entry) => entry.item.id)).not.toContain(written.fact.id);
+
+        const afterDefault = await adapter.withScope(SCOPE_HUMAN, async (store) =>
+          store.listStaleContextItems({
+            projectId: PROJECT_HOME,
+            asOf: new Date(Date.now() + 15 * ONE_DAY_MS),
+          }),
+        );
+        const listed = afterDefault.map((entry) => entry.item.id);
+        expect(listed).toContain(written.fact.id);
+        expect(listed).not.toContain(written.constraint.id);
+      });
+    });
+
     it('lists only the items whose verification has come due, and never a row from another workspace', async () => {
       await withAdapter(async (adapter) => {
         const asOf = new Date(Date.now() + ONE_HOUR_MS);

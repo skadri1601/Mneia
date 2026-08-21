@@ -1,10 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { SupersedeNotAllowedError } from '../../policy/index.js';
-import { DEFAULT_DECAY_AFTER_BY_KIND } from '../../rehydrate/score.js';
 import type { SqlResult, SqlValue } from '../driver.js';
 import { RLS_POSTURE_SQL } from '../rls-guard.js';
 import type { ActorKind } from '../schema.js';
-import { ITEM_KINDS } from '../schema.js';
 import type { PostgresConnectionSource, PostgresSession } from './postgres.js';
 import { PostgresStoreAdapter, type StoreError } from './postgres.js';
 import type { CheckpointWrite } from './types.js';
@@ -113,7 +111,6 @@ const HUMAN_ASSERTER = '88888888-8888-4888-8888-888888888888';
 const AGENT_ASSERTER = '99999999-9999-4999-8999-999999999999';
 const CHECKPOINT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const TIMESTAMP = new Date('2026-08-01T00:00:00.000Z');
-const DAY_MS = 86_400_000;
 
 type Row = Record<string, unknown>;
 
@@ -447,101 +444,6 @@ describe('PostgresStoreAdapter scoped membership lookup', () => {
     expect(itemRead).toContain('provenance_session.workspace_id = context_item.workspace_id');
     expect(itemRead).toContain('provenance_session.project_id = context_item.project_id');
     expect(itemRead).toContain('provenance_session.actor_id = context_item.asserted_by');
-  });
-});
-
-class InsertSession implements PostgresSession {
-  readonly calls: string[] = [];
-  readonly params: (readonly SqlValue[])[] = [];
-
-  async execute<TRow = Record<string, unknown>>(
-    sql: string,
-    params: readonly SqlValue[] = [],
-  ): Promise<SqlResult<TRow>> {
-    this.calls.push(sql);
-    this.params.push(params);
-
-    if (isPostureQuery(sql)) {
-      return { rows: postureRows() as TRow[] };
-    }
-
-    if (sql.includes('FROM actor')) {
-      return {
-        rows: [
-          {
-            id: SCOPE.actorId,
-            workspace_id: SCOPE.workspaceId,
-            kind: 'human',
-            display_name: 'the scoped actor',
-            external_ref: null,
-            created_at: TIMESTAMP,
-          } as TRow,
-        ],
-      };
-    }
-
-    if (sql.includes('INSERT INTO context_item')) {
-      return { rows: [targetItemRow() as TRow] };
-    }
-
-    return { rows: [] };
-  }
-
-  async release(): Promise<void> {}
-
-  async discard(): Promise<void> {}
-}
-
-const DECAY_AFTER_PARAM_INDEX = 15;
-
-async function insertedDecayAfter(item: {
-  readonly kind: 'fact' | 'artifact_ref' | 'open_question' | 'decision' | 'constraint';
-  readonly decayAfter?: number | null;
-}): Promise<SqlValue> {
-  const session = new InsertSession();
-  const adapter = new PostgresStoreAdapter(new FakeSource(session));
-
-  await adapter.withScope(SCOPE, (store) =>
-    store.insertContextItem({
-      projectId: PROJECT,
-      kind: item.kind,
-      title: `a ${item.kind} written without an explicit decay window`,
-      ...(item.decayAfter === undefined ? {} : { decayAfter: item.decayAfter }),
-    }),
-  );
-
-  const at = callIndex(session.calls, 'INSERT INTO context_item');
-  expect(at).toBeGreaterThan(-1);
-  const params = session.params[at] ?? [];
-  expect(params[DECAY_AFTER_PARAM_INDEX]).toEqual(params[DECAY_AFTER_PARAM_INDEX + 1]);
-  return params[DECAY_AFTER_PARAM_INDEX] ?? null;
-}
-
-describe('PostgresStoreAdapter decay_after defaults (MNE-110, MNE-111)', () => {
-  it('writes the per-kind default when the caller passes no decay window', async () => {
-    expect(await insertedDecayAfter({ kind: 'fact' })).toBe(14 * DAY_MS);
-    expect(await insertedDecayAfter({ kind: 'artifact_ref' })).toBe(30 * DAY_MS);
-    expect(await insertedDecayAfter({ kind: 'open_question' })).toBe(90 * DAY_MS);
-    expect(await insertedDecayAfter({ kind: 'decision' })).toBe(365 * DAY_MS);
-  });
-
-  it('reads the ladder from DEFAULT_DECAY_AFTER_BY_KIND rather than a second copy', async () => {
-    for (const kind of ITEM_KINDS) {
-      expect(await insertedDecayAfter({ kind })).toBe(DEFAULT_DECAY_AFTER_BY_KIND[kind]);
-    }
-  });
-
-  it('leaves a constraint null so it never goes stale', async () => {
-    expect(DEFAULT_DECAY_AFTER_BY_KIND.constraint).toBeNull();
-    expect(await insertedDecayAfter({ kind: 'constraint' })).toBeNull();
-  });
-
-  it('keeps an explicit null as null rather than replacing it with the default', async () => {
-    expect(await insertedDecayAfter({ kind: 'fact', decayAfter: null })).toBeNull();
-  });
-
-  it('keeps an explicit window rather than overriding it with the default', async () => {
-    expect(await insertedDecayAfter({ kind: 'fact', decayAfter: 3 * DAY_MS })).toBe(3 * DAY_MS);
   });
 });
 

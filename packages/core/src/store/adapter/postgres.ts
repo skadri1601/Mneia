@@ -15,7 +15,6 @@ import { assertSupersedeAllowed } from '../../policy/index.js';
 import { DEFAULT_DECAY_AFTER_BY_KIND } from '../../rehydrate/score.js';
 import type { SqlExecutor, SqlValue } from '../driver.js';
 import { assertConnectionEnforcesRls } from '../rls-guard.js';
-import type { ItemKind } from '../schema.js';
 import {
   ACCESS_SCOPES,
   ACTOR_KINDS,
@@ -189,7 +188,21 @@ const REVIEWED_ITEM_COLUMNS =
 const REVIEW_TRIGGER = 'manual';
 
 const VERIFICATION_ANCHOR = 'COALESCE(context_item.last_verified_at, context_item.asserted_at)';
-const VERIFICATION_DUE_AT = `(${VERIFICATION_ANCHOR} + context_item.decay_after)`;
+const effectiveDecayAfter = (params: SqlParams): string => {
+  const branches = ITEM_KINDS.flatMap((kind) => {
+    const fallback = DEFAULT_DECAY_AFTER_BY_KIND[kind];
+    if (fallback === null) {
+      return [];
+    }
+    const name = params.add(kind);
+    const seconds = params.add(Math.floor(fallback / 1000));
+    return [`WHEN ${name} THEN make_interval(secs => ${seconds})`];
+  }).join(' ');
+
+  return `COALESCE(context_item.decay_after, CASE context_item.kind ${branches} ELSE NULL END)`;
+};
+
+const verificationDueAt = (decay: string): string => `(${VERIFICATION_ANCHOR} + ${decay})`;
 
 const CONTEXT_ITEM_VERIFICATIONS = ['confirmed', 'denied'] as const;
 
@@ -259,9 +272,6 @@ const assertOptionalIntervalMs = (
   }
   return value;
 };
-
-const defaultDecayAfterMs = (kind: ItemKind): number | null =>
-  DEFAULT_DECAY_AFTER_BY_KIND[kind] ?? null;
 
 const assertNonEmpty = (value: string, label: string): string => {
   if (typeof value !== 'string' || value.trim() === '') {
@@ -638,20 +648,22 @@ class PostgresScopedStore implements ReviewCapableStore {
     });
     params.addAll(visibility.params);
 
+    const decay = effectiveDecayAfter(params);
+    const dueAt = verificationDueAt(decay);
     const asOf = params.add(asOfAt);
     const limit = params.add(resolveLimit(filter.limit, 'filter.limit'));
 
     const rows = await this.rows(
       `SELECT ${contextItemReadColumns(false)},
-              ${VERIFICATION_DUE_AT} AS stale_since
+              ${dueAt} AS stale_since
          FROM ${contextItemFrom(false)}
         WHERE context_item.workspace_id = ${workspace}
           AND context_item.project_id = ${project}
           AND (${visibility.sql})
           AND context_item.status = 'active'
           AND context_item.valid_to IS NULL
-          AND context_item.decay_after IS NOT NULL
-          AND ${VERIFICATION_DUE_AT} <= ${asOf}
+          AND ${decay} IS NOT NULL
+          AND ${dueAt} <= ${asOf}
         ORDER BY stale_since ASC, context_item.id ASC
         LIMIT ${limit}`,
       params.list(),
@@ -948,10 +960,7 @@ class PostgresScopedStore implements ReviewCapableStore {
     const embeddingValue =
       embedding === null ? null : embeddingLiteral(assertEmbedding(embedding, 'item.embedding'));
 
-    const decayAfterMs =
-      item.decayAfter === undefined
-        ? defaultDecayAfterMs(item.kind)
-        : assertOptionalIntervalMs(item.decayAfter, 'item.decayAfter');
+    const decayAfterMs = assertOptionalIntervalMs(item.decayAfter, 'item.decayAfter');
 
     const params = new SqlParams();
     const values = [
