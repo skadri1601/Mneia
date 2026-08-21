@@ -3,6 +3,7 @@ import { shortenItemIds } from '@mneia/core';
 import { callApi } from '../api.js';
 import { confirmationMark, describeActorAttribution } from '../attribution.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
+import { compactId, MAX_CHAIN_REVISIONS, matchItemIds } from '../item-ids.js';
 import { httpLogApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
 
@@ -44,8 +45,9 @@ export interface LogDeps {
 
 export const DEFAULT_LOG_LIMIT = 20;
 export const MAX_LOG_LIMIT = 500;
-export const MAX_CHAIN_REVISIONS = 200;
 export const MIN_CHAIN_REFERENCE_LENGTH = 4;
+
+export { MAX_CHAIN_REVISIONS, matchItemIds };
 
 const USAGE = 'mneia log [--limit <count>] [--since <duration|date>] [--chain <id>] [--json]';
 
@@ -142,19 +144,7 @@ function readSince(flags: CommandInvocation['flags'], now: Date): Date | null {
   );
 }
 
-const HYPHENS = /-/g;
 const CHAIN_REFERENCE = /^[0-9a-f-]+$/;
-
-const compactId = (id: string): string => id.replace(HYPHENS, '').toLowerCase();
-
-export function matchItemIds(candidates: readonly Uuid[], reference: string): readonly Uuid[] {
-  const wanted = compactId(reference);
-  const exact = candidates.filter((id) => compactId(id) === wanted);
-  if (exact.length > 0) {
-    return exact;
-  }
-  return candidates.filter((id) => compactId(id).startsWith(wanted));
-}
 
 function readChain(flags: CommandInvocation['flags']): string | null {
   const raw = flags.chain;

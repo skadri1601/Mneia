@@ -46,7 +46,6 @@ import type {
 } from './commands/handoff.js';
 import type { AttachRequest, AttachResult, InitApi } from './commands/init.js';
 import type { LogApi, LogChainPage, LogChainRequest, LogPage, LogRequest } from './commands/log.js';
-import { MAX_CHAIN_REVISIONS, matchItemIds } from './commands/log.js';
 import type { SessionsApi, SessionsReport, SessionsRequest } from './commands/sessions.js';
 import type { StatusApi, StatusReport, StatusRequest } from './commands/status.js';
 import type { Roster, RosterRequest, TeamApi } from './commands/team.js';
@@ -57,6 +56,7 @@ import type {
   VerifyOutcome,
   VerifyRequest,
 } from './commands/verify.js';
+import { MAX_CHAIN_REVISIONS, matchItemIds } from './item-ids.js';
 import { resolveToken } from './config.js';
 
 const STATUS_ITEM_LIMIT = 500;

@@ -7,7 +7,7 @@ import { httpHandoffApi } from '../http-api.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
 import type { HandoffApi } from './handoff.js';
 import { type HandoffInbox, toJsonActor } from './handoff.js';
-import { matchItemIds } from './log.js';
+import { matchItemIds } from '../item-ids.js';
 
 export interface PickupDeps {
   readonly api: HandoffApi;
