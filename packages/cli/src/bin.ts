@@ -8,7 +8,9 @@ import { initCommand } from './commands/init.js';
 import { logCommand } from './commands/log.js';
 import { loginCommand } from './commands/login.js';
 import { pickupCommand } from './commands/pickup.js';
+import { sessionsCommand } from './commands/sessions.js';
 import { statusCommand } from './commands/status.js';
+import { teamCommand } from './commands/team.js';
 import { verifyCommand } from './commands/verify.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { route } from './router.js';
@@ -34,6 +36,8 @@ const commands: readonly CommandDefinition[] = [
   briefCommand,
   handoffCommand,
   pickupCommand,
+  teamCommand,
+  sessionsCommand,
   checkpointCommand,
   logCommand,
   statusCommand,
