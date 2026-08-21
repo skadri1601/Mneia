@@ -189,16 +189,32 @@ describe('httpCheckpointApi.propose over a session larger than one request', () 
     expect(proposal.pendingTurns).toBeGreaterThan(0);
   });
 
-  it('sends a small session in a single request', async () => {
+  it('probes for the watermark before it uploads anything', async () => {
     vi.stubEnv('MNEIA_TOKEN', 'test-token');
     const path = await trajectoryFile(5, 100);
     const server = fakeServer();
 
     const proposal = await httpCheckpointApi.propose({ config, trigger: 'manual', fromFile: path });
 
-    expect(server.requests()).toBe(1);
+    expect(server.requests()).toBe(2);
+    expect(server.uploads[0]).toBeLessThan(server.uploads[1] ?? 0);
     expect(proposal.pendingTurns).toBe(0);
     expect(server.seen.size).toBe(5);
+  });
+
+  it('uploads nothing at all for a session the server has already consumed', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const path = await trajectoryFile(5, 100);
+    const server = fakeServer();
+
+    await httpCheckpointApi.propose({ config, trigger: 'manual', fromFile: path });
+    const afterFirst = server.requests();
+    const probeSize = server.uploads[0] ?? 0;
+
+    await httpCheckpointApi.propose({ config, trigger: 'manual', fromFile: path });
+
+    expect(server.requests()).toBe(afterFirst + 1);
+    expect(server.uploads.at(-1)).toBe(probeSize);
   });
 
   it('still truncates oversized tool output and redacts, which are not the lossy part', async () => {

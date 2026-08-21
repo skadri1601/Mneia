@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { ContextItem, Session } from '../domain/types.js';
 import {
   CheckpointProposalWireSchema,
+  CheckpointProposeWireSchema,
   CheckpointWriteWireSchema,
   ContextItemWireSchema,
   decodeContextItem,
@@ -267,5 +268,36 @@ describe('ExtractionCoverageWireSchema', () => {
 
     expect(CheckpointProposalWireSchema.safeParse(proposal).success).toBe(true);
     expect(CheckpointProposalWireSchema.safeParse({ ...proposal, coverage }).success).toBe(true);
+  });
+});
+
+describe('CheckpointProposeWireSchema', () => {
+  const probe = {
+    project: 'acme/billing',
+    source: 'claude-code' as const,
+    sessionRef: 'session-1',
+    trigger: 'manual' as const,
+    turns: [],
+  };
+
+  it('accepts an upload of no turns, because that is how the watermark is asked for', () => {
+    const parsed = CheckpointProposeWireSchema.safeParse(probe);
+    expect(parsed.success).toBe(true);
+  });
+
+  it('accepts turns when there are some to send', () => {
+    const parsed = CheckpointProposeWireSchema.safeParse({
+      ...probe,
+      turns: [
+        {
+          ref: 'turn-1',
+          role: 'user',
+          kind: 'text',
+          text: 'ship the probe',
+          at: '2026-08-21T00:00:00.000Z',
+        },
+      ],
+    });
+    expect(parsed.success).toBe(true);
   });
 });

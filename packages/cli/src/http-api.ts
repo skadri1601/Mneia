@@ -561,22 +561,18 @@ export const httpCheckpointApi: CheckpointApi = {
       return proposal;
     };
 
-    const fitsWhole = uploadableFrom(all, 0).length === all.length;
-
-    let proposal = await send(fitsWhole ? all : []);
+    let proposal = await send([]);
     let heldBack = 0;
 
-    if (!fitsWhole) {
-      const at = proposal.watermark;
-      const marked = at === null ? -1 : all.findIndex((turn) => turn.ref === at);
-      const done = marked === all.length - 1;
+    const at = proposal.watermark;
+    const marked = at === null ? -1 : all.findIndex((turn) => turn.ref === at);
+    const done = all.length === 0 || marked === all.length - 1;
 
-      if (!done) {
-        const start = marked < 0 ? 0 : marked;
-        const uploaded = uploadableFrom(all, start);
-        proposal = await send(uploaded);
-        heldBack = all.length - start - uploaded.length;
-      }
+    if (!done) {
+      const start = marked < 0 ? 0 : marked;
+      const uploaded = uploadableFrom(all, start);
+      proposal = await send(uploaded);
+      heldBack = all.length - start - uploaded.length;
     }
 
     return {
