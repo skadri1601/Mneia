@@ -11,11 +11,20 @@ Binary is `mneia`. Config lives in `.mneia/` in the repo.
 
 | Milestone | Commands |
 |---|---|
-| M1 | `init`, `brief`, `checkpoint`, `log`, `status` |
-| M2 | `handoff`, `pickup`, `sync` |
-| M4 | `conflicts` |
+| M1 | `init`, `brief`, `checkpoint`, `log`, `status`, plus `login` and `whoami` |
+| M2 | `handoff`, `pickup` — ~~`sync`~~ cancelled by §11.1, there is nothing to sync |
+| M3 | `verify` |
+| M4 | `team`, `sessions`, `conflicts` |
 
 Do not build ahead of the milestone. §12.2 has the full intended surface.
+
+`router.ts` holds `SHIPPED_COMMAND_NAMES` and is the truth; `assertRegistrableCommands`
+throws on a command registered in `bin.ts` but missing there. Count the array rather than
+trusting this table.
+
+**`team` and `sessions` are M4 surface shipped early**, under MNE-135, because a directed
+handoff is unusable without a way to name the recipient — §2.1 calls that the scenario the
+product is named for. They are read-only: neither creates an actor nor sends an invitation.
 
 ## The interactive session is not another command
 
