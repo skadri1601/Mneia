@@ -1,6 +1,7 @@
 import type {
   ActorWire,
   ApiErrorCode,
+  CheckpointWire,
   CheckpointWriteResultWire,
   CheckpointWriteWire,
   ContextItemFilterWire,
@@ -10,15 +11,18 @@ import type {
   EmbeddingProvider,
   NewProjectWire,
   ProjectWire,
-  CheckpointWire,
   RehydrateRequestWire,
   RetireContextItemWire,
   ScopedStore,
   SessionWire,
   SliceWire,
+  StaleContextItemFilterWire,
+  StaleContextItemWire,
   TelemetryEmitter,
   TelemetryEvent,
   Uuid,
+  VerifyContextItemResultWire,
+  VerifyContextItemWire,
 } from '@mneia/core';
 import {
   assembleSlice,
@@ -30,6 +34,8 @@ import {
   encodeProject,
   encodeSession,
   encodeSlice,
+  encodeStaleContextItem,
+  encodeVerifyContextItemResult,
   resolveProject,
 } from '@mneia/core';
 import { describeProjectLimit, projectLimit } from '../billing/limits.js';
@@ -277,6 +283,54 @@ export const handleRetireItem = async (
     checkpoint: encodeCheckpoint(result.checkpoint),
     item: encodeContextItem(result.item),
   };
+};
+
+export const handleListStaleItems = async (
+  store: ScopedStore,
+  filter: StaleContextItemFilterWire,
+): Promise<{ items: readonly StaleContextItemWire[] }> => {
+  const stale = await store.listStaleContextItems({
+    projectId: filter.projectId,
+    ...(filter.asOf === undefined ? {} : { asOf: new Date(filter.asOf) }),
+    ...(filter.limit === undefined ? {} : { limit: filter.limit }),
+  });
+  return { items: stale.map(encodeStaleContextItem) };
+};
+
+export const handleVerifyItem = async (
+  store: ScopedStore,
+  input: VerifyContextItemWire,
+  deps: { readonly telemetry: TelemetryEmitter; readonly now: () => Date },
+): Promise<VerifyContextItemResultWire> => {
+  if (input.verification === 'denied' && (input.reason ?? '').trim() === '') {
+    throw new ApiRequestError(
+      'invalid_request',
+      `expected a reason saying why item ${input.itemId} no longer holds; received none — a denial retires the item, and the reason is the labelled example §17 collects. Send reason with the denial.`,
+    );
+  }
+
+  const result = await store.verifyContextItem({
+    projectId: input.projectId,
+    itemId: input.itemId,
+    verification: input.verification,
+    reason: input.reason ?? null,
+  });
+
+  await emitQuietly(deps.telemetry, {
+    name:
+      result.verification === 'confirmed'
+        ? 'checkpoint.item_confirmed'
+        : 'checkpoint.item_rejected',
+    workspaceId: store.scope.workspaceId,
+    projectId: input.projectId,
+    actorId: store.scope.actorId,
+    sessionId: null,
+    occurredAt: deps.now(),
+    checkpointId: result.checkpoint.id,
+    itemId: result.item.id,
+  });
+
+  return encodeVerifyContextItemResult(result);
 };
 
 export interface CheckpointDependencies {

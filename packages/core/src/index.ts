@@ -169,6 +169,7 @@ export type {
   ContextItemReviewOutcome,
   ContextItemReviewOutcomeKind,
   ContextItemSearch,
+  ContextItemVerification,
   HandoffItem,
   NewCheckpoint,
   NewConflict,
@@ -185,7 +186,11 @@ export type {
   ReviewPendingItemsResult,
   ScopedStore,
   SessionClientProvenance,
+  StaleContextItem,
+  StaleContextItemFilter,
   StoreAdapter,
+  VerifyContextItemInput,
+  VerifyContextItemResult,
   WorkspaceScope,
 } from './store/adapter/types.js';
 export type { MigrationDriver, SqlExecutor, SqlResult, SqlValue } from './store/driver.js';

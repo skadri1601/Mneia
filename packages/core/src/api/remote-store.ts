@@ -43,11 +43,15 @@ import {
   decodeProject,
   decodeSession,
   decodeSlice,
+  decodeStaleContextItem,
+  decodeVerifyContextItemResult,
   HandoffWireSchema,
   type NewContextItemWire,
   ProjectWireSchema,
   SessionWireSchema,
   SliceWireSchema,
+  StaleContextItemWireSchema,
+  VerifyContextItemResultWireSchema,
 } from './wire.js';
 
 const nullable = <T>(schema: z.ZodType<T>): z.ZodType<T | null> => schema.nullable();
@@ -63,6 +67,7 @@ const RetiredItemEnvelope = z.object({
   checkpoint: CheckpointWireSchema,
   item: ContextItemWireSchema,
 });
+const StaleContextItemsEnvelope = z.object({ items: z.array(StaleContextItemWireSchema) });
 const SliceEnvelope = z.object({ slice: SliceWireSchema });
 const HandoffEnvelope = z.object({ handoff: HandoffWireSchema });
 const HandoffsEnvelope = z.object({ handoffs: z.array(HandoffWireSchema) });
@@ -257,11 +262,28 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
     confirmContextItem(_input: ConfirmContextItemInput): Promise<ContextItem> {
       return unsupported('confirmContextItem', 'M2');
     },
-    listStaleContextItems(_filter: StaleContextItemFilter): Promise<readonly StaleContextItem[]> {
-      return unsupported('listStaleContextItems', 'M3');
+    async listStaleContextItems(
+      filter: StaleContextItemFilter,
+    ): Promise<readonly StaleContextItem[]> {
+      const { items } = await transport.request('/api/v1/items/stale', StaleContextItemsEnvelope, {
+        projectId: filter.projectId,
+        ...(filter.asOf === undefined ? {} : { asOf: filter.asOf.toISOString() }),
+        ...(filter.limit === undefined ? {} : { limit: filter.limit }),
+      });
+      return items.map(decodeStaleContextItem);
     },
-    verifyContextItem(_input: VerifyContextItemInput): Promise<VerifyContextItemResult> {
-      return unsupported('verifyContextItem', 'M3');
+    async verifyContextItem(input: VerifyContextItemInput): Promise<VerifyContextItemResult> {
+      const result = await transport.request(
+        '/api/v1/items/verify',
+        VerifyContextItemResultWireSchema,
+        {
+          projectId: input.projectId,
+          itemId: input.itemId,
+          verification: input.verification,
+          ...(input.reason === undefined || input.reason === null ? {} : { reason: input.reason }),
+        },
+      );
+      return decodeVerifyContextItemResult(result);
     },
     getCheckpoint(_id: Uuid): Promise<Checkpoint | null> {
       return unsupported('getCheckpoint', 'M2');
