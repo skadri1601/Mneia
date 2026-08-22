@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 33
+-- schema version: 34
 
 -- extensions
 
@@ -709,6 +709,32 @@ CREATE INDEX waitlist_signup_pending_idx ON public.waitlist_signup USING btree (
 CREATE INDEX waitlist_signup_purge_idx ON public.waitlist_signup USING btree (approved_at) WHERE (status = 'approved'::text);
 CREATE UNIQUE INDEX waitlist_signup_unsubscribe_token_key ON public.waitlist_signup USING btree (unsubscribe_token);
 
+CREATE TABLE wallet_ledger (
+  id uuid NOT NULL,
+  workspace_id uuid NOT NULL,
+  kind text NOT NULL,
+  amount_micros bigint NOT NULL,
+  reason text NOT NULL,
+  created_by uuid,
+  created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_amount_is_positive CHECK ((amount_micros > 0));
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_amount_micros_not_null NOT NULL amount_micros;
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_created_at_not_null NOT NULL created_at;
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_created_by_fkey FOREIGN KEY (workspace_id, created_by) REFERENCES actor(workspace_id, id);
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_id_not_null NOT NULL id;
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_kind_is_known CHECK ((kind = ANY (ARRAY['grant'::text, 'topup'::text, 'debit'::text])));
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_kind_not_null NOT NULL kind;
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_pkey PRIMARY KEY (workspace_id, id);
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_reason_is_not_blank CHECK ((reason <> ''::text));
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_reason_not_null NOT NULL reason;
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id) ON DELETE CASCADE;
+ALTER TABLE wallet_ledger ADD CONSTRAINT wallet_ledger_workspace_id_not_null NOT NULL workspace_id;
+CREATE INDEX wallet_ledger_workspace_history_idx ON public.wallet_ledger USING btree (workspace_id, created_at DESC);
+ALTER TABLE wallet_ledger ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wallet_ledger FORCE ROW LEVEL SECURITY;
+CREATE POLICY wallet_ledger_workspace_isolation ON wallet_ledger USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
 CREATE TABLE workspace (
   id uuid NOT NULL,
   slug text NOT NULL,
@@ -722,7 +748,11 @@ CREATE TABLE workspace (
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   company_size text,
   retention_days integer,
-  region text
+  region text,
+  turn_allowance bigint,
+  extraction_allowance integer,
+  embedding_token_allowance bigint,
+  wallet_balance_micros bigint DEFAULT 0 NOT NULL
 );
 ALTER TABLE workspace ADD CONSTRAINT workspace_billing_status_check CHECK ((billing_status = ANY (ARRAY['active'::text, 'trialing'::text, 'past_due'::text, 'canceled'::text])));
 ALTER TABLE workspace ADD CONSTRAINT workspace_billing_status_not_null NOT NULL billing_status;
@@ -730,6 +760,8 @@ ALTER TABLE workspace ADD CONSTRAINT workspace_checkpoint_allowance_check CHECK 
 ALTER TABLE workspace ADD CONSTRAINT workspace_company_size_check CHECK (((company_size IS NULL) OR (company_size = ANY (ARRAY['1-9'::text, '10-49'::text, '50-199'::text, '200-499'::text, '500+'::text]))));
 ALTER TABLE workspace ADD CONSTRAINT workspace_created_at_not_null NOT NULL created_at;
 ALTER TABLE workspace ADD CONSTRAINT workspace_display_name_not_null NOT NULL display_name;
+ALTER TABLE workspace ADD CONSTRAINT workspace_embedding_token_allowance_is_not_negative CHECK (((embedding_token_allowance IS NULL) OR (embedding_token_allowance >= 0)));
+ALTER TABLE workspace ADD CONSTRAINT workspace_extraction_allowance_is_not_negative CHECK (((extraction_allowance IS NULL) OR (extraction_allowance >= 0)));
 ALTER TABLE workspace ADD CONSTRAINT workspace_id_not_null NOT NULL id;
 ALTER TABLE workspace ADD CONSTRAINT workspace_pkey PRIMARY KEY (id);
 ALTER TABLE workspace ADD CONSTRAINT workspace_plan_check CHECK ((plan = ANY (ARRAY['solo'::text, 'pro'::text, 'team'::text, 'enterprise'::text])));
@@ -739,6 +771,9 @@ ALTER TABLE workspace ADD CONSTRAINT workspace_retention_days_is_positive CHECK 
 ALTER TABLE workspace ADD CONSTRAINT workspace_seats_purchased_check CHECK (((seats_purchased IS NULL) OR (seats_purchased > 0)));
 ALTER TABLE workspace ADD CONSTRAINT workspace_slug_key UNIQUE (slug);
 ALTER TABLE workspace ADD CONSTRAINT workspace_slug_not_null NOT NULL slug;
+ALTER TABLE workspace ADD CONSTRAINT workspace_turn_allowance_is_not_negative CHECK (((turn_allowance IS NULL) OR (turn_allowance >= 0)));
+ALTER TABLE workspace ADD CONSTRAINT workspace_wallet_balance_is_not_negative CHECK ((wallet_balance_micros >= 0));
+ALTER TABLE workspace ADD CONSTRAINT workspace_wallet_balance_micros_not_null NOT NULL wallet_balance_micros;
 ALTER TABLE workspace ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workspace FORCE ROW LEVEL SECURITY;
 CREATE POLICY workspace_workspace_isolation ON workspace USING ((id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid)) WITH CHECK ((id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
@@ -812,13 +847,22 @@ CREATE TABLE workspace_usage_period (
   workspace_id uuid NOT NULL,
   period_start date NOT NULL,
   checkpoints_used integer DEFAULT 0 NOT NULL,
-  updated_at timestamp with time zone DEFAULT now() NOT NULL
+  updated_at timestamp with time zone DEFAULT now() NOT NULL,
+  turns_used bigint DEFAULT 0 NOT NULL,
+  extractions_used integer DEFAULT 0 NOT NULL,
+  embedding_tokens_used bigint DEFAULT 0 NOT NULL
 );
 ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_checkpoints_are_not_negative CHECK ((checkpoints_used >= 0));
 ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_checkpoints_used_not_null NOT NULL checkpoints_used;
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_embedding_tokens_are_not_negative CHECK ((embedding_tokens_used >= 0));
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_embedding_tokens_used_not_null NOT NULL embedding_tokens_used;
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_extractions_are_not_negative CHECK ((extractions_used >= 0));
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_extractions_used_not_null NOT NULL extractions_used;
 ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_period_start_not_null NOT NULL period_start;
 ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_pkey PRIMARY KEY (workspace_id, period_start);
 ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_starts_on_a_month CHECK ((period_start = (date_trunc('month'::text, (period_start)::timestamp with time zone))::date));
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_turns_are_not_negative CHECK ((turns_used >= 0));
+ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_turns_used_not_null NOT NULL turns_used;
 ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_updated_at_not_null NOT NULL updated_at;
 ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id) ON DELETE CASCADE;
 ALTER TABLE workspace_usage_period ADD CONSTRAINT workspace_usage_period_workspace_id_not_null NOT NULL workspace_id;
