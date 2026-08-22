@@ -53,10 +53,13 @@ if (!claimLock(root, sessionId)) pass();
 
 try {
   const budgetMs = timeoutMs(DEFAULT_TIMEOUT_MS);
-  const result = runMneia(['checkpoint', '--json', '--trigger', 'task_boundary'], {
-    cwd: root,
-    timeoutMs: budgetMs,
-  });
+  const result = runMneia(
+    ['checkpoint', '--json', '--trigger', 'task_boundary', '--session', sessionId],
+    {
+      cwd: root,
+      timeoutMs: budgetMs,
+    },
+  );
 
   const receipt = parseJson(result.stdout);
   const succeeded = receipt !== null && Number.isInteger(receipt.automaticCount);
