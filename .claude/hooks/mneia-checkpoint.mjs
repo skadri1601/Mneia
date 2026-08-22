@@ -71,12 +71,16 @@ try {
   );
 
   const receipt = parseJson(result.stdout);
-  const succeeded = receipt !== null && Number.isInteger(receipt.automaticCount);
+  const wroteNothing =
+    receipt !== null && receipt.automaticCount === 0 && (receipt.pendingCount ?? 0) === 0;
+  const succeeded = receipt !== null && (typeof receipt.checkpointId === 'string' || wroteNothing);
 
   const reason = succeeded
     ? null
-    : (result.failure ??
-      `mneia checkpoint exited ${result.status}${result.stderr.trim().length === 0 ? '' : ` — ${result.stderr.trim().split('\n')[0]}`}`);
+    : receipt !== null && receipt.checkpointId === null
+      ? `mneia checkpoint wrote nothing: ${receipt.automaticCount} automatic and ${receipt.pendingCount ?? 0} awaiting review, and no checkpoint id came back`
+      : (result.failure ??
+        `mneia checkpoint exited ${result.status}${result.stderr.trim().length === 0 ? '' : ` — ${result.stderr.trim().split('\n')[0]}`}`);
 
   writeState(root, sessionId, {
     ...state,
