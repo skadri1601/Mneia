@@ -219,3 +219,72 @@ describe('createExtractionRunner', () => {
     expect(headers[1]?.['anthropic-version']).toBe('2023-06-01');
   });
 });
+
+describe('cost controls on the OpenAI request body', () => {
+  // Captures what was actually sent, because every setting below is a price decision
+  // and a silently dropped field costs money without failing anything.
+  const capture = (
+    responses: readonly Response[],
+  ): { bodies: Record<string, unknown>[]; fetchImpl: typeof globalThis.fetch } => {
+    const bodies: Record<string, unknown>[] = [];
+    let call = 0;
+    const fetchImpl = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      const response = responses[call] ?? responses[responses.length - 1];
+      call += 1;
+      if (response === undefined) {
+        throw new Error('the fixture ran out of responses');
+      }
+      return response.clone();
+    }) as unknown as typeof globalThis.fetch;
+    return { bodies, fetchImpl };
+  };
+
+  const flexUnavailable = (): Response =>
+    new Response(JSON.stringify({ error: { code: 'resource_unavailable' } }), { status: 429 });
+
+  it('asks for flex and low reasoning by default, because both halve the bill', async () => {
+    const { bodies, fetchImpl } = capture([ok(OPENAI_BODY)]);
+
+    await runnerWith(fetchImpl).run(request);
+
+    expect(bodies[0]?.service_tier).toBe('flex');
+    expect(bodies[0]?.reasoning).toEqual({ effort: 'low' });
+  });
+
+  it('sends prompt_cache_key when the caller supplies one, and omits it otherwise', async () => {
+    const { bodies, fetchImpl } = capture([ok(OPENAI_BODY), ok(OPENAI_BODY)]);
+    const runner = runnerWith(fetchImpl);
+
+    await runner.run({ ...request, cacheKey: 'workspace-1:project-2' });
+    await runner.run(request);
+
+    expect(bodies[0]?.prompt_cache_key).toBe('workspace-1:project-2');
+    expect(bodies[1]).not.toHaveProperty('prompt_cache_key');
+  });
+
+  it('retries on the standard tier when flex has no capacity', async () => {
+    // A 429 carrying resource_unavailable is unbilled and means flex specifically was
+    // full, so the same request at standard rates is worth one attempt.
+    const { bodies, fetchImpl } = capture([flexUnavailable(), ok(OPENAI_BODY)]);
+
+    const result = await runnerWith(fetchImpl).run(request);
+
+    expect(result.model).toBe('gpt-5.6-luna');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]?.service_tier).toBe('flex');
+    expect(bodies[1]).not.toHaveProperty('service_tier');
+  });
+
+  it('does not retry a plain 429, which is an account rate limit flex cannot fix', async () => {
+    // Retrying here would spend a second request that is certain to fail. The vendor
+    // fallback is the right escape hatch, so the primary must fail through to it.
+    const { bodies, fetchImpl } = capture([failure(429), ok(ANTHROPIC_BODY)]);
+
+    const result = await runnerWith(fetchImpl).run(request);
+
+    expect(result.model).toBe('claude-haiku-4-5');
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).not.toHaveProperty('service_tier');
+  });
+});
