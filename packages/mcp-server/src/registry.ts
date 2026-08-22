@@ -13,6 +13,7 @@ export const SHIPPED_TOOL_NAMES = [
   'mneia_handoff_inbox',
   'mneia_team',
   'mneia_sessions',
+  'mneia_review_queue',
 ] as const;
 
 export type ShippedToolName = (typeof SHIPPED_TOOL_NAMES)[number];

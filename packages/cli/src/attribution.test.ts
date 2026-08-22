@@ -322,6 +322,10 @@ const ATTRIBUTION_SURFACES: Readonly<Record<ShippedCommandName, Surface>> = {
       },
     },
   },
+  review: {
+    rendersContextItems: false,
+    why: 'renders PendingReviewItem rows, not ContextItems: the queue selects on human_confirmed = false, so the confirmed half of every variant here cannot reach it and the row carries no humanConfirmed field to render. Its asserter name and kind, and the "not human-confirmed" mark it prints instead, are covered by the provenance cases in commands/review.test.ts',
+  },
   verify: {
     rendersContextItems: true,
     renderers: {

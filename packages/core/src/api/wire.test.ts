@@ -1,16 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import type { ContextItem, Session } from '../domain/types.js';
+import type { PendingReviewItem } from '../store/adapter/types.js';
 import {
   CheckpointProposalWireSchema,
   CheckpointProposeWireSchema,
   CheckpointWriteWireSchema,
   ContextItemWireSchema,
   decodeContextItem,
+  decodePendingReviewItem,
   decodeSession,
-  encodeContextItem,
-  encodeSession,
   ExtractionCoverageWireSchema,
+  encodeContextItem,
+  encodePendingReviewItem,
+  encodeSession,
   NewContextItemWireSchema,
+  PendingReviewFilterWireSchema,
+  PendingReviewItemWireSchema,
+  ReviewPendingItemsWireSchema,
 } from './wire.js';
 
 const item: ContextItem = {
@@ -268,6 +274,65 @@ describe('ExtractionCoverageWireSchema', () => {
 
     expect(CheckpointProposalWireSchema.safeParse(proposal).success).toBe(true);
     expect(CheckpointProposalWireSchema.safeParse({ ...proposal, coverage }).success).toBe(true);
+  });
+});
+
+const pending: PendingReviewItem = {
+  id: '11111111-1111-4111-8111-111111111111',
+  projectId: '33333333-3333-4333-8333-333333333333',
+  kind: 'constraint',
+  title: 'never auto-supersede a human-confirmed item',
+  body: 'vision.md §10.1',
+  confidence: 0.72,
+  loadBearing: true,
+  accessScope: 'project',
+  assertedBy: '44444444-4444-4444-8444-444444444444',
+  assertedByKind: 'agent',
+  assertedByName: 'lane C agent',
+  assertedAt: new Date('2026-08-20T09:00:00.000Z'),
+  sourceRef: 'packages/core/src/store/adapter/postgres.ts',
+  originCheckpointId: '66666666-6666-4666-8666-666666666666',
+};
+
+describe('the review queue wire contract', () => {
+  it('round-trips a pending review item through the schema the CLI and the app both parse', () => {
+    const encoded = encodePendingReviewItem(pending);
+
+    expect(PendingReviewItemWireSchema.safeParse(encoded).success).toBe(true);
+    expect(decodePendingReviewItem(encoded)).toEqual(pending);
+  });
+
+  it('carries no human_confirmed and no asserted_by on the way in, so the caller cannot set them', () => {
+    const parsed = ReviewPendingItemsWireSchema.safeParse({
+      projectId: pending.projectId,
+      reviews: [
+        {
+          itemId: pending.id,
+          decision: 'accept',
+          humanConfirmed: true,
+          assertedBy: '99999999-9999-4999-8999-999999999999',
+        },
+      ],
+    });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.reviews[0]).toEqual({
+      itemId: pending.id,
+      decision: 'accept',
+    });
+  });
+
+  it('refuses a submission that decides nothing, and a queue read with no project', () => {
+    expect(
+      ReviewPendingItemsWireSchema.safeParse({ projectId: pending.projectId, reviews: [] }).success,
+    ).toBe(false);
+    expect(PendingReviewFilterWireSchema.safeParse({ projectId: '' }).success).toBe(false);
+    expect(
+      PendingReviewFilterWireSchema.safeParse({ projectId: pending.projectId, limit: 0 }).success,
+    ).toBe(false);
+    expect(PendingReviewFilterWireSchema.safeParse({ projectId: pending.projectId }).success).toBe(
+      true,
+    );
   });
 });
 

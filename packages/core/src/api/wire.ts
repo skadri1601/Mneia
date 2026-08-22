@@ -15,8 +15,15 @@ import {
 import type { ScoredItem, Slice } from '../rehydrate/types.js';
 import type {
   CheckpointWriteResult,
+  ContextItemReview,
+  ContextItemReviewDecision,
+  ContextItemReviewOutcome,
+  ContextItemReviewOutcomeKind,
   ContextItemVerification,
+  PendingReviewFilter,
+  PendingReviewItem,
   ProjectSessionSummary,
+  ReviewPendingItemsResult,
   StaleContextItem,
   VerifyContextItemResult,
 } from '../store/adapter/types.js';
@@ -446,6 +453,174 @@ export const decodeVerifyContextItemResult = (
   item: decodeContextItem(wire.item),
   verification: wire.verification,
   previousLastVerifiedAt: toNullableDate(wire.previousLastVerifiedAt),
+});
+
+export const MAX_REVIEW_ITEMS = 100;
+export const MAX_REVIEW_SUMMARY_LENGTH = 2000;
+
+export const CONTEXT_ITEM_REVIEW_DECISIONS = [
+  'accept',
+  'reject',
+] as const satisfies readonly ContextItemReviewDecision[];
+
+export const CONTEXT_ITEM_REVIEW_OUTCOMES = [
+  'confirmed',
+  'edited',
+  'rejected',
+] as const satisfies readonly ContextItemReviewOutcomeKind[];
+
+export const PendingReviewFilterWireSchema = z.object({
+  projectId: uuid,
+  limit: z.number().int().positive().max(MAX_ITEM_LIMIT).optional(),
+});
+
+export type PendingReviewFilterWire = z.infer<typeof PendingReviewFilterWireSchema>;
+
+export const decodePendingReviewFilter = (wire: PendingReviewFilterWire): PendingReviewFilter => ({
+  projectId: wire.projectId,
+  ...(wire.limit === undefined ? {} : { limit: wire.limit }),
+});
+
+export const PendingReviewItemWireSchema = z.object({
+  id: uuid,
+  projectId: uuid,
+  kind: z.enum(ITEM_KINDS),
+  title: z.string(),
+  body: z.string().nullable(),
+  confidence: z.number(),
+  loadBearing: z.boolean(),
+  accessScope: z.enum(ACCESS_SCOPES),
+  assertedBy: uuid,
+  assertedByKind: z.enum(ACTOR_KINDS),
+  assertedByName: z.string(),
+  assertedAt: isoDate,
+  sourceRef: z.string().nullable(),
+  originCheckpointId: uuid.nullable(),
+});
+
+export type PendingReviewItemWire = z.infer<typeof PendingReviewItemWireSchema>;
+
+export const encodePendingReviewItem = (item: PendingReviewItem): PendingReviewItemWire => ({
+  id: item.id,
+  projectId: item.projectId,
+  kind: item.kind,
+  title: item.title,
+  body: item.body,
+  confidence: item.confidence,
+  loadBearing: item.loadBearing,
+  accessScope: item.accessScope,
+  assertedBy: item.assertedBy,
+  assertedByKind: item.assertedByKind,
+  assertedByName: item.assertedByName,
+  assertedAt: item.assertedAt.toISOString(),
+  sourceRef: item.sourceRef,
+  originCheckpointId: item.originCheckpointId,
+});
+
+export const decodePendingReviewItem = (wire: PendingReviewItemWire): PendingReviewItem => ({
+  id: wire.id,
+  projectId: wire.projectId,
+  kind: wire.kind,
+  title: wire.title,
+  body: wire.body,
+  confidence: wire.confidence,
+  loadBearing: wire.loadBearing,
+  accessScope: wire.accessScope,
+  assertedBy: wire.assertedBy,
+  assertedByKind: wire.assertedByKind,
+  assertedByName: wire.assertedByName,
+  assertedAt: toDate(wire.assertedAt),
+  sourceRef: wire.sourceRef,
+  originCheckpointId: wire.originCheckpointId,
+});
+
+export const ContextItemReviewWireSchema = z.object({
+  itemId: uuid,
+  decision: z.enum(CONTEXT_ITEM_REVIEW_DECISIONS),
+  title: z
+    .string()
+    .trim()
+    .min(1)
+    .max(MAX_TITLE_LENGTH)
+    .refine(isStorableText, NO_NULL_BYTE)
+    .optional(),
+  body: z.string().max(MAX_BODY_LENGTH).refine(isStorableText, NO_NULL_BYTE).nullable().optional(),
+  loadBearing: z.boolean().optional(),
+  accessScope: z.enum(ACCESS_SCOPES).optional(),
+});
+
+export type ContextItemReviewWire = z.infer<typeof ContextItemReviewWireSchema>;
+
+export const encodeContextItemReview = (review: ContextItemReview): ContextItemReviewWire => ({
+  itemId: review.itemId,
+  decision: review.decision,
+  ...(review.title === undefined ? {} : { title: review.title }),
+  ...(review.body === undefined ? {} : { body: review.body }),
+  ...(review.loadBearing === undefined ? {} : { loadBearing: review.loadBearing }),
+  ...(review.accessScope === undefined ? {} : { accessScope: review.accessScope }),
+});
+
+export const decodeContextItemReview = (wire: ContextItemReviewWire): ContextItemReview => ({
+  itemId: wire.itemId,
+  decision: wire.decision,
+  ...(wire.title === undefined ? {} : { title: wire.title }),
+  ...(wire.body === undefined ? {} : { body: wire.body }),
+  ...(wire.loadBearing === undefined ? {} : { loadBearing: wire.loadBearing }),
+  ...(wire.accessScope === undefined ? {} : { accessScope: wire.accessScope }),
+});
+
+export const ReviewPendingItemsWireSchema = z.object({
+  projectId: uuid,
+  reviews: z.array(ContextItemReviewWireSchema).min(1).max(MAX_REVIEW_ITEMS),
+  summary: z
+    .string()
+    .max(MAX_REVIEW_SUMMARY_LENGTH)
+    .refine(isStorableText, NO_NULL_BYTE)
+    .nullable()
+    .optional(),
+});
+
+export type ReviewPendingItemsWire = z.infer<typeof ReviewPendingItemsWireSchema>;
+
+export const ContextItemReviewOutcomeWireSchema = z.object({
+  itemId: uuid,
+  outcome: z.enum(CONTEXT_ITEM_REVIEW_OUTCOMES),
+  fieldsChanged: z.array(z.string()),
+});
+
+export type ContextItemReviewOutcomeWire = z.infer<typeof ContextItemReviewOutcomeWireSchema>;
+
+export const encodeContextItemReviewOutcome = (
+  outcome: ContextItemReviewOutcome,
+): ContextItemReviewOutcomeWire => ({
+  itemId: outcome.itemId,
+  outcome: outcome.outcome,
+  fieldsChanged: [...outcome.fieldsChanged],
+});
+
+export const ReviewPendingItemsResultWireSchema = z.object({
+  checkpoint: CheckpointWireSchema,
+  outcomes: z.array(ContextItemReviewOutcomeWireSchema),
+});
+
+export type ReviewPendingItemsResultWire = z.infer<typeof ReviewPendingItemsResultWireSchema>;
+
+export const encodeReviewPendingItemsResult = (
+  result: ReviewPendingItemsResult,
+): ReviewPendingItemsResultWire => ({
+  checkpoint: encodeCheckpoint(result.checkpoint),
+  outcomes: result.outcomes.map(encodeContextItemReviewOutcome),
+});
+
+export const decodeReviewPendingItemsResult = (
+  wire: ReviewPendingItemsResultWire,
+): ReviewPendingItemsResult => ({
+  checkpoint: decodeCheckpoint(wire.checkpoint),
+  outcomes: wire.outcomes.map((outcome) => ({
+    itemId: outcome.itemId,
+    outcome: outcome.outcome,
+    fieldsChanged: outcome.fieldsChanged,
+  })),
 });
 
 export const encodeCheckpointItem = (item: CheckpointItem): CheckpointItemWire => ({

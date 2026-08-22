@@ -19,8 +19,17 @@ reading this in a diff and wondering where that section went: it documented a wo
 platform we no longer deploy to. `mneia.dev` is served by the Worker — `curl -I https://mneia.dev`
 answers `Server: cloudflare`.
 
-The environment tag on error reports comes from `src/lib/environment.ts`, **not** from `VERCEL_ENV`,
-which is undefined here and silently tagged every production error as `development` until MNE-212.
+The environment tag on error reports comes from `src/lib/environment.ts`, which reads
+`NEXT_PUBLIC_MNEIA_ENV`. **`wrangler.jsonc` declares that in `vars`**, so the value is set on the
+deployment rather than inferred from it. That is the MNE-212 fix: the tag used to be read from
+`VERCEL_ENV`, a variable no runtime we deploy to defines, so every production error arrived tagged
+`development` — and the replacement fallback only ever agreed with reality by accident, because
+`next build` folds `NODE_ENV` to `production` in a preview build too.
+
+OpenNext copies every Worker var into `process.env` before the Next handler runs, so the server and
+edge configs read the declared value at runtime and a staging Worker can be retagged without a
+rebuild. The browser bundle has no Worker env; its value is inlined at build time and falls back to
+the same `production` literal.
 
 ## Environment
 
@@ -32,6 +41,7 @@ which is undefined here and silently tagged every production error as `developme
 | `SENTRY_DSN` | For server and edge error reporting | none | `sentry.server.config.ts`, `sentry.edge.config.ts` |
 | `SENTRY_AUTH_TOKEN` | Build time, for readable stack traces | none | `withSentryConfig` source map upload |
 | `SENTRY_PROBE_SECRET` | Only to run the error-capture probe | none | `POST /api/sentry-check` — unset means the route 404s |
+| `NEXT_PUBLIC_MNEIA_ENV` | Set on the Worker, in `wrangler.jsonc` `vars` | `production` under `next build`, `development` under `next dev` | The Sentry `environment` tag on every event |
 
 `NEXT_PUBLIC_SITE_URL` must have no trailing slash and must match the domain the site is actually
 served from. Every absolute URL the site emits is derived from it, so a wrong value points canonicals

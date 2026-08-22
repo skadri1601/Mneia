@@ -8,6 +8,7 @@ import { initCommand } from './commands/init.js';
 import { logCommand } from './commands/log.js';
 import { loginCommand } from './commands/login.js';
 import { pickupCommand } from './commands/pickup.js';
+import { reviewCommand } from './commands/review.js';
 import { sessionsCommand } from './commands/sessions.js';
 import { statusCommand } from './commands/status.js';
 import { teamCommand } from './commands/team.js';
@@ -42,6 +43,7 @@ const commands: readonly CommandDefinition[] = [
   logCommand,
   statusCommand,
   verifyCommand,
+  reviewCommand,
   loginCommand,
   whoamiCommand,
 ];

@@ -20,11 +20,15 @@ import type {
   InboxHandoffFilter,
   NewContextItem,
   NewProject,
+  PendingReviewFilter,
+  PendingReviewItem,
   ProjectSessionFilter,
   ProjectSessionSummary,
   RetireContextItemInput,
   RetireContextItemResult,
-  ScopedStore,
+  ReviewCapableStore,
+  ReviewPendingItemsInput,
+  ReviewPendingItemsResult,
   SessionClientProvenance,
   StaleContextItem,
   StaleContextItemFilter,
@@ -44,16 +48,21 @@ import {
   decodeCheckpointWriteResult,
   decodeContextItem,
   decodeHandoff,
+  decodePendingReviewItem,
   decodeProject,
   decodeProjectSessionSummary,
+  decodeReviewPendingItemsResult,
   decodeSession,
   decodeSlice,
   decodeStaleContextItem,
   decodeVerifyContextItemResult,
+  encodeContextItemReview,
   HandoffWireSchema,
   type NewContextItemWire,
+  PendingReviewItemWireSchema,
   ProjectSessionSummaryWireSchema,
   ProjectWireSchema,
+  ReviewPendingItemsResultWireSchema,
   SessionWireSchema,
   SliceWireSchema,
   StaleContextItemWireSchema,
@@ -74,6 +83,8 @@ const RetiredItemEnvelope = z.object({
   item: ContextItemWireSchema,
 });
 const StaleContextItemsEnvelope = z.object({ items: z.array(StaleContextItemWireSchema) });
+const PendingReviewItemsEnvelope = z.object({ items: z.array(PendingReviewItemWireSchema) });
+const ReviewPendingItemsEnvelope = z.object({ result: ReviewPendingItemsResultWireSchema });
 const SliceEnvelope = z.object({ slice: SliceWireSchema });
 const HandoffEnvelope = z.object({ handoff: HandoffWireSchema });
 const HandoffsEnvelope = z.object({ handoffs: z.array(HandoffWireSchema) });
@@ -104,7 +115,10 @@ export interface RemoteCreateHandoffRequest {
   readonly supersededWindowDays?: number;
 }
 
-export interface RemoteStore extends ScopedStore {
+export const REVIEW_PENDING_PATH = '/api/v1/review/pending';
+export const REVIEW_PATH = '/api/v1/review';
+
+export interface RemoteStore extends ReviewCapableStore {
   rehydrate(request: RemoteRehydrateRequest): Promise<Slice>;
   handoff(request: RemoteCreateHandoffRequest): Promise<Handoff>;
 }
@@ -281,6 +295,27 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
         ...(filter.limit === undefined ? {} : { limit: filter.limit }),
       });
       return items.map(decodeStaleContextItem);
+    },
+    async listPendingReviewItems(
+      filter: PendingReviewFilter,
+    ): Promise<readonly PendingReviewItem[]> {
+      const query = new URLSearchParams({ projectId: filter.projectId });
+      if (filter.limit !== undefined) {
+        query.set('limit', String(filter.limit));
+      }
+      const { items } = await transport.request(
+        `${REVIEW_PENDING_PATH}?${query.toString()}`,
+        PendingReviewItemsEnvelope,
+      );
+      return items.map(decodePendingReviewItem);
+    },
+    async reviewPendingItems(input: ReviewPendingItemsInput): Promise<ReviewPendingItemsResult> {
+      const { result } = await transport.request(REVIEW_PATH, ReviewPendingItemsEnvelope, {
+        projectId: input.projectId,
+        reviews: input.reviews.map(encodeContextItemReview),
+        ...(input.summary === undefined ? {} : { summary: input.summary }),
+      });
+      return decodeReviewPendingItemsResult(result);
     },
     async verifyContextItem(input: VerifyContextItemInput): Promise<VerifyContextItemResult> {
       const result = await transport.request(
