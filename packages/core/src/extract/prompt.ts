@@ -81,7 +81,10 @@ function renderExistingItems(items: readonly ExistingItemRef[]): string {
     return `${EXISTING_ITEMS_HEADING}\n\nNothing is recorded for this project yet. Everything worth keeping is new.`;
   }
 
-  const lines = items.map((item) => `- [${item.id}] ${item.title}`);
+  // Titles only. The id is never referenced back: no candidate field names an existing
+  // item, and the instruction below tells the model not to judge replacement, so a
+  // rendered UUID cost about 20 tokens each and nothing ever read one.
+  const lines = items.map((item) => `- ${item.title}`);
   return [
     EXISTING_ITEMS_HEADING,
     '',

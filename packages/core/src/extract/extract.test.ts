@@ -324,8 +324,28 @@ describe('buildExtractionPrompt', () => {
 
     expect(existingAt).toBe(0);
     expect(transcriptAt).toBeGreaterThan(existingAt);
-    expect(prompt.user.indexOf('item-2')).toBeLessThan(transcriptAt);
+    // Assert on the title rather than the id. indexOf returns -1 for an absent needle,
+    // which would satisfy toBeLessThan vacuously and let the ordering regress unnoticed.
+    const secondItemAt = prompt.user.indexOf('Rehydration p95 stays under 300ms');
+    expect(secondItemAt).toBeGreaterThan(-1);
+    expect(secondItemAt).toBeLessThan(transcriptAt);
     expect(prompt.user.indexOf('drop the Redis idea')).toBeGreaterThan(transcriptAt);
+  });
+
+  it('renders existing items by title alone, because nothing ever reads their ids back', () => {
+    const prompt = buildExtractionPrompt({
+      turns: [turn('turn-1', 'Some session content.')],
+      existingItems,
+    });
+
+    // The id is write-only: no candidate field names an existing item, the system prompt
+    // tells the model not to judge replacement, and reconcile.ts matches on its own. A
+    // rendered UUID cost ~20 tokens per item and bought nothing, so at the 200-item limit
+    // dropping it takes the prefix from ~7,400 tokens to ~3,600.
+    for (const item of existingItems) {
+      expect(prompt.user).toContain(item.title);
+      expect(prompt.user).not.toContain(item.id);
+    }
   });
 
   it('keeps the cacheable prefix byte-identical when only the trajectory changes', () => {

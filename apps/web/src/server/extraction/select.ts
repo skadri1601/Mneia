@@ -13,7 +13,9 @@ import {
   type ExtractionModel,
   ExtractionProviderError,
   type HttpExtractionOptions,
+  type ReasoningEffort,
   resolveExtractionModel,
+  type ServiceTier,
 } from './providers.js';
 
 export interface ExtractionAttempt {
@@ -81,6 +83,10 @@ export interface ExtractionRunnerOptions {
   readonly fetch?: typeof globalThis.fetch | undefined;
   readonly openaiBaseUrl?: string | undefined;
   readonly anthropicBaseUrl?: string | undefined;
+  /** Overrides the provider default of `low`. See ReasoningEffort in providers.ts. */
+  readonly reasoningEffort?: ReasoningEffort | undefined;
+  /** Overrides the provider default of `flex`. See ServiceTier in providers.ts. */
+  readonly serviceTier?: ServiceTier | undefined;
   readonly now?: () => number;
 }
 
@@ -106,6 +112,8 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
       anthropicApiKey: options.anthropicApiKey,
       fetch: options.fetch,
       baseUrl: model.vendor === 'anthropic' ? options.anthropicBaseUrl : options.openaiBaseUrl,
+      reasoningEffort: options.reasoningEffort,
+      serviceTier: options.serviceTier,
     });
 
   return {

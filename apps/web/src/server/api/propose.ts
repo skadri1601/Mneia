@@ -28,6 +28,15 @@ const MAX_OUTPUT_TOKENS = 8192;
 const CONTEXT_SAFETY_MARGIN = 4096;
 const MIN_CHUNK_TOKENS = 1024;
 
+/**
+ * Where gpt-5.6-luna's long-context pricing starts.
+ *
+ * At or below this, input bills at the standard rate. Above it the provider applies 2x
+ * input and 1.5x output to the entire request, so splitting is strictly cheaper than
+ * sending one call over the line.
+ */
+const LONG_CONTEXT_THRESHOLD_TOKENS = 272_000;
+
 const promptOverheadTokens = (
   existingItems: readonly { readonly id: string; readonly title: string }[],
 ): number => {
@@ -49,10 +58,14 @@ export type QuotaVerdict =
 
 export interface ProposeDependencies {
   readonly quota: () => Promise<QuotaVerdict>;
+  // Structurally the same as ExtractionProviderRequest, declared inline so this module
+  // does not depend on the runner. Keep the two in step: a field added there and missed
+  // here is silently dropped rather than rejected.
   readonly run: (request: {
     system: string;
     user: string;
     maxOutputTokens: number;
+    cacheKey?: string | undefined;
   }) => Promise<{ text: string; model: string; attempts: readonly ExtractionAttemptRecord[] }>;
   readonly watermarkFor: (input: {
     projectId: string;
@@ -136,12 +149,19 @@ export const handleProposeCheckpoint = async (
 
   const existingItems = existing.map((item) => ({ id: item.id, title: item.title }));
   const overhead = promptOverheadTokens(existingItems);
-  const budget = deps.servableContextTokens - overhead - MAX_OUTPUT_TOKENS - CONTEXT_SAFETY_MARGIN;
+
+  // Cap the window we are willing to fill, independently of what the model can hold.
+  // Past LONG_CONTEXT_THRESHOLD_TOKENS the provider charges 2x input and 1.5x output on
+  // the *whole* request, not just the excess, so one oversized call costs more than the
+  // two right-sized ones it replaces. This only binds when no fallback is configured:
+  // with the Anthropic fallback present, servableContextTokens is already its 200K window.
+  const servable = Math.min(deps.servableContextTokens, LONG_CONTEXT_THRESHOLD_TOKENS);
+  const budget = servable - overhead - MAX_OUTPUT_TOKENS - CONTEXT_SAFETY_MARGIN;
 
   if (budget < MIN_CHUNK_TOKENS) {
     throw new ApiRequestError(
       'invalid_request',
-      `the extraction prompt overhead leaves ${budget} tokens for the transcript, which is below the ${MIN_CHUNK_TOKENS} minimum — the project carries ${existingItems.length} active item titles against a ${deps.servableContextTokens} token window`,
+      `the extraction prompt overhead leaves ${budget} tokens for the transcript, which is below the ${MIN_CHUNK_TOKENS} minimum — the project carries ${existingItems.length} active item titles against a ${servable} token window`,
     );
   }
 
@@ -164,6 +184,12 @@ export const handleProposeCheckpoint = async (
         system: prompt.system,
         user: prompt.user,
         maxOutputTokens: MAX_OUTPUT_TOKENS,
+        // Group cache lookups by project. The prefix - system prompt plus the
+        // existing-items block - is identical for every checkpoint in a project and
+        // changes only when its memory does, so this is the widest key that stays
+        // correct. Keying per session would fragment it; keying per workspace would
+        // collide across projects with different memory.
+        cacheKey: `${store.scope.workspaceId}:${project.id}`,
       });
     } catch (error) {
       if (error instanceof ExtractionRunError) {
