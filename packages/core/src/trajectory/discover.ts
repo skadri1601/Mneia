@@ -116,6 +116,7 @@ export async function readTrajectory(
   source: TrajectorySource,
   sessionRef: string,
   readers: readonly TrajectoryReader[] = createReaders(),
+  cwd?: string,
 ): Promise<Trajectory> {
   const reader = readers.find((candidate) => candidate.source === source);
   if (reader === undefined) {
@@ -125,5 +126,5 @@ export async function readTrajectory(
       `expected a reader for ${source}; there is none — supported sources are ${readers.map((entry) => entry.source).join(', ')}`,
     );
   }
-  return reader.read(sessionRef);
+  return reader.read(sessionRef, cwd);
 }

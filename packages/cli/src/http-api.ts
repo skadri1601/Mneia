@@ -9,10 +9,10 @@ import type {
   RemoteStore,
   ScopedStore,
   Trajectory,
+  TrajectorySource,
   TrajectoryTurn,
   Uuid,
 } from '@mneia/core';
-import type { TrajectorySource } from '@mneia/core';
 import {
   CheckpointProposalWireSchema,
   createHttpTransport,
@@ -58,8 +58,8 @@ import type {
   VerifyOutcome,
   VerifyRequest,
 } from './commands/verify.js';
-import { MAX_CHAIN_REVISIONS, matchItemIds } from './item-ids.js';
 import { resolveToken } from './config.js';
+import { MAX_CHAIN_REVISIONS, matchItemIds } from './item-ids.js';
 
 const STATUS_ITEM_LIMIT = 500;
 
@@ -95,7 +95,7 @@ export async function selectTrajectory(
   source?: TrajectorySource,
 ): Promise<Trajectory> {
   if (source !== undefined && sessionRef !== undefined) {
-    return readTrajectory(source, sessionRef);
+    return readTrajectory(source, sessionRef, createReaders([source]), cwd);
   }
 
   const discovered = await discoverTrajectories(
