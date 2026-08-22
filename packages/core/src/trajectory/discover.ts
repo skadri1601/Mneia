@@ -17,8 +17,8 @@ import {
 } from './types.js';
 import { createWarpReader } from './warp.js';
 
-export function createReaders(): readonly TrajectoryReader[] {
-  return [
+export function createReaders(sources?: readonly TrajectorySource[]): readonly TrajectoryReader[] {
+  const readers = [
     createClaudeCodeReader(),
     createClaudeDesktopReader(),
     createCodexReader(),
@@ -26,6 +26,11 @@ export function createReaders(): readonly TrajectoryReader[] {
     createGeminiReader(),
     createWarpReader(),
   ];
+  if (sources === undefined) {
+    return readers;
+  }
+  const wanted = new Set(sources);
+  return readers.filter((reader) => wanted.has(reader.source));
 }
 
 export interface DiscoveredTrajectory extends TrajectorySummary {

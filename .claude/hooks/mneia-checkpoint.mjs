@@ -54,7 +54,16 @@ if (!claimLock(root, sessionId)) pass();
 try {
   const budgetMs = timeoutMs(DEFAULT_TIMEOUT_MS);
   const result = runMneia(
-    ['checkpoint', '--json', '--trigger', 'task_boundary', '--session', sessionId],
+    [
+      'checkpoint',
+      '--json',
+      '--trigger',
+      'task_boundary',
+      '--source',
+      'claude-code',
+      '--session',
+      sessionId,
+    ],
     {
       cwd: root,
       timeoutMs: budgetMs,
