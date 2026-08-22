@@ -60,7 +60,7 @@ export interface ListTrajectoriesRequest {
 export interface TrajectoryReader {
   readonly source: TrajectorySource;
   list(request?: ListTrajectoriesRequest): Promise<readonly TrajectorySummary[]>;
-  read(sessionRef: string): Promise<Trajectory>;
+  read(sessionRef: string, cwd?: string): Promise<Trajectory>;
 }
 
 export type TrajectoryErrorCode =

@@ -285,8 +285,8 @@ export function createClaudeCodeReader(options: ClaudeCodeReaderOptions = {}): T
   const root = options.projectsRoot ?? defaultProjectsRoot();
   const source = options.source ?? 'claude-code';
 
-  const pathFor = async (sessionRef: string): Promise<string> => {
-    const files = await listJsonlFiles(root);
+  const pathFor = async (sessionRef: string, cwd?: string): Promise<string> => {
+    const files = await listJsonlFiles(root, cwd);
     const match = files.find((file) => basename(file, '.jsonl') === sessionRef);
     if (match === undefined) {
       throw new TrajectoryError(
@@ -324,8 +324,8 @@ export function createClaudeCodeReader(options: ClaudeCodeReaderOptions = {}): T
       return request.limit === undefined ? summaries : summaries.slice(0, request.limit);
     },
 
-    async read(sessionRef: string) {
-      const file = await pathFor(sessionRef);
+    async read(sessionRef: string, cwd?: string) {
+      const file = await pathFor(sessionRef, cwd);
       let raw: string;
       try {
         raw = await readFile(file, 'utf8');

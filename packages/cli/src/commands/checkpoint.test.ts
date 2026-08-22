@@ -154,10 +154,12 @@ class FakeApi implements CheckpointApi {
   readonly proposals: ProposeRequest[] = [];
   sessions: readonly DiscoveredSession[] = [NEWEST_SESSION];
   failOn: string | null = null;
+  discoveries = 0;
 
   constructor(private readonly proposal: CheckpointProposal) {}
 
   discover(): Promise<SessionDiscovery> {
+    this.discoveries += 1;
     return Promise.resolve({ sessions: this.sessions, blocked: [] });
   }
 
@@ -724,6 +726,67 @@ describe('mneia checkpoint across sessions', () => {
     });
 
     expect(api.proposals.map((request) => request.sessionRef)).toEqual(['session-older']);
+  });
+
+  it('does not enumerate any harness when --source names the one that ended', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    const code = await commandFor(api).run({
+      args: [],
+      flags: { session: 'session-older', source: 'claude-code' },
+      json: false,
+      io: sink.io,
+    });
+
+    expect(code).toBe(0);
+    expect(api.discoveries).toBe(0);
+    expect(api.proposals.map((request) => request.sessionRef)).toEqual(['session-older']);
+    expect(api.proposals.map((request) => request.source)).toEqual(['claude-code']);
+  });
+
+  it('still enumerates when only --session is given, because the harness is unknown', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    await commandFor(api).run({
+      args: [],
+      flags: { session: 'session-older' },
+      json: false,
+      io: sink.io,
+    });
+
+    expect(api.discoveries).toBe(1);
+  });
+
+  it('rejects a --source that names no harness Mneia can read', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    const sink = capture();
+
+    await expect(
+      commandFor(api).run({
+        args: [],
+        flags: { session: 'session-older', source: 'vscode' },
+        json: false,
+        io: sink.io,
+      }),
+    ).rejects.toThrow(/not a harness Mneia can read/);
+  });
+
+  it('refuses --source without --session, which would still enumerate', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    const sink = capture();
+
+    await expect(
+      commandFor(api).run({
+        args: [],
+        flags: { source: 'claude-code' },
+        json: false,
+        io: sink.io,
+      }),
+    ).rejects.toThrow(/only means something alongside --session/);
   });
 
   it('lists the discovered refs when --session matches none of them', async () => {

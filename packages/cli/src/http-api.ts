@@ -9,6 +9,7 @@ import type {
   RemoteStore,
   ScopedStore,
   Trajectory,
+  TrajectorySource,
   TrajectoryTurn,
   Uuid,
 } from '@mneia/core';
@@ -16,6 +17,7 @@ import {
   ApiError,
   CheckpointProposalWireSchema,
   createHttpTransport,
+  createReaders,
   createRemoteStore,
   decodePendingReviewItem,
   discoverTrajectories,
@@ -100,8 +102,19 @@ const blockedReasons = (discovered: readonly DiscoveredTrajectory[]): readonly s
     .filter((entry) => entry.unavailable !== null)
     .map((entry) => `${entry.source}: ${entry.unavailable ?? 'unavailable'}`);
 
-export async function selectTrajectory(cwd: string, sessionRef?: string): Promise<Trajectory> {
-  const discovered = await discoverTrajectories({ cwd, limit: SESSION_DISCOVERY_LIMIT });
+export async function selectTrajectory(
+  cwd: string,
+  sessionRef?: string,
+  source?: TrajectorySource,
+): Promise<Trajectory> {
+  if (source !== undefined && sessionRef !== undefined) {
+    return readTrajectory(source, sessionRef, createReaders([source]), cwd);
+  }
+
+  const discovered = await discoverTrajectories(
+    { cwd, limit: SESSION_DISCOVERY_LIMIT },
+    createReaders(source === undefined ? undefined : [source]),
+  );
   const usable = discovered.filter((entry) => entry.unavailable === null);
   const chosen =
     sessionRef === undefined ? usable[0] : usable.find((entry) => entry.sessionRef === sessionRef);
@@ -600,10 +613,10 @@ export function uploadableFrom(
 
 export const httpCheckpointApi: CheckpointApi = {
   async discover(request: DiscoverRequest): Promise<SessionDiscovery> {
-    const discovered = await discoverTrajectories({
-      cwd: request.cwd,
-      limit: SESSION_DISCOVERY_LIMIT,
-    });
+    const discovered = await discoverTrajectories(
+      { cwd: request.cwd, limit: SESSION_DISCOVERY_LIMIT },
+      createReaders(request.source === undefined ? undefined : [request.source]),
+    );
 
     return {
       sessions: discovered
@@ -622,7 +635,7 @@ export const httpCheckpointApi: CheckpointApi = {
 
     const trajectory =
       request.fromFile === undefined
-        ? await selectTrajectory(request.cwd ?? process.cwd(), request.sessionRef)
+        ? await selectTrajectory(request.cwd ?? process.cwd(), request.sessionRef, request.source)
         : await readTrajectoryFile(request.fromFile);
 
     const reduced = reduceTrajectory(trajectory, { maxChars: Number.MAX_SAFE_INTEGER });

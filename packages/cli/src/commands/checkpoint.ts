@@ -5,9 +5,10 @@ import type {
   ItemKind,
   TelemetryEmitter,
   TelemetryEvent,
+  TrajectorySource,
   Uuid,
 } from '@mneia/core';
-import { CHECKPOINT_TRIGGERS, createNoopEmitter } from '@mneia/core';
+import { CHECKPOINT_TRIGGERS, createNoopEmitter, TRAJECTORY_SOURCES } from '@mneia/core';
 import { callApi } from '../api.js';
 import {
   CliError,
@@ -59,15 +60,17 @@ export interface ProposeRequest {
   readonly cwd?: string | undefined;
   readonly fromFile?: string | undefined;
   readonly sessionRef?: string | undefined;
+  readonly source?: TrajectorySource | undefined;
 }
 
 export interface DiscoverRequest {
   readonly config: ProjectConfig;
   readonly cwd: string;
+  readonly source?: TrajectorySource | undefined;
 }
 
 export interface DiscoveredSession {
-  readonly source: string;
+  readonly source: TrajectorySource;
   readonly sessionRef: string;
   readonly lastActivityAt: Date | null;
 }
@@ -127,7 +130,7 @@ export interface CheckpointDeps {
 }
 
 const USAGE =
-  'mneia checkpoint [-m "<summary>"] [--trigger <trigger>] [--session <ref> | --all-sessions] [--json]';
+  'mneia checkpoint [-m "<summary>"] [--trigger <trigger>] [--session <ref> [--source <harness>] | --all-sessions] [--json]';
 
 export const MAX_CHECKPOINT_SESSIONS = 20;
 
@@ -195,6 +198,23 @@ export function readSessionRef(flags: CommandInvocation['flags']): string | null
     );
   }
   return raw.trim();
+}
+
+export function readSource(flags: CommandInvocation['flags']): TrajectorySource | null {
+  const raw = flags.source;
+  if (raw === undefined) {
+    return null;
+  }
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    throw usageError(`--source needs one of: ${TRAJECTORY_SOURCES.join(', ')}`);
+  }
+  const source = raw.trim();
+  if (!(TRAJECTORY_SOURCES as readonly string[]).includes(source)) {
+    throw usageError(
+      `--source ${source} is not a harness Mneia can read; pass one of: ${TRAJECTORY_SOURCES.join(', ')}`,
+    );
+  }
+  return source as TrajectorySource;
 }
 
 export function readAllSessions(flags: CommandInvocation['flags']): boolean {
@@ -690,6 +710,7 @@ async function runSession(
       trigger,
       cwd: invocation.io.cwd,
       sessionRef: session.sessionRef,
+      source: session.source,
     }),
   );
 
@@ -949,6 +970,7 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
       const trigger = readTrigger(invocation.flags);
       const sessionRef = readSessionRef(invocation.flags);
       const allSessions = readAllSessions(invocation.flags);
+      const source = readSource(invocation.flags);
 
       if (sessionRef !== null && allSessions) {
         throw usageError(
@@ -956,12 +978,28 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
         );
       }
 
-      const config = await deps.loadConfig(invocation.io.cwd, invocation.io.env);
-      const discovery = await callApi(config.endpoint, 'checkpoint', () =>
-        deps.api.discover({ config, cwd: invocation.io.cwd }),
-      );
+      if (source !== null && sessionRef === null) {
+        throw usageError(
+          '--source narrows the search to one harness and only means something alongside --session; pass --session <ref> with it, or drop it',
+        );
+      }
 
-      const chosen = selectSessions(discovery, sessionRef, invocation.io.cwd);
+      const config = await deps.loadConfig(invocation.io.cwd, invocation.io.env);
+
+      const named =
+        source !== null && sessionRef !== null
+          ? ({ source, sessionRef, lastActivityAt: null } satisfies DiscoveredSession)
+          : null;
+
+      const discovery: SessionDiscovery =
+        named === null
+          ? await callApi(config.endpoint, 'checkpoint', () =>
+              deps.api.discover({ config, cwd: invocation.io.cwd }),
+            )
+          : { sessions: [named], blocked: [] };
+
+      const chosen =
+        named === null ? selectSessions(discovery, sessionRef, invocation.io.cwd) : [named];
       const context = { config, trigger, summary };
       const canPrompt = deps.prompter.interactive && !invocation.json;
 

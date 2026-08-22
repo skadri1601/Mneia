@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createClaudeCodeReader, projectSlug } from './claude-code.js';
-import { discoverTrajectories, discoverTrajectorySessions } from './discover.js';
+import { createReaders, discoverTrajectories, discoverTrajectorySessions } from './discover.js';
 import {
   type ListTrajectoriesRequest,
   type Trajectory,
@@ -302,10 +302,51 @@ describe('the Claude Code reader over many sessions', () => {
     expect(failures).not.toContain('session-elsewhere');
   });
 
+  it('reads a session by ref without walking the project folders of other repositories', async () => {
+    const reader = createClaudeCodeReader({ projectsRoot: projects });
+
+    await expect(reader.read('session-elsewhere', CWD)).rejects.toThrow(/found none/);
+  });
+
+  it('still finds a session by ref alone, when the caller cannot say which directory it ran in', async () => {
+    const reader = createClaudeCodeReader({ projectsRoot: projects });
+    const trajectory = await reader.read('session-elsewhere');
+
+    expect(trajectory.sessionRef).toBe('session-elsewhere');
+  });
+
+  it('reads the named session when the working directory is the one it ran in', async () => {
+    const reader = createClaudeCodeReader({ projectsRoot: projects });
+    const trajectory = await reader.read('session-new', CWD);
+
+    expect(trajectory.sessionRef).toBe('session-new');
+  });
+
   it('falls back to every directory when none of them looks like the working directory', async () => {
     const reader = createClaudeCodeReader({ projectsRoot: projects });
     const listed = await reader.list({ cwd: 'C:\\somewhere\\else' });
 
     expect(listed).toHaveLength(0);
+  });
+});
+
+describe('createReaders', () => {
+  it('builds every harness reader when no source is named', () => {
+    expect(createReaders().map((reader) => reader.source)).toEqual([
+      'claude-code',
+      'claude-desktop',
+      'codex',
+      'cursor',
+      'gemini',
+      'warp',
+    ]);
+  });
+
+  it('builds only the harness asked for, so no other store is opened', () => {
+    expect(createReaders(['claude-code']).map((reader) => reader.source)).toEqual(['claude-code']);
+  });
+
+  it('builds nothing for a source no reader serves', () => {
+    expect(createReaders([])).toHaveLength(0);
   });
 });
