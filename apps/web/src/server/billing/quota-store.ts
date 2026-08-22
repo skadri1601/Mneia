@@ -12,19 +12,31 @@ import { BillingError } from './stripe.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+/**
+ * One query, deliberately. Rehydrate holds a 300ms p95 budget (vision.md §12.1, standing
+ * rule 4) and checkpoint shares the same connection pool, so the counters, the allowances,
+ * the wallet and the member count are read together rather than as four round trips.
+ *
+ * The usage row is absent until the period's first checkpoint, hence the COALESCE: a
+ * workspace that has not checkpointed this month has used nothing, not null.
+ */
 const QUOTA_SQL = `SELECT w.plan,
           w.billing_status,
           w.seats_purchased,
-          w.checkpoint_allowance,
+          w.turn_allowance,
+          w.extraction_allowance,
+          w.embedding_token_allowance,
+          w.wallet_balance_micros,
           (SELECT count(DISTINCT tm.actor_id)
              FROM team_member AS tm
             WHERE tm.workspace_id = w.id) AS member_count,
-          COALESCE((SELECT p.checkpoints_used
-                      FROM workspace_usage_period AS p
-                     WHERE p.workspace_id = w.id
-                       AND p.period_start = date_trunc('month', $2::timestamptz)::date), 0)
-            AS checkpoints_used
+          COALESCE(p.turns_used, 0) AS turns_used,
+          COALESCE(p.extractions_used, 0) AS extractions_used,
+          COALESCE(p.embedding_tokens_used, 0) AS embedding_tokens_used
      FROM workspace AS w
+     LEFT JOIN workspace_usage_period AS p
+            ON p.workspace_id = w.id
+           AND p.period_start = date_trunc('month', $2::timestamptz)::date
     WHERE w.id = $1`;
 
 export interface QuotaStore {
@@ -122,8 +134,13 @@ export class PostgresQuotaStore implements QuotaStore {
         billingStatus: readText(row, 'billing_status') as QuotaState['billingStatus'],
         seatsPurchased: readNullableCount(row, 'seats_purchased'),
         memberCount: readCount(row, 'member_count'),
-        checkpointAllowance: readNullableCount(row, 'checkpoint_allowance'),
-        checkpointsUsed: readCount(row, 'checkpoints_used'),
+        turnAllowance: readNullableCount(row, 'turn_allowance'),
+        extractionAllowance: readNullableCount(row, 'extraction_allowance'),
+        embeddingTokenAllowance: readNullableCount(row, 'embedding_token_allowance'),
+        turnsUsed: readCount(row, 'turns_used'),
+        extractionsUsed: readCount(row, 'extractions_used'),
+        embeddingTokensUsed: readCount(row, 'embedding_tokens_used'),
+        walletBalanceMicros: readCount(row, 'wallet_balance_micros'),
         period,
       };
     });

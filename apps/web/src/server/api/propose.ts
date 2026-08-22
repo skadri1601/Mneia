@@ -17,9 +17,11 @@ import {
   parseExtractionOutput,
   reconcileCandidates,
   reduceTrajectory,
+  renderTurn,
   resolveProject,
   turnsSince,
 } from '@mneia/core';
+import { costMicrosFor, estimateCostMicros } from '../billing/pricing.js';
 import { ExtractionRunError } from '../extraction/select.js';
 import { ApiRequestError } from './handlers.js';
 
@@ -53,11 +55,23 @@ export interface ExtractionAttemptRecord {
 }
 
 export type QuotaVerdict =
-  | { readonly allowed: true }
+  | { readonly allowed: true; readonly source: 'allowance' }
+  | { readonly allowed: true; readonly source: 'wallet'; readonly debitMicros: number }
   | { readonly allowed: false; readonly code: string; readonly message: string };
 
 export interface ProposeDependencies {
-  readonly quota: () => Promise<QuotaVerdict>;
+  /**
+   * Decides whether this checkpoint may run, given what it is about to consume.
+   *
+   * Called once the prompt has been sized, so it is charged against real turn counts and
+   * a real token estimate rather than the request's raw shape. Nothing external has
+   * happened at that point - the work in between is local - so a refusal still costs
+   * nothing.
+   */
+  readonly quota: (request: {
+    turns: number;
+    estimatedCostMicros: number;
+  }) => Promise<QuotaVerdict>;
   // Structurally the same as ExtractionProviderRequest, declared inline so this module
   // does not depend on the runner. Keep the two in step: a field added there and missed
   // here is silently dropped rather than rejected.
@@ -75,8 +89,16 @@ export interface ProposeDependencies {
   readonly recordUsage: (input: {
     projectId: string;
     attempts: readonly ExtractionAttemptRecord[];
+    /** Turns actually consumed, which is what the turn dial meters. */
+    turns: number;
+    /** Real cost of the attempts above, priced from their reported token counts. */
+    costMicros: number;
+    /** Non-zero when this checkpoint ran on wallet balance rather than allowance. */
+    walletDebitMicros: number;
   }) => Promise<void>;
   readonly servableContextTokens: number;
+  /** Which model the estimate should be priced against, before any fallback happens. */
+  readonly primaryModel: string;
 }
 
 const decodeTurns = (wire: CheckpointProposeWire): readonly TrajectoryTurn[] =>
@@ -126,9 +148,16 @@ export const handleProposeCheckpoint = async (
     };
   }
 
-  const verdict = await deps.quota();
-  if (!verdict.allowed) {
-    throw new ApiRequestError('forbidden', verdict.message);
+  // Placed after the zero-pending-turns return above, and that ordering is load-bearing.
+  // The client's watermark probe uploads no turns, and turnsSince cannot find a watermark
+  // in an empty array, so it reports resolved: false for every probe. Checking here would
+  // refuse the probe and re-create MNE-100, where an oversized session could not be
+  // checkpointed at all.
+  if (!pending.resolved && input.fromStart !== true) {
+    throw new ApiRequestError(
+      'invalid_request',
+      `the upload does not contain watermark "${watermark}", so the turns between it and the first turn sent are missing. Extracting anyway would move the watermark backwards and re-run extraction over turns already recorded, which is billed again. Send the turns from the watermark onward, or set fromStart when the transcript has rotated and no longer goes back that far.`,
+    );
   }
 
   const reduced = reduceTrajectory(
@@ -166,6 +195,22 @@ export const handleProposeCheckpoint = async (
   }
 
   const { chunks, splitTurns } = chunkTurns(reduced.trajectory.turns, { budgetTokens: budget });
+
+  // Charged here, not earlier: only now are the turn count and prompt size known, and the
+  // allowance meters both. Everything between the early return above and this line is
+  // local work, so a refusal still costs nothing but a database read.
+  const estimatedInputTokens = chunks.reduce(
+    (total, chunk) =>
+      total + overhead + defaultTokenCounter.count(chunk.turns.map(renderTurn).join('\n')),
+    0,
+  );
+  const verdict = await deps.quota({
+    turns: reduced.trajectory.turns.length,
+    estimatedCostMicros: estimateCostMicros(deps.primaryModel, estimatedInputTokens),
+  });
+  if (!verdict.allowed) {
+    throw new ApiRequestError('forbidden', verdict.message);
+  }
 
   const candidates: ExtractionCandidate[] = [];
   const attempts: ExtractionAttemptRecord[] = [];
@@ -219,8 +264,26 @@ export const handleProposeCheckpoint = async (
     completedThrough = chunk.completedThrough;
   }
 
+  // Only when something actually ran. An empty attempt list means no provider call was
+  // made, and metering a checkpoint that cost nothing is exactly the defect this work
+  // exists to remove.
   if (attempts.length > 0) {
-    await deps.recordUsage({ projectId: project.id, attempts });
+    await deps.recordUsage({
+      projectId: project.id,
+      attempts,
+      turns: completedThrough + 1,
+      costMicros: attempts.reduce(
+        (total, attempt) =>
+          total +
+          costMicrosFor({
+            model: attempt.model,
+            inputTokens: attempt.inputTokens,
+            outputTokens: attempt.outputTokens,
+          }),
+        0,
+      ),
+      walletDebitMicros: verdict.allowed && verdict.source === 'wallet' ? verdict.debitMicros : 0,
+    });
   }
 
   const lastCommitted = completedThrough < 0 ? null : sent[completedThrough];

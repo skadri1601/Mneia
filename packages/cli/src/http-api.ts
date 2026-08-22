@@ -641,7 +641,7 @@ export const httpCheckpointApi: CheckpointApi = {
     const reduced = reduceTrajectory(trajectory, { maxChars: Number.MAX_SAFE_INTEGER });
     const all = reduced.trajectory.turns;
 
-    const send = async (turns: readonly TrajectoryTurn[]) => {
+    const send = async (turns: readonly TrajectoryTurn[], fromStart = false) => {
       const { proposal } = await transport.request(
         '/api/v1/checkpoints/propose',
         ProposalEnvelope,
@@ -651,11 +651,14 @@ export const httpCheckpointApi: CheckpointApi = {
           sessionRef: reduced.trajectory.sessionRef,
           trigger: request.trigger,
           turns: turns.map(wireTurn),
+          fromStart,
         },
       );
       return proposal;
     };
 
+    // Upload nothing first, purely to learn the server's watermark. This costs no
+    // extraction: the server returns early when there is nothing new past it.
     let proposal = await send([]);
     let heldBack = 0;
 
@@ -664,9 +667,15 @@ export const httpCheckpointApi: CheckpointApi = {
     const done = all.length === 0 || marked === all.length - 1;
 
     if (!done) {
-      const start = marked < 0 ? 0 : marked;
+      // marked < 0 means we are sending from the very first turn we hold, either because
+      // the server has no watermark yet or because this transcript has rotated past the
+      // one it has. Tell the server, so it can distinguish that from an upload that has
+      // simply lost the turns in between - which it must refuse rather than re-extract
+      // and bill for twice.
+      const fromStart = marked < 0;
+      const start = fromStart ? 0 : marked;
       const uploaded = uploadableFrom(all, start);
-      proposal = await send(uploaded);
+      proposal = await send(uploaded, fromStart);
       heldBack = all.length - start - uploaded.length;
     }
 
