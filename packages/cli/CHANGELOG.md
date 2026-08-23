@@ -1,5 +1,23 @@
 # @mneia/cli
 
+## 0.15.0
+
+### Minor Changes
+
+- 5b68324: Extraction now sees the whole session. `mneia checkpoint -m` reaches the model instead of only
+  being stored, each chunk of a long session is told what earlier chunks already found, and the
+  "already in project memory" list is context rather than an instruction to stay silent —
+  duplicates were always removed downstream, so suppressing them in the prompt only lost work.
+
+### Patch Changes
+
+- 5b68324: Never checkpoint a session that started before the repo was bound to Mneia. `mneia init` now
+  records `boundAt` in `.mneia/config.json`, and `mneia checkpoint` skips anything older — context
+  from before the install is out of scope, and sweeping it back in paid a model to read transcripts
+  that predate the product.
+- Updated dependencies [5b68324]
+  - @mneia/core@0.15.0
+
 ## 0.14.1
 
 ### Patch Changes
