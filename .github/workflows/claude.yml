@@ -15,7 +15,7 @@ jobs:
     # Keeps a runner from starting on comments that never mention @claude. The action
     # checks the trigger phrase again itself; this only saves the minutes.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && github.event.comment.body != '@claude review') ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude') && !contains(github.event.comment.body, '@claude review')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
     runs-on: ubuntu-latest

@@ -20,7 +20,14 @@ function forbidText(source, text, description) {
 requireText(review, 'types: [created]', 'created issue-comment event');
 requireText(review, 'github.event.issue.pull_request', 'pull-request guard');
 requireText(review, "github.event.issue.state == 'open'", 'open-pull-request guard');
-requireText(review, "github.event.comment.body == '@claude review'", 'exact manual command guard');
+requireText(
+  review,
+  "contains(github.event.comment.body, '@claude review')",
+  'manual command phrase guard',
+);
+requireText(review, 'COMMENT_BODY', 'comment normalization input');
+requireText(review, "replace(/\\\\s+/gu, ' ').trim()", 'comment normalization');
+requireText(review, "steps.command.outputs.matched == 'true'", 'exact command action guard');
 requireText(review, 'plugin_marketplaces:', 'Anthropic plugin marketplace installation');
 requireText(review, 'plugins:', 'Anthropic code-review plugin installation');
 requireText(review, 'code-review@claude-code-plugins', 'official code-review plugin');
@@ -34,9 +41,10 @@ requireText(
   'mcp__github_inline_comment__create_inline_comment',
   'inline-comment tool permission',
 );
+requireText(review, 'Bash(gh *) Bash(git *)', 'plugin GitHub and git command permissions');
 requireText(
   generic,
-  "github.event.comment.body != '@claude review'",
+  "!contains(github.event.comment.body, '@claude review')",
   'generic-workflow reservation exclusion',
 );
 
@@ -44,6 +52,37 @@ forbidText(review, 'pull_request:', 'automatic pull-request trigger');
 forbidText(review, 'pull_request_target:', 'privileged automatic pull-request trigger');
 forbidText(review, 'push:', 'automatic push trigger');
 forbidText(review, 'schedule:', 'scheduled trigger');
-forbidText(review, 'review always', 'persistent review subscription');
+forbidText(review, 'show_full_output: true', 'unredacted workflow output');
+
+const normalizeCommand = (body) => body.replace(/\s+/gu, ' ').trim();
+const specialistReview = ({ isPullRequest, state, body }) =>
+  isPullRequest && state === 'open' && normalizeCommand(body) === '@claude review';
+const genericReview = ({ eventName, body }) =>
+  eventName === 'issue_comment' && body.includes('@claude') && !body.includes('@claude review');
+
+const specialistCases = [
+  [{ isPullRequest: true, state: 'open', body: '@claude review' }, true],
+  [{ isPullRequest: true, state: 'open', body: '  @claude\t review  ' }, true],
+  [{ isPullRequest: true, state: 'open', body: '@claude review always' }, false],
+  [{ isPullRequest: false, state: 'open', body: '@claude review' }, false],
+  [{ isPullRequest: true, state: 'closed', body: '@claude review' }, false],
+];
+for (const [input, expected] of specialistCases) {
+  if (specialistReview(input) !== expected) {
+    throw new Error(`Claude specialist trigger matrix failed for ${JSON.stringify(input)}`);
+  }
+}
+const genericCases = [
+  [{ eventName: 'issue_comment', body: '@claude explain this failure' }, true],
+  [{ eventName: 'issue_comment', body: '@claude review always' }, false],
+  [{ eventName: 'issue_comment', body: '  @claude review  ' }, false],
+  [{ eventName: 'issue_comment', body: 'Please @claude review this' }, false],
+  [{ eventName: 'pull_request_review_comment', body: '@claude explain this line' }, false],
+];
+for (const [input, expected] of genericCases) {
+  if (genericReview(input) !== expected) {
+    throw new Error(`Claude generic trigger matrix failed for ${JSON.stringify(input)}`);
+  }
+}
 
 console.log('Claude review workflow contract passed.');
