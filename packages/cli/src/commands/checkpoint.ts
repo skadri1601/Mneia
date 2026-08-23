@@ -138,6 +138,8 @@ export interface CheckpointDeps {
   readonly now?: () => Date;
 }
 
+// With no --session this checkpoints the harness sessions active in the last
+// RECENT_ACTIVITY_WINDOW_MS; --all-sessions is what reaches back past that.
 const USAGE =
   'mneia checkpoint [-m "<summary>"] [--trigger <trigger>] [--session <ref> [--source <harness>] | --all-sessions] [--json]';
 
@@ -235,7 +237,7 @@ export function readAllSessions(flags: CommandInvocation['flags']): boolean {
     return true;
   }
   throw usageError(
-    `--all-sessions takes no value; it checkpoints every agent session discovered for this directory, and got ${raw}`,
+    `--all-sessions takes no value; it reaches past the ${RECENT_ACTIVITY_WINDOW_MS / 3_600_000}-hour activity window and checkpoints every agent session discovered for this directory, and got ${raw}`,
   );
 }
 
@@ -283,11 +285,50 @@ export function startedBeforeBinding(session: DiscoveredSession, boundAt: Date |
   return began !== null && began.getTime() < boundAt.getTime();
 }
 
+/**
+ * How far back an unnamed sweep will reach.
+ *
+ * Discovery is a filesystem scan of every installed harness's history store — Claude Code,
+ * Claude Desktop, Codex, Cursor, Gemini, Warp — keyed on the working directory and nothing
+ * else. It has no idea which of them is running: a transcript last written three weeks ago
+ * is indistinguishable from the terminal you are typing in. Left unbounded that meant one
+ * `mneia checkpoint` swept 20 unrelated sessions, paid an extraction for each, and printed
+ * nothing for minutes.
+ *
+ * A session nobody has touched in a day is not the session being checkpointed. Naming one
+ * with --session ignores this entirely, and --all-sessions is the escape hatch for the
+ * backfill case, where reaching back is the whole point.
+ */
+export const RECENT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Unknown timestamps count as recent. A harness that reports no times is a reader gap, and
+ * silently skipping its sessions would lose real work to a defect the user cannot see.
+ */
+export function isRecentlyActive(
+  session: DiscoveredSession,
+  now: Date,
+  windowMs: number = RECENT_ACTIVITY_WINDOW_MS,
+): boolean {
+  const touched = session.lastActivityAt ?? session.startedAt;
+  if (touched === null) {
+    return true;
+  }
+  return now.getTime() - touched.getTime() <= windowMs;
+}
+
+export interface SelectSessionsOptions {
+  /** Reaches past RECENT_ACTIVITY_WINDOW_MS. Set by --all-sessions. */
+  readonly includeIdle?: boolean | undefined;
+  readonly now?: (() => Date) | undefined;
+}
+
 export function selectSessions(
   discovery: SessionDiscovery,
   reference: string | null,
   cwd: string,
   boundAt: Date | null = null,
+  options: SelectSessionsOptions = {},
 ): readonly DiscoveredSession[] {
   if (discovery.sessions.length === 0) {
     throw noSessionsError(cwd, discovery);
@@ -333,7 +374,26 @@ export function selectSessions(
     );
   }
 
-  return eligible.slice(0, MAX_CHECKPOINT_SESSIONS);
+  if (options.includeIdle === true) {
+    return eligible.slice(0, MAX_CHECKPOINT_SESSIONS);
+  }
+
+  const now = (options.now ?? (() => new Date()))();
+  const active = eligible.filter((session) => isRecentlyActive(session, now));
+
+  // Nothing has been touched today. Refusing here rather than falling back to the whole
+  // list is the point: the fallback is what made a routine checkpoint extract twenty
+  // stale transcripts across five harnesses, and a fallback nobody asked for is worse
+  // than a message naming the flag that asks for it.
+  if (active.length === 0) {
+    throw new CliError(
+      'not_configured',
+      `none of the ${eligible.length} agent sessions discovered for ${cwd} have been active in the last ${RECENT_ACTIVITY_WINDOW_MS / 3_600_000} hours, so none of them is the session you are in`,
+      'checkpoint the session you are working in with --session <ref>, or pass --all-sessions to sweep the idle ones as well',
+    );
+  }
+
+  return active.slice(0, MAX_CHECKPOINT_SESSIONS);
 }
 
 export function needsHuman(candidate: CheckpointCandidate): boolean {
@@ -905,7 +965,7 @@ function renderAllSessions(
   const header = [
     `${config.workspace}/${config.project} — checkpointed ${countOf(runs.length, 'agent session')} discovered for this directory`,
     discovery.sessions.length > runs.length
-      ? `${discovery.sessions.length} discovered · capped at ${MAX_CHECKPOINT_SESSIONS} per run · times in UTC`
+      ? `${discovery.sessions.length} discovered · active in the last ${RECENT_ACTIVITY_WINDOW_MS / 3_600_000}h · capped at ${MAX_CHECKPOINT_SESSIONS} per run · times in UTC`
       : 'times in UTC',
   ].join('\n');
 
@@ -1112,10 +1172,20 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
             )
           : { sessions: [dated], blocked: [] };
 
+      const selectOptions: SelectSessionsOptions = {
+        includeIdle: allSessions,
+        ...(deps.now === undefined ? {} : { now: deps.now }),
+      };
       const chosen =
         dated === null
-          ? selectSessions(discovery, sessionRef, invocation.io.cwd, config.boundAt)
-          : selectSessions(discovery, dated.sessionRef, invocation.io.cwd, config.boundAt);
+          ? selectSessions(discovery, sessionRef, invocation.io.cwd, config.boundAt, selectOptions)
+          : selectSessions(
+              discovery,
+              dated.sessionRef,
+              invocation.io.cwd,
+              config.boundAt,
+              selectOptions,
+            );
       const context = { config, trigger, summary };
       const canPrompt = deps.prompter.interactive && !invocation.json;
 
