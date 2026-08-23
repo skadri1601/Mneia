@@ -22,21 +22,21 @@ The review path listens only to `issue_comment.created` and runs only when all o
 
 - the comment belongs to a pull request;
 - the pull request is open;
-- the trimmed comment body is exactly `@claude review`.
+- the raw comment body is exactly `@claude review`.
 
 The existing generic workflow keeps its current issue-comment, review-comment, and submitted-review events, but its top-level issue-comment condition excludes that exact reserved command. This guarantees one comment starts at most one Claude job while preserving other uses such as `@claude explain this failure`.
 
-No `pull_request`, `pull_request_target`, `push`, `schedule`, or persistent-label trigger is added. Extra words do not match the reserved command, so `@claude review always` cannot create an automatic mode.
+No `pull_request`, `pull_request_target`, `push`, `schedule`, or persistent-label trigger is added. The job condition requires the raw comment body to equal the reserved command. The generic workflow excludes the reserved prefix, so `@claude review always` starts no Claude action and cannot create an automatic mode.
 
 ## Anthropic plugin invocation
 
 The review job checks out full history, installs Anthropic's official Claude Code plugin marketplace and `code-review@claude-code-plugins`, then gives `anthropics/claude-code-action@v1` this fixed automation prompt:
 
 ```text
-/code-review:code-review ${{ github.repository }}/pull/${{ github.event.issue.number }} --comment
+/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.issue.number }}
 ```
 
-Using a fixed `prompt` puts this job in automation mode. The plugin owns its documented specialist-model mix, parallel review stages, confidence threshold, and comment formatting. The repository does not replace those internals with a large custom prose prompt.
+Using a fixed `prompt` puts this job in automation mode. The plugin owns its documented specialist-model mix, parallel review stages, confidence threshold, and comment formatting. The workflow also passes `--allowedTools "mcp__github_inline_comment__create_inline_comment"`, which the official example requires for inline findings. The repository does not replace those internals with a large custom prose prompt.
 
 The repository's review constraints remain available through `CLAUDE.md`, which imports `AGENTS.md`. Those rules cover human-confirmed assertions, load-bearing constraints, write events, revoked privacy promises, published legal text, RLS, the 300ms rehydrate budget, ticket acceptance, and Section 19 scope.
 
@@ -44,7 +44,7 @@ The repository's review constraints remain available through `CLAUDE.md`, which 
 
 The specialist review lives in a separate `.github/workflows/claude-review.yml`. Separating it from the generic assistant path makes the manual trigger and fixed prompt auditable. `.github/workflows/claude.yml` changes only enough to exclude the reserved command.
 
-The review workflow keeps least-privilege repository access: read contents and Actions results, plus write issues and pull requests for progress, summaries, and inline findings. It uses the existing `ANTHROPIC_API_KEY`; Claude Max does not fund GitHub Action API usage.
+The review workflow keeps least-privilege repository access: read contents and Actions results, plus write issues and pull requests for progress, summaries, and inline findings. Claude's shell allow-list is limited to the plugin's read/comment GitHub CLI subcommands and read-only Git history commands; it does not allow merge, close, edit, reset, commit, or push operations. It uses the existing `ANTHROPIC_API_KEY`; Claude Max does not fund GitHub Action API usage.
 
 The current `claude-sonnet-5` and `--max-turns 1500` settings remain on the generic workflow. The specialist workflow does not force that model because the official plugin selects the documented mix of review and verification models. Its timeout is 30 minutes so the plugin's parallel passes can complete without turning the turn ceiling into the controlling failure mode.
 
