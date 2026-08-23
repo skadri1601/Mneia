@@ -229,6 +229,65 @@ anything. That is the gap MNE-79 is really about.
 - **Codex reports `Auth: Unsupported`.** Correct, not a defect: the server authenticates with
   `MNEIA_TOKEN` or `~/.mneia/`, not MCP OAuth.
 
+## Every client we know reads MCP
+
+**Three of these are verified and the rest are documented-not-run.** The distinction is the whole
+point of this file, so it is marked on every row rather than left to be inferred. Nothing here needs
+per-client code — one binary over stdio, one HTTP endpoint for the rest — which is why breadth is a
+documentation problem and not an engineering one.
+
+**The config key is not the same everywhere, and that is the most common setup failure.** Three
+clients depart from `mcpServers` and one cannot do stdio at all.
+
+| Client | Config file | Format | Top-level key | Remote HTTP | Verified |
+|---|---|---|---|---|---|
+| **Claude Code** | `.mcp.json`, `~/.claude.json` | JSON | `mcpServers` | yes | **verified** |
+| **Codex CLI** | `~/.codex/config.toml`, `.codex/config.toml` | **TOML** | `mcp_servers` | yes | **verified** |
+| **Cursor** | `.cursor/mcp.json`, `~/.cursor/mcp.json` | JSON | `mcpServers` | yes | **verified** |
+| **Claude Desktop** | mac `~/Library/Application Support/Claude/claude_desktop_config.json`, win `%APPDATA%\Claude\claude_desktop_config.json` | JSON | `mcpServers` | connectors only | documented |
+| **VS Code** | `.vscode/mcp.json` | JSON | **`servers`** | yes | documented |
+| **Zed** | `~/.config/zed/settings.json` | JSONC | **`context_servers`** | yes | documented |
+| **Goose** | `~/.config/goose/config.yaml` | YAML | **`extensions`** | yes | documented |
+| **Continue** | `.continue/mcpServers/*.yaml` | YAML | `mcpServers` — **a list** | yes | documented |
+| **Cline** | `cline_mcp_settings.json`, CLI `~/.cline/mcp.json` | JSON | `mcpServers` | yes | documented |
+| **Gemini CLI** | `~/.gemini/settings.json`, `.gemini/settings.json` | JSON | `mcpServers` | yes | documented |
+| **Warp** | `~/.warp/.mcp.json` | JSON | `mcpServers` | yes | documented |
+| **Windsurf / Devin Desktop** | `~/.config/devin/mcp_config.json`, legacy `~/.codeium/windsurf/mcp_config.json` | JSON | `mcpServers` | yes | documented |
+| **JetBrains IDEs** | Settings → Tools → AI Assistant → MCP | JSON in dialog | `mcpServers` | yes | documented |
+| **LibreChat** | `librechat.yaml` | YAML | `mcpServers` | yes | documented |
+| **Open WebUI** | — | — | — | **HTTP only** | documented |
+
+Four traps worth stating outright, because each silently produces "no tools" rather than an error:
+
+- **VS Code uses `servers`, not `mcpServers`.** Pasting the standard block into `.vscode/mcp.json`
+  does nothing at all.
+- **Zed uses `context_servers`** and **Goose uses `extensions`.** Same story.
+- **Continue's `mcpServers` is a YAML list**, not a map, so the JSON shape does not translate.
+- **Open WebUI cannot launch a stdio server.** Its native support is Streamable HTTP only — so it
+  needs `/api/mcp`, not the binary. That makes the remote transport the *only* route for it.
+
+**Windsurf is now Devin Desktop.** An installer that writes only the `~/.codeium/windsurf` path is
+writing to the legacy location.
+
+Paths marked documented come from vendor documentation, not from a run on this machine, and Windows
+paths in particular are the least reliable of them. **Capture before trusting:** point any of these
+at `--record` and its real handshake lands in `docs/handshakes/`, which takes a minute and needs no
+model access. That is how Cursor moved from documented to verified.
+
+### Models are not clients
+
+Groq, Qwen, Moonshot/Kimi and the rest are inference providers. A model never speaks MCP — the
+harness around it does, and every harness above is already on this list.
+
+Two exceptions that do matter, because both orchestrate MCP server-side and therefore need a public
+HTTPS endpoint rather than a binary:
+
+- **Groq** executes remote MCP tool calls itself, from the Responses and Chat Completions APIs.
+- **Alibaba Qwen (Model Studio)** does the same, though **SSE only**, which `/api/mcp` does not serve.
+
+**Ollama is not an MCP client** and never has been, despite the number of blog posts that say so.
+Its tool-call support is what lets *other* MCP clients drive it as a backend.
+
 ## Configuration
 
 **Claude Code and Cursor** — JSON:

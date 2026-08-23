@@ -47,6 +47,38 @@ export interface RemoteMcpSession {
 }
 
 /**
+ * Reads a client identity out of an HTTP User-Agent.
+ *
+ * Stateless Streamable HTTP answers each request with a fresh server, so the clientInfo a client
+ * sends on `initialize` belongs to a different request than the `tools/call` that follows it and
+ * never reaches the write. Without a fallback every remote session records an empty client_name,
+ * which is precisely the attribution docs/CLIENTS.md relies on as evidence.
+ *
+ * The User-Agent is the one identity that does travel on every request. Convention is
+ * `name/version`, which most MCP clients follow; anything else is kept whole as the name rather
+ * than being parsed into something wrong.
+ */
+export function clientFromUserAgent(userAgent: string | null): McpClientInfo | undefined {
+  if (userAgent === null) {
+    return undefined;
+  }
+  const trimmed = userAgent.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  const first = trimmed.split(/\s+/)[0] ?? trimmed;
+  const separator = first.lastIndexOf('/');
+  if (separator <= 0 || separator === first.length - 1) {
+    return { name: trimmed.slice(0, 120), version: 'unknown' };
+  }
+  return {
+    name: first.slice(0, separator),
+    version: first.slice(separator + 1),
+  };
+}
+
+/**
  * Builds an MCP server bound to one caller's workspace.
  *
  * The identity is the one resolved from the verified bearer token, never anything the client put
@@ -54,8 +86,14 @@ export interface RemoteMcpSession {
  * reach another tenant's rows: withWorkspaceScope sets the Postgres RLS GUCs for the transaction,
  * and the store refuses a connection holding BYPASSRLS.
  */
-export function createRemoteMcpSession(identity: BearerIdentity): RemoteMcpSession {
-  let clientInfo: McpClientInfo | undefined;
+export function createRemoteMcpSession(
+  identity: BearerIdentity,
+  transportClient?: McpClientInfo | undefined,
+): RemoteMcpSession {
+  // Seeded from the HTTP User-Agent so a write is attributed even though this request carries no
+  // initialize. When a client does initialize and call within one request, onClientInfo overwrites
+  // this with what MCP reported, which is the better of the two identities.
+  let clientInfo: McpClientInfo | undefined = transportClient;
 
   // Attributes writes to the client that made them, so a session row records `cursor` or
   // `codex-mcp-client` rather than a bare id. The name arrives on the MCP initialize handshake,
