@@ -159,6 +159,7 @@ jobs:
           MNEIA_APP_ORIGIN: ${{ vars.MNEIA_APP_ORIGIN }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           STRIPE_PRICE_ID: ${{ secrets.STRIPE_PRICE_ID }}
+          STRIPE_PRICE_ID_PRO: ${{ secrets.STRIPE_PRICE_ID_PRO }}
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
         run: |
           ssh -i ~/.ssh/id_ed25519 "${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}" \
@@ -172,6 +173,7 @@ jobs:
              && export MNEIA_APP_ORIGIN='${MNEIA_APP_ORIGIN}' \
              && export STRIPE_SECRET_KEY='${STRIPE_SECRET_KEY}' \
              && export STRIPE_PRICE_ID='${STRIPE_PRICE_ID}' \
+             && export STRIPE_PRICE_ID_PRO='${STRIPE_PRICE_ID_PRO}' \
              && export STRIPE_WEBHOOK_SECRET='${STRIPE_WEBHOOK_SECRET}' \
              && docker compose pull \
              && docker compose up -d --remove-orphans \
