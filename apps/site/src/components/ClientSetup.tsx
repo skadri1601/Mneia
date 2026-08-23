@@ -144,10 +144,7 @@ export function ClientSetup({ clients }: { clients: readonly ClientSetupContent[
           <div className={styles.detailGrid}>
             <section className={styles.detail}>
               <div className={styles.detailHeading}>
-                <div>
-                  <p className={styles.kicker}>Recommended</p>
-                  <h4 className={styles.subheading}>Automatic setup</h4>
-                </div>
+                <p className={styles.kicker}>Recommended</p>
                 <button
                   aria-label="Copy automatic setup command"
                   className={styles.copyButton}
@@ -157,17 +154,15 @@ export function ClientSetup({ clients }: { clients: readonly ClientSetupContent[
                   Copy
                 </button>
               </div>
-              <pre className={styles.code}>
+              <h4 className={styles.detailTitle}>Automatic setup</h4>
+              <pre className={`${styles.code} ${styles.commandCode}`}>
                 <code>{client.automaticCommand}</code>
               </pre>
             </section>
 
             <section className={styles.detail}>
               <div className={styles.detailHeading}>
-                <div>
-                  <p className={styles.kicker}>Manual fallback</p>
-                  <h4 className={styles.subheading}>{client.manualLabel}</h4>
-                </div>
+                <p className={styles.kicker}>Manual fallback</p>
                 <button
                   aria-label="Copy manual configuration"
                   className={styles.copyButton}
@@ -177,6 +172,7 @@ export function ClientSetup({ clients }: { clients: readonly ClientSetupContent[
                   Copy
                 </button>
               </div>
+              <h4 className={styles.detailTitle}>{client.manualLabel}</h4>
               <pre className={styles.code}>
                 <code>{client.manualConfig.join('\n')}</code>
               </pre>

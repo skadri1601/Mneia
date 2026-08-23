@@ -1,4 +1,5 @@
 .setup {
+  container-type: inline-size;
   width: 100%;
 }
 
@@ -71,7 +72,7 @@
 }
 
 .title,
-.subheading {
+.detailTitle {
   margin: 0;
   color: var(--tile-ink);
   font-family: var(--font-display);
@@ -150,16 +151,18 @@
 }
 
 .detailHeading {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   gap: var(--space-sm);
-  margin-bottom: var(--space-sm);
+  margin-bottom: var(--space-xxs);
 }
 
-.subheading {
+.detailTitle {
+  margin-bottom: var(--space-sm);
   font-size: var(--size-body);
   line-height: var(--leading-body-strong);
+  overflow-wrap: anywhere;
 }
 
 .copyButton {
@@ -171,18 +174,25 @@
 }
 
 .code {
+  box-sizing: border-box;
+  max-width: 100%;
   min-height: 88px;
   margin: 0;
   padding: var(--space-md);
-  overflow: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   border-radius: var(--rounded-md);
   color: var(--body-on-dark);
   background: var(--editor-body);
   font-family: var(--font-mono);
   font-size: var(--size-artifact);
   line-height: var(--leading-artifact);
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.commandCode {
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
 .verify {
@@ -204,6 +214,17 @@
   color: var(--tile-link);
   font-size: var(--size-caption);
   line-height: var(--leading-caption);
+}
+
+@container (max-width: 800px) {
+  .detailGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail + .detail {
+    border-top: 1px solid var(--tile-hairline);
+    border-left: 0;
+  }
 }
 
 @media (max-width: 734px) {
