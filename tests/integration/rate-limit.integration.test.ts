@@ -133,13 +133,20 @@ const attempt = async ({
   now = NOW,
   config = DEFAULT_RATE_LIMIT_CONFIG,
 }: AttemptInput) => {
-  const windows = windowsFor({ cost, tokenId, workspaceId, now, config });
-  const counts = await store.bump({
+  const windows = windowsFor({ cost, tokenId, now, config });
+  const counters = {
     workspaceId,
     windows,
     discardBefore: new Date(now.getTime() - RATE_LIMIT_RETENTION_SECONDS * 1000),
-  });
-  return evaluateRateLimit({ windows, counts, now });
+  };
+  const counts = await store.bump(counters);
+  const decision = evaluateRateLimit({ windows, counts, now });
+  // Mirrors serve.ts: a refused request gives its slot back, so the counter counts what
+  // was served rather than what was attempted.
+  if (!decision.allowed) {
+    await store.release(counters);
+  }
+  return decision;
 };
 
 describe.skipIf(connectionString === undefined)('rate limit counters', () => {
@@ -189,45 +196,36 @@ describe.skipIf(connectionString === undefined)('rate limit counters', () => {
     });
   }, 60_000);
 
-  it('caps checkpoints harder than reads on the same token', async () => {
+  // MNE-103 removed the checkpoints_hourly and checkpoints_daily buckets. What a checkpoint
+  // may consume is decided by the three dials in quota.ts against the plan's monthly
+  // allowance, because a checkpoint count is not a unit of cost - 17 to 1,092 turns across
+  // 116 real ones. The two tests that pinned those ceilings were removed with them.
+  it('gives the slot back when a request is refused, so a refusal does not cost the next caller', async () => {
     await withStore(async (store) => {
-      const config: RateLimitConfig = {
-        ...DEFAULT_RATE_LIMIT_CONFIG,
-        requestsPerMinute: 100,
-        checkpointsPerHour: 3,
-      };
+      const config: RateLimitConfig = { ...DEFAULT_RATE_LIMIT_CONFIG, requestsPerMinute: 1 };
 
-      const decisions = [];
-      for (let index = 0; index < 5; index += 1) {
-        decisions.push(
-          await attempt({ store, cost: 'checkpoint', tokenId: TOKEN_A, workspaceId: WS_A, config }),
-        );
-      }
-
-      expect(decisions.filter((decision) => decision.allowed)).toHaveLength(3);
-      expect(decisions[3]?.message).toContain('MNEIA_RATE_LIMIT_CHECKPOINTS_PER_HOUR');
-    });
-  }, 30_000);
-
-  it('holds the daily ceiling across tokens, so issuing a new token does not reset it', async () => {
-    await withStore(async (store) => {
-      const config: RateLimitConfig = {
-        ...DEFAULT_RATE_LIMIT_CONFIG,
-        checkpointsPerDay: 2,
-      };
-
-      await attempt({ store, cost: 'checkpoint', tokenId: TOKEN_A, workspaceId: WS_A, config });
-      await attempt({ store, cost: 'checkpoint', tokenId: TOKEN_A, workspaceId: WS_A, config });
-      const fresh = await attempt({
+      await attempt({ store, cost: 'read', tokenId: TOKEN_A, workspaceId: WS_A, config });
+      const refused = await attempt({
         store,
-        cost: 'checkpoint',
-        tokenId: TOKEN_B,
+        cost: 'read',
+        tokenId: TOKEN_A,
         workspaceId: WS_A,
         config,
       });
+      expect(refused.allowed).toBe(false);
 
-      expect(fresh.allowed).toBe(false);
-      expect(fresh.message).toContain('hard per-account ceiling');
+      // Before the release, this second refusal observed 3 rather than 2: the refused
+      // request above had already been counted, so every refusal pushed the window further
+      // out. The observed count must stay pinned at the limit plus one.
+      const again = await attempt({
+        store,
+        cost: 'read',
+        tokenId: TOKEN_A,
+        workspaceId: WS_A,
+        config,
+      });
+      expect(again.allowed).toBe(false);
+      expect(again.message).toContain('has made 2 requests');
     });
   }, 30_000);
 

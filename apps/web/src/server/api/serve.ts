@@ -97,17 +97,20 @@ export const serve = async <TInput>(options: ServeOptions<TInput>): Promise<Resp
     const windows = windowsFor({
       cost: options.cost ?? 'read',
       tokenId: identity.tokenId,
-      workspaceId: identity.workspaceId,
       now,
       config: limits.config,
     });
-    const counts = await limits.store.bump({
+    const counters = {
       workspaceId: identity.workspaceId,
       windows,
       discardBefore: new Date(now.getTime() - RATE_LIMIT_RETENTION_SECONDS * 1000),
-    });
+    };
+    const counts = await limits.store.bump(counters);
     const decision = evaluateRateLimit({ windows, counts, now });
     if (!decision.allowed) {
+      // Give the slot back. The counter counts requests we served, and counting a refusal
+      // pushed the next caller further over the limit for the rest of the window.
+      await limits.store.release(counters);
       return apiError('rate_limited', decision.message, {
         retryAfterSeconds: decision.retryAfterSeconds,
       });

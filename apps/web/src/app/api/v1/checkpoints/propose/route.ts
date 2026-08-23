@@ -13,7 +13,6 @@ export const runtime = 'nodejs';
 export const POST = (request: Request): Promise<Response> =>
   serve({
     request,
-    cost: 'checkpoint',
     schema: CheckpointProposeWireSchema,
     run: (store, input) => {
       const sourceStore = checkpointSourceStore();
