@@ -108,7 +108,7 @@ export const DOCS_CARDS = [
   {
     href: '/docs/checkpoint',
     title: 'The three operations',
-    body: 'Checkpoint, rehydrate, and handoff in depth — the pipeline, the scoring, and the artifact.',
+    body: 'Checkpoint, rehydrate, and handoff in depth - the pipeline, the scoring, and the artifact.',
   },
   {
     href: '/docs/cli',
@@ -124,7 +124,7 @@ export const DOCS_INTRO: Intro = {
 };
 
 export const DOCS_STATUS =
-  'Everything here describes one system: three operations — checkpoint, rehydrate, handoff — with conflict arbitration where they collide, reachable through the CLI, an MCP server, the web app, and a CI runner. The pages are organised by what you are trying to do rather than by which surface you reach it from, because the surfaces are translations of the same verbs and return the same answers for the same input.';
+  'Everything here describes one system: three operations - checkpoint, rehydrate, handoff - with conflict arbitration where they collide, reachable through the CLI, an MCP server, the web app, and a CI runner. The pages are organised by what you are trying to do rather than by which surface you reach it from, because the surfaces are translations of the same verbs and return the same answers for the same input.';
 
 export const DOC_PAGES: readonly DocPage[] = [
   QUICKSTART,

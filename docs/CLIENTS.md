@@ -13,7 +13,7 @@ published registry package.
 
 **This file went three releases stale because the previous check was a hand-driven JSON-RPC session.**
 It was pinned at 0.5.0 and four tools while the registry moved to 0.12.0 and eleven. Nothing was
-wrong with the checking — it just could not be repeated cheaply, so it was not.
+wrong with the checking - it just could not be repeated cheaply, so it was not.
 
 ```
 pnpm verify:mcp                              # workspace build, baseline handshake
@@ -26,8 +26,8 @@ pnpm verify:mcp -- --protocol 2024-11-05     # pin the negotiation
 pnpm verify:mcp -- --json                    # machine-readable report
 ```
 
-`scripts/mcp-conformance.mjs` speaks real JSON-RPC to the server the way a client does — over stdio
-to a local binary, or over Streamable HTTP with `--url` — and
+`scripts/mcp-conformance.mjs` speaks real JSON-RPC to the server the way a client does - over stdio
+to a local binary, or over Streamable HTTP with `--url` - and
 reports what a client would see: the negotiated protocol, the declared capabilities, the tools
 actually discoverable, and the error returned for the methods we do not implement. Run it before
 citing anything below.
@@ -42,7 +42,7 @@ node scripts/mcp-conformance.mjs --record docs/handshakes/<client>.jsonl
 ```
 
 Point a client's MCP config at that instead of the server, start the client, and its own
-`initialize` frame is written verbatim. **This works even when the client cannot reach its model** —
+`initialize` frame is written verbatim. **This works even when the client cannot reach its model** -
 which is how the Codex profile below was captured through an active usage limit, and it is the way
 to close the Cursor row without guessing at what Cursor sends.
 
@@ -54,18 +54,18 @@ Capture it.
 | | **Claude Code** 2.1.239 | **Codex CLI** 0.149.0 | **Cursor Agent** 2026.08.11 |
 |---|---|---|---|
 | `protocolVersion` requested | `2025-11-25` | `2025-06-18` | `2025-11-25` |
-| `roots` | `{listChanged: true}` | — | — |
+| `roots` | `{listChanged: true}` | - | - |
 | `elicitation` | `{}` | `{form: {}, url: {}}` | `{form: {}}` |
 | `clientInfo` | `name`, `title`, `version`, `description`, `websiteUrl` | `name`, `title`, `version` | `name`, `version` |
 | `clientInfo.name` | `claude-code` | `codex-mcp-client` | `Cursor` |
-| `tools/list` `_meta` | — | `{progressToken: 0}` | — |
+| `tools/list` `_meta` | - | `{progressToken: 0}` | - |
 
 Two things worth carrying:
 
 - **Claude Code requests `2025-11-25`**, not the `2025-06-18` this file claimed for three releases.
   The old figure was the version the hand-driven probe happened to ask for, recorded as though it
   were the client's.
-- **All three declare `elicitation`, and we advertise nothing that uses it.** Not a defect — but it
+- **All three declare `elicitation`, and we advertise nothing that uses it.** Not a defect - but it
   is the one capability every client has and we do not, so it is where a richer integration would go.
 - **Two of the three now ask for `2025-11-25`.** Codex is the laggard at `2025-06-18`. Nothing
   degrades either way, but a change gated on the newer revision would reach Codex last.
@@ -83,21 +83,21 @@ SDK's latest for anything it does not, which is correct behaviour:
 | `2024-11-05` | `2024-11-05` | 11 |
 | `2099-01-01` (unsupported) | `2025-11-25` | 11 |
 
-**No version-gated degradation** — every protocol version sees the same eleven tools. The server
+**No version-gated degradation** - every protocol version sees the same eleven tools. The server
 pins nothing itself; `@modelcontextprotocol/sdk` 1.30.0 negotiates.
 
 ## What the server offers
 
-Client-independent — driven straight over stdio:
+Client-independent - driven straight over stdio:
 
 | Probe | Result |
 |---|---|
 | `initialize` | `serverInfo: {name: "mneia", version: "0.12.0"}` |
-| Advertised capabilities | `{"tools":{}}` — tools only. No `resources`, `prompts`, `logging`, `completions` |
+| Advertised capabilities | `{"tools":{}}` - tools only. No `resources`, `prompts`, `logging`, `completions` |
 | `instructions` on `initialize` | Returned, 1,611 characters |
 | `tools/list` | **Eleven**, listed below |
-| `resources/list`, `prompts/list` | `-32601` method not found — correct, they are not advertised |
-| `outputSchema` on tools | **Still not published — 0 of 11.** Structured output arrives as `structuredContent` with no declared schema |
+| `resources/list`, `prompts/list` | `-32601` method not found - correct, they are not advertised |
+| `outputSchema` on tools | **Still not published - 0 of 11.** Structured output arrives as `structuredContent` with no declared schema |
 | `tools/call` → `mneia_sessions` | Returned one `text` block plus `structuredContent` |
 
 The eleven, from `SHIPPED_TOOL_NAMES` in `packages/mcp-server/src/registry.ts` and confirmed live:
@@ -107,11 +107,11 @@ The eleven, from `SHIPPED_TOOL_NAMES` in `packages/mcp-server/src/registry.ts` a
 `mneia_sessions`, `mneia_team`
 
 Only `mneia_conflicts` is still deferred (M4). **Grepping the bundle for tool names counts the
-deferred ones too and overstates the surface** — drive a session, or read `SHIPPED_TOOL_NAMES`.
+deferred ones too and overstates the surface** - drive a session, or read `SHIPPED_TOOL_NAMES`.
 
 ### `structuredContent` without `outputSchema` is the one real interop risk
 
-Every tool returns both a text block and `structuredContent`, built in one place —
+Every tool returns both a text block and `structuredContent`, built in one place -
 `toCallToolResult`, `packages/mcp-server/src/server.ts:125-136`. No tool declares an `outputSchema`.
 A strict client is entitled to ignore or reject structured output that no schema describes, so
 **the text block is the only half guaranteed to render.**
@@ -130,10 +130,10 @@ Time from spawn to the first `initialize` result, re-measured 2026-08-22 on this
 |---|---|
 | `node packages/mcp-server/dist/bin.js`, workspace build | **~1.4s** steady |
 | `npx -y @mneia/mcp-server@0.12.0`, warm npx cache | **~9.8s** |
-| `npx -y @mneia/mcp-server@0.12.0`, cold npx cache | **>45s — the harness timed out; Claude Code gives up at 30s** |
+| `npx -y @mneia/mcp-server@0.12.0`, cold npx cache | **>45s - the harness timed out; Claude Code gives up at 30s** |
 
 Two causes, both ours: npx must resolve and download the tree before anything runs, and the server
-itself makes a network round trip to `app.mneia.dev` during startup — the banner it prints already
+itself makes a network round trip to `app.mneia.dev` during startup - the banner it prints already
 names the workspace and the actor.
 
 So a new user pasting the documented JSON block gets a server their client reports as failed, and it
@@ -161,20 +161,20 @@ SSE**, and SSE is deprecated as of the 2026-07-28 revision, so there is nothing 
 | Probe, driven with `--url` against a local instance | Result |
 |---|---|
 | `initialize` | `2025-06-18` negotiated, `serverInfo: {name: "mneia", version: "0.12.0"}` **359ms** |
-| `tools/list` | Eleven — the same eleven, from the same registry | 
+| `tools/list` | Eleven - the same eleven, from the same registry |
 | `resources/list`, `prompts/list` | `-32601`, as over stdio |
 | `tools/call` → `mneia_sessions` | **95ms** |
 | `tools/call` → `mneia_assert` | Wrote an item and a checkpoint, `human_confirmed` true |
 | No `Authorization` header | `401` with `WWW-Authenticate` carrying `resource_metadata` |
 
-**It is faster than stdio** — 359ms to initialize against ~1.4s — because there is no process to
+**It is faster than stdio** - 359ms to initialize against ~1.4s - because there is no process to
 spawn and no npx resolve. The cold-start problem above is a property of launching a binary, and the
 remote transport does not have it.
 
 **Authentication is the existing bearer token**, the one `mneia login` writes. No OAuth is required
 to connect: claude.ai accepts allowlisted request headers and ChatGPT developer mode accepts an API
-key. OAuth 2.1 is a *publication* requirement — the Anthropic Connectors Directory and the OpenAI
-Plugin Directory both mandate it, and the latter mandates dynamic client registration — so it is
+key. OAuth 2.1 is a *publication* requirement - the Anthropic Connectors Directory and the OpenAI
+Plugin Directory both mandate it, and the latter mandates dynamic client registration - so it is
 tracked as its own work rather than folded into a transport change.
 
 RFC 9728 metadata is published at `/.well-known/oauth-protected-resource` so a 401 tells a client
@@ -190,16 +190,16 @@ a deploy cannot strand a client. Two consequences worth knowing before relying o
   remote transport records an empty `client_name`. Over stdio it records `claude-code` or `Cursor`.
   This is the one place the remote surface is genuinely worse, and it is worth fixing before the
   matrix leans on remote sessions as evidence of which clients are in use.
-- **Server-initiated messages have nowhere to go.** Nothing we ship uses them — all eleven tools are
-  request/response — but sampling or elicitation would need a session.
+- **Server-initiated messages have nowhere to go.** Nothing we ship uses them - all eleven tools are
+  request/response - but sampling or elicitation would need a session.
 
 ## Per client
 
 | Client | Config format | Registers | Handshake captured | Tools discovered | Tool call driven | Verified how |
 |---|---|---|---|---|---|---|
-| **Claude Code** 2.1.239 | JSON, `mcpServers` key | **Yes** | **Yes** — `docs/handshakes/claude-code.jsonl` | **Yes — 11** | **Yes** | `claude mcp add-json` pointed at the recorder to capture the handshake, then `claude -p` to drive it. Tool calls driven throughout this session against the hosted store |
-| **Codex CLI** 0.149.0 | **TOML**, `[mcp_servers.<name>]` | **Yes** — `enabled`, `transport: stdio` | **Yes** — `docs/handshakes/codex.jsonl` | **Yes — Codex issues `tools/list` itself**, before it reaches the model | **Not run** | `codex mcp add` into an isolated `CODEX_HOME`, then `codex exec`. Codex launched the server, initialized and requested `tools/list` before failing at the model on a usage limit |
-| **Cursor Agent** 2026.08.11 | JSON, `mcpServers` key | **Yes** — `mneia: ready` | **Yes** — `docs/handshakes/cursor.jsonl` | **Yes — 11, with argument names** | **Yes — a read and a write** | Installed during this check. `cursor-agent mcp enable`, then `mcp list-tools mneia` for discovery without a model. After `agent login`, `cursor-agent -p --approve-mcps` drove `mneia_sessions` and then `mneia_assert`, which wrote item `551fe9ce` to the live project |
+| **Claude Code** 2.1.239 | JSON, `mcpServers` key | **Yes** | **Yes** - `docs/handshakes/claude-code.jsonl` | **Yes - 11** | **Yes** | `claude mcp add-json` pointed at the recorder to capture the handshake, then `claude -p` to drive it. Tool calls driven throughout this session against the hosted store |
+| **Codex CLI** 0.149.0 | **TOML**, `[mcp_servers.<name>]` | **Yes** - `enabled`, `transport: stdio` | **Yes** - `docs/handshakes/codex.jsonl` | **Yes - Codex issues `tools/list` itself**, before it reaches the model | **Not run** | `codex mcp add` into an isolated `CODEX_HOME`, then `codex exec`. Codex launched the server, initialized and requested `tools/list` before failing at the model on a usage limit |
+| **Cursor Agent** 2026.08.11 | JSON, `mcpServers` key | **Yes** - `mneia: ready` | **Yes** - `docs/handshakes/cursor.jsonl` | **Yes - 11, with argument names** | **Yes - a read and a write** | Installed during this check. `cursor-agent mcp enable`, then `mcp list-tools mneia` for discovery without a model. After `agent login`, `cursor-agent -p --approve-mcps` drove `mneia_sessions` and then `mneia_assert`, which wrote item `551fe9ce` to the live project |
 
 All three clients register, hand shake, and enumerate the full eleven. **Cursor has now driven both
 a read and a write**, which is what MNE-79's clause asks for and what turned up the
@@ -211,22 +211,22 @@ rather than on anything in the server.
 Until 2026-08-23 `mneia_sessions` returned only `claude-code` and a hand-driven probe. That was read
 here as "nobody else has tried it yet". **It was not. It was impossible.**
 
-The hosted API validates `checkpoint.source` against `TRAJECTORY_SOURCES` — `claude-code`,
-`claude-desktop`, `codex`, `cursor`, `gemini`, `warp`, `file` — and the MCP server passed the client
+The hosted API validates `checkpoint.source` against `TRAJECTORY_SOURCES` - `claude-code`,
+`claude-desktop`, `codex`, `cursor`, `gemini`, `warp`, `file` - and the MCP server passed the client
 name from the initialize handshake straight through. Those names do not match:
 
 | Client sends | Valid source? | Result before the fix |
 |---|---|---|
 | `claude-code` | **yes**, by coincidence | writes |
-| `Cursor` | no — capitalised | **every write rejected** |
-| `codex-mcp-client` | no — different string | **every write rejected** |
+| `Cursor` | no - capitalised | **every write rejected** |
+| `codex-mcp-client` | no - different string | **every write rejected** |
 
 `mneia_assert` from Cursor failed with `checkpoint.source: Invalid input`. So Claude Code worked
 only because it happens to call itself exactly what the enum calls it, and **the evidence that
 looked like low adoption was a defect wearing adoption's clothes.**
 
 `checkpointSourceFor` in `packages/mcp-server/src/session-provenance.ts` now maps client identities
-onto sources explicitly. Lower-casing alone is not the fix — it repairs Cursor and leaves Codex
+onto sources explicitly. Lower-casing alone is not the fix - it repairs Cursor and leaves Codex
 silently unattributed. An unrecognised client yields `null` rather than a guess, because recording a
 wrong source is worse than recording none.
 
@@ -235,7 +235,7 @@ wrong source is worse than recording none.
 | `clientName` | Sessions | Wrote |
 |---|---|---|
 | `claude-code` | 3 | yes |
-| **`Cursor` 1.0.0** | **2** | **yes — 1 checkpoint, 1 item** |
+| **`Cursor` 1.0.0** | **2** | **yes - 1 checkpoint, 1 item** |
 | `lane-d-probe` | 1 | yes |
 | `stdio-probe` | 1 | the 2026-08-19 hand-driven probe |
 
@@ -248,7 +248,7 @@ reads. Nothing found it until a real client was asked to write.
 
 - **Codex uses TOML, not JSON.** A copy-pasted JSON block silently does nothing there. This is the
   most likely setup failure, and `packages/mcp-server/README.md` and the site quickstart were both
-  telling Codex users to paste JSON until this check — fixed in the same change as this file.
+  telling Codex users to paste JSON until this check - fixed in the same change as this file.
 - **Codex reports `Auth: Unsupported`.** Correct, not a defect: the server authenticates with
   `MNEIA_TOKEN` or `~/.mneia/`, not MCP OAuth.
 
@@ -256,7 +256,7 @@ reads. Nothing found it until a real client was asked to write.
 
 **Three of these are verified and the rest are documented-not-run.** The distinction is the whole
 point of this file, so it is marked on every row rather than left to be inferred. Nothing here needs
-per-client code — one binary over stdio, one HTTP endpoint for the rest — which is why breadth is a
+per-client code - one binary over stdio, one HTTP endpoint for the rest - which is why breadth is a
 documentation problem and not an engineering one.
 
 **The config key is not the same everywhere, and that is the most common setup failure.** Three
@@ -271,14 +271,14 @@ clients depart from `mcpServers` and one cannot do stdio at all.
 | **VS Code** | `.vscode/mcp.json` | JSON | **`servers`** | yes | documented |
 | **Zed** | `~/.config/zed/settings.json` | JSONC | **`context_servers`** | yes | documented |
 | **Goose** | `~/.config/goose/config.yaml` | YAML | **`extensions`** | yes | documented |
-| **Continue** | `.continue/mcpServers/*.yaml` | YAML | `mcpServers` — **a list** | yes | documented |
+| **Continue** | `.continue/mcpServers/*.yaml` | YAML | `mcpServers` - **a list** | yes | documented |
 | **Cline** | `cline_mcp_settings.json`, CLI `~/.cline/mcp.json` | JSON | `mcpServers` | yes | documented |
 | **Gemini CLI** | `~/.gemini/settings.json`, `.gemini/settings.json` | JSON | `mcpServers` | yes | documented |
 | **Warp** | `~/.warp/.mcp.json` | JSON | `mcpServers` | yes | documented |
 | **Windsurf / Devin Desktop** | `~/.config/devin/mcp_config.json`, legacy `~/.codeium/windsurf/mcp_config.json` | JSON | `mcpServers` | yes | documented |
 | **JetBrains IDEs** | Settings → Tools → AI Assistant → MCP | JSON in dialog | `mcpServers` | yes | documented |
 | **LibreChat** | `librechat.yaml` | YAML | `mcpServers` | yes | documented |
-| **Open WebUI** | — | — | — | **HTTP only** | documented |
+| **Open WebUI** | - | - | - | **HTTP only** | documented |
 
 Four traps worth stating outright, because each silently produces "no tools" rather than an error:
 
@@ -286,7 +286,7 @@ Four traps worth stating outright, because each silently produces "no tools" rat
   does nothing at all.
 - **Zed uses `context_servers`** and **Goose uses `extensions`.** Same story.
 - **Continue's `mcpServers` is a YAML list**, not a map, so the JSON shape does not translate.
-- **Open WebUI cannot launch a stdio server.** Its native support is Streamable HTTP only — so it
+- **Open WebUI cannot launch a stdio server.** Its native support is Streamable HTTP only - so it
   needs `/api/mcp`, not the binary. That makes the remote transport the *only* route for it.
 
 **Windsurf is now Devin Desktop.** An installer that writes only the `~/.codeium/windsurf` path is
@@ -299,7 +299,7 @@ model access. That is how Cursor moved from documented to verified.
 
 ### Models are not clients
 
-Groq, Qwen, Moonshot/Kimi and the rest are inference providers. A model never speaks MCP — the
+Groq, Qwen, Moonshot/Kimi and the rest are inference providers. A model never speaks MCP - the
 harness around it does, and every harness above is already on this list.
 
 Two exceptions that do matter, because both orchestrate MCP server-side and therefore need a public
@@ -325,7 +325,7 @@ mneia mcp list
 Use the native examples below only as manual fallbacks. The copyable prompts at
 `https://mneia.dev/docs/integrations#mcp-clients` keep each client's command isolated from the others.
 
-**Claude Code and Cursor** — JSON:
+**Claude Code and Cursor** - JSON:
 
 ```json
 {
@@ -341,10 +341,10 @@ Use the native examples below only as manual fallbacks. The copyable prompts at
 
 ⚠️ In Claude Code, prefer the global install shown above until the cold-start timeout is fixed.
 
-`MNEIA_TOKEN` is optional when `mneia login` has already written `~/.mneia/credentials` — that is
+`MNEIA_TOKEN` is optional when `mneia login` has already written `~/.mneia/credentials` - that is
 the path the checks above actually exercised, with no `env` block at all.
 
-**Codex CLI** — TOML in `~/.codex/config.toml`, or let the CLI write it:
+**Codex CLI** - TOML in `~/.codex/config.toml`, or let the CLI write it:
 
 ```
 codex mcp add mneia --env MNEIA_TOKEN=<token> -- npx -y @mneia/mcp-server
@@ -369,7 +369,7 @@ Add `startup_timeout_sec = 120` to that block if you keep the `npx` form.
 
 With none of the three it **refuses to start** and names all three paths it looked at. An empty
 `MNEIA_TOKEN` gets its own message rather than falling through. Both name what was expected, what was
-received, and what to do — but note the server *exits* rather than starting and failing per call, so
+received, and what to do - but note the server *exits* rather than starting and failing per call, so
 a client reports it as failed rather than surfacing the message.
 
 **`MNEIA_HOME` relocates the config directory**, which defaults to `os.homedir() + /.mneia`. It must
@@ -386,11 +386,11 @@ found "postgres", which bypasses it
 ```
 
 That is MNE-186 working outside the deployed app. **Carried over from the 2026-08-08 check and not
-re-run since** — it needs a local Postgres, and this machine has no `DATABASE_URL` set.
+re-run since** - it needs a local Postgres, and this machine has no `DATABASE_URL` set.
 
 ## The token budget is a soft target under a hard floor
 
-Worth knowing before you integrate. At `tokenBudget: 500` — the schema minimum — every item returned
+Worth knowing before you integrate. At `tokenBudget: 500` - the schema minimum - every item returned
 was mandatory and every optional item was dropped. That is **standing rule 2 working as written**:
 load-bearing active constraints appear regardless of budget pressure. A client must not assume
 `tokensUsed <= tokenBudget`; the floor is whatever the project's load-bearing set costs.
@@ -400,11 +400,11 @@ load-bearing active constraints appear regardless of budget pressure. A client m
 ## Not verified, and what it would take
 
 - **A tool call inside Cursor.** Cursor is not installed here at all. Needs an install, plus a Cursor
-  plan with an available model — the 2026-08-19 attempt was blocked by *"No models available for this
+  plan with an available model - the 2026-08-19 attempt was blocked by *"No models available for this
   account"* even once registered. Capture the handshake with `--record` first; that part needs no model.
 - **A tool call inside Codex.** Registration, launch, `initialize` and `tools/list` are all verified.
   Only the model-driven call is missing, blocked on OpenAI usage credits that reset
-  **2026-08-23 11:20**. This is the one blocker with a known expiry — recheck then.
+  **2026-08-23 11:20**. This is the one blocker with a known expiry - recheck then.
 - **A client that ignores `structuredContent`.** No client tested so far drops it, so the text-only
   degradation path is unexercised for `mneia_review_queue`, `mneia_sessions` and `mneia_team`.
 - **The RLS guard at 0.12.0.** Needs a local Postgres and a `DATABASE_URL`.
@@ -415,7 +415,7 @@ load-bearing active constraints appear regardless of budget pressure. A client m
 
 **MNE-79's clause is still not met.** It asks for *"verified behaviour in all three clients"*. Codex
 is now verified through discovery on a captured handshake and is one usage reset from complete.
-Cursor has regressed from the last check — not because anything broke, but because the machine that
+Cursor has regressed from the last check - not because anything broke, but because the machine that
 holds this matrix no longer has Cursor on it.
 
 **MNE-106 depends on this.** Submitting to an MCP registry while production has only ever seen

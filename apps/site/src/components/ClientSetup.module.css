@@ -106,6 +106,40 @@
   border-bottom: 1px solid var(--tile-hairline);
 }
 
+.promptDetails {
+  border-top: 1px solid var(--tile-hairline);
+  padding: var(--space-sm) var(--space-lg);
+  color: var(--tile-muted);
+  font-size: var(--size-caption);
+}
+
+.promptDetails summary {
+  min-height: var(--target-min);
+  display: flex;
+  align-items: center;
+  color: var(--tile-link);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.promptDetails summary:focus-visible {
+  outline: 3px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+
+.prompt {
+  margin: var(--space-sm) 0 var(--space-xs);
+  padding: var(--space-md);
+  overflow: auto;
+  border-radius: var(--rounded-md);
+  color: var(--body-on-dark);
+  background: var(--editor-body);
+  font-family: var(--font-mono);
+  font-size: var(--size-artifact);
+  line-height: var(--leading-artifact);
+  white-space: pre-wrap;
+}
+
 .detail {
   min-width: 0;
   padding: var(--space-lg);

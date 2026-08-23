@@ -5,7 +5,7 @@ export const MCP: DocPage = {
   name: 'MCP server reference',
   title: 'MCP server reference',
   description:
-    'The Mneia MCP tools — mneia_rehydrate, mneia_assert, mneia_retire, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, mneia_handoff_inbox, mneia_team, mneia_sessions, and mneia_review_queue — how to configure the server, and when to call each one.',
+    'The Mneia MCP tools - mneia_rehydrate, mneia_assert, mneia_retire, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, mneia_handoff_inbox, mneia_team, mneia_sessions, and mneia_review_queue - how to configure the server, and when to call each one.',
   eyebrow: 'Reference',
   heading: 'The tools your agent can call.',
   lead: 'The MCP server is client-neutral by design. It speaks stdio, it works in Claude Code, Cursor, Codex, or anything else that speaks MCP, and it exposes no vendor-specific behaviour.',
@@ -48,7 +48,7 @@ export const MCP: DocPage = {
             ['`mneia_handoff_create`', 'Work is stopping and somebody else will resume it'],
             [
               '`mneia_handoff_receive`',
-              'Picking work up — fetch the artifact and mark it received',
+              'Picking work up - fetch the artifact and mark it received',
             ],
             [
               '`mneia_retire`',
@@ -74,7 +74,7 @@ export const MCP: DocPage = {
           kind: 'text',
           paragraphs: [
             'Loads the minimal high-signal slice for the task about to start: the active constraints that must not be violated, the decisions already made and why, the open questions, and what was recently superseded so it is not re-proposed.',
-            'Returns rendered markdown plus the slice id and the ids of the included items, so a later checkpoint can be correlated with what the agent was actually shown. Its p95 latency budget is 300ms — a rehydration nobody waits for is a rehydration nobody calls.',
+            'Returns rendered markdown plus the slice id and the ids of the included items, so a later checkpoint can be correlated with what the agent was actually shown. Its p95 latency budget is 300ms - a rehydration nobody waits for is a rehydration nobody calls.',
           ],
         },
         {
@@ -91,7 +91,7 @@ export const MCP: DocPage = {
           kind: 'text',
           paragraphs: [
             'Records one durable item as soon as it is settled, without waiting for a checkpoint. Use it the moment a decision is made, a constraint is stated, or a question is left open.',
-            'Pass `supersedesId` when the item replaces an existing one. A replacement of a human-confirmed item is never written automatically — it comes back pending for a human to confirm.',
+            'Pass `supersedesId` when the item replaces an existing one. A replacement of a human-confirmed item is never written automatically - it comes back pending for a human to confirm.',
           ],
         },
       ],
@@ -112,7 +112,7 @@ export const MCP: DocPage = {
           items: [
             'Candidates that are load-bearing are held in a pending queue rather than written.',
             'Candidates that supersede an existing item are held too.',
-            'The pending queue must be surfaced to a human **verbatim** — summarising it is how the disagreement a person needed to settle gets erased.',
+            'The pending queue must be surfaced to a human **verbatim** - summarising it is how the disagreement a person needed to settle gets erased.',
           ],
         },
         {
@@ -129,7 +129,7 @@ export const MCP: DocPage = {
           kind: 'text',
           paragraphs: [
             'Looks up specific items by kind, status, load-bearing flag, and free text. Use it to check whether a constraint on a topic exists, to read what a decision said, or to find the id of the item you are about to supersede.',
-            'Returns a compact list with full item ids and provenance — not a ranked slice. It competes for the same context window as a rehydration, so keep the limit small.',
+            'Returns a compact list with full item ids and provenance - not a ranked slice. It competes for the same context window as a rehydration, so keep the limit small.',
           ],
         },
       ],
@@ -142,7 +142,7 @@ export const MCP: DocPage = {
           kind: 'text',
           paragraphs: [
             '`mneia_handoff_create` renders the artifact for the current project and returns it with its id and link. Name a recipient to direct it, or leave it open for whoever picks the work up. The rendered markdown is frozen at that moment; the item links stay live.',
-            '`mneia_handoff_receive` fetches one and marks it received. An agent resuming work should call this before rehydrating — the handoff says what the sender thought mattered, and the slice says what the store thinks matters now. They are different questions and both are worth asking.',
+            '`mneia_handoff_receive` fetches one and marks it received. An agent resuming work should call this before rehydrating - the handoff says what the sender thought mattered, and the slice says what the store thinks matters now. They are different questions and both are worth asking.',
           ],
         },
       ],
@@ -154,7 +154,7 @@ export const MCP: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Lists the items waiting on a human to confirm. An agent assertion that would overrule a human-confirmed item is never applied silently — it queues here instead, and stays queued until a person rules on it.',
+            'Lists the items waiting on a human to confirm. An agent assertion that would overrule a human-confirmed item is never applied silently - it queues here instead, and stays queued until a person rules on it.',
             'Surfacing unresolved disagreement is a tool an agent may read and must not settle. Where the disagreement is between two people, resolution is theirs to make; the useful thing an agent can do is surface it and stop, rather than picking the newer row and continuing. A dedicated mneia_conflicts tool is deferred to M4.',
           ],
         },

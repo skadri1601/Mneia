@@ -24,9 +24,9 @@ export function setupPrompt(client: ClientSetup): string {
 4. Run: mneia init
 5. Run: ${installCommand(client.installerClient)}
 6. Restart ${client.title} if it was already open.
-7. Call mneia_rehydrate for the current task and report the workspace, project, and returned item count.
+7. Call mneia_rehydrate for the current task and report the workspace, project, slice ID, returned item count, and token usage.
 
-Do not edit credentials. Do not call private endpoints. Do not inspect the database. Do not bypass the MNEIA CLI or MCP tools. If a supported command fails, stop and report that exact failure instead of working around it. Do not claim setup is verified until mneia_rehydrate succeeds.`;
+Do not edit credentials. Do not commit tokens or put them in project files. Do not call private endpoints. Do not inspect the database. Do not bypass the MNEIA CLI or MCP tools. When writing MCP configuration, preserve every unrelated client configuration and server entry. If a supported command fails, stop and report that exact failure instead of working around it. Do not claim setup is verified until mneia_rehydrate succeeds.`;
 }
 
 const jsonConfig = [

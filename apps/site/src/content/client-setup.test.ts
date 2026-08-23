@@ -34,9 +34,13 @@ describe('client setup content', () => {
       expect(prompt).toContain('mneia init');
       expect(prompt).toContain(expectedInstall);
       expect(prompt).toContain('mneia_rehydrate');
+      expect(prompt).toContain('slice ID');
+      expect(prompt).toContain('token usage');
       expect(prompt).toContain('Do not edit credentials');
       expect(prompt).toContain('Do not call private endpoints');
       expect(prompt).toContain('Do not inspect the database');
+      expect(prompt).toContain('Do not commit tokens');
+      expect(prompt).toContain('preserve every unrelated client configuration');
     }
   });
 

@@ -18,7 +18,7 @@ export const QUICKSTART: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'You need a Mneia account and Node.js 20.11 or newer. Sign up at app.mneia.dev, or accept an invitation from a colleague — accepting one puts you in their workspace rather than a new one of your own.',
+            'You need a Mneia account and Node.js 20.11 or newer. Sign up at app.mneia.dev, or accept an invitation from a colleague - accepting one puts you in their workspace rather than a new one of your own.',
             'You do not need a model provider key. Mneia pays for the inference a checkpoint runs, so there is nothing to configure and nothing of ours on your provider bill.',
           ],
         },
@@ -41,7 +41,7 @@ export const QUICKSTART: DocPage = {
         },
         {
           kind: 'note',
-          text: 'The CLI installs the **mneia** binary and the MCP server installs **mneia-mcp**. You never run mneia-mcp yourself — an MCP client starts it over stdio.',
+          text: 'The CLI installs the **mneia** binary and the MCP server installs **mneia-mcp**. You never run mneia-mcp yourself - an MCP client starts it over stdio.',
         },
       ],
     },
@@ -52,7 +52,7 @@ export const QUICKSTART: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Interactively, **mneia login** approves the machine in a browser and writes a token to `~/.mneia/credentials`. Non-interactively — CI, a container, an MCP client started without a shell — set **MNEIA_TOKEN** in the environment instead. The environment variable wins when both are present.',
+            'Interactively, **mneia login** approves the machine in a browser and writes a token to `~/.mneia/credentials`. Non-interactively - CI, a container, an MCP client started without a shell - set **MNEIA_TOKEN** in the environment instead. The environment variable wins when both are present.',
           ],
         },
         {
@@ -67,7 +67,7 @@ export const QUICKSTART: DocPage = {
         },
         {
           kind: 'note',
-          text: 'Set the token value alone — no `Bearer` prefix, no quotes, no trailing newline. A blank `MNEIA_TOKEN` is rejected rather than silently ignored, because an unresolved CI secret is the usual cause and falling back quietly would hide it.',
+          text: 'Set the token value alone - no `Bearer` prefix, no quotes, no trailing newline. A blank `MNEIA_TOKEN` is rejected rather than silently ignored, because an unresolved CI secret is the usual cause and falling back quietly would hide it.',
         },
       ],
     },
@@ -93,7 +93,7 @@ export const QUICKSTART: DocPage = {
         {
           kind: 'bullets',
           items: [
-            'Writes `.mneia/config.json`, binding this directory to a workspace and a project. Commit it — the binding is a property of the repository, not of your laptop.',
+            'Writes `.mneia/config.json`, binding this directory to a workspace and a project. Commit it - the binding is a property of the repository, not of your laptop.',
             'Reads the `AGENTS.md`, `CLAUDE.md`, and `.cursor/rules` files you already keep, and imports the constraints in them, so the project does not start empty.',
             'Writes a generated section into `AGENTS.md` inside a fence it owns. Nothing outside that fence is touched, and editing inside it is detected rather than overwritten.',
           ],
@@ -141,7 +141,7 @@ export const QUICKSTART: DocPage = {
           items: [
             {
               title: 'Start the task with a rehydration',
-              body: 'The agent calls mneia_rehydrate with the task it is about to start. It gets back the active constraints it must not violate, the decisions already made and why, the open questions, and what was recently superseded. Call it unconditionally — it is one indexed query, it is not metered, and the p95 budget for it is 300ms.',
+              body: 'The agent calls mneia_rehydrate with the task it is about to start. It gets back the active constraints it must not violate, the decisions already made and why, the open questions, and what was recently superseded. Call it unconditionally - it is one indexed query, it is not metered, and the p95 budget for it is 300ms.',
             },
             {
               title: 'Work as you normally would',
@@ -149,7 +149,7 @@ export const QUICKSTART: DocPage = {
             },
             {
               title: 'Checkpoint at the boundary',
-              body: 'At the end of a task or a day, the agent extracts the candidate decisions, constraints, and open questions from the session and hands them to mneia_checkpoint as one batch. Items that are load-bearing, or that supersede something already there, come back in a pending queue for a human to confirm — they are never written on an agent’s say-so.',
+              body: 'At the end of a task or a day, the agent extracts the candidate decisions, constraints, and open questions from the session and hands them to mneia_checkpoint as one batch. Items that are load-bearing, or that supersede something already there, come back in a pending queue for a human to confirm - they are never written on an agent’s say-so.',
             },
             {
               title: 'Confirm what matters',
@@ -214,7 +214,7 @@ export const QUICKSTART: DocPage = {
         {
           kind: 'bullets',
           items: [
-            '**Concepts** is the vocabulary — item kinds, provenance, superseding, and why a rejected approach is kept rather than deleted. Read it before the reference pages.',
+            '**Concepts** is the vocabulary - item kinds, provenance, superseding, and why a rejected approach is kept rather than deleted. Read it before the reference pages.',
             '**Checkpoint**, **Rehydrate**, and **Handoff** are the three operations in depth. Everything Mneia does is one of them.',
             '**Conflict resolution** is what happens when two sources disagree, and the rules are not symmetrical.',
             '**Workspaces, teams, and scope** covers the second person, the second team, and who can see what.',
@@ -224,7 +224,7 @@ export const QUICKSTART: DocPage = {
         },
         {
           kind: 'note',
-          text: 'Everything in these pages is one of three verbs — checkpoint, rehydrate, handoff — plus conflict arbitration when two of them collide. If something you want does not map onto one of those, it is probably deliberately outside the product.',
+          text: 'Everything in these pages is one of three verbs - checkpoint, rehydrate, handoff - plus conflict arbitration when two of them collide. If something you want does not map onto one of those, it is probably deliberately outside the product.',
         },
       ],
     },

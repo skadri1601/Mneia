@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { CommandIo } from '../command.js';
 import { CliError, EXIT_FAILED, EXIT_OK } from '../command.js';
+import { parseArgv } from '../router.js';
 import { createMcpCommand, type McpConfigApi } from './mcp.js';
 
 const io = (): { value: CommandIo; output: string[] } => {
@@ -102,12 +103,62 @@ describe('mneia mcp', () => {
     });
   });
 
+  it('keeps every repeated --client value and configures each selected client', async () => {
+    const parsed = parseArgv([
+      'mcp',
+      'install',
+      '--client',
+      'codex',
+      '--client',
+      'cursor',
+      '--yes',
+    ]);
+    expect(parsed.flags.client).toBe('codex,cursor');
+
+    const config = configApi();
+    const result = await run(createMcpCommand({ config }), parsed.args, parsed.flags, true);
+    expect(result.code).toBe(EXIT_OK);
+    expect(config.upsert).toHaveBeenCalledTimes(2);
+    expect(config.upsert).toHaveBeenNthCalledWith(1, 'codex', 'mneia', expect.any(Object));
+    expect(config.upsert).toHaveBeenNthCalledWith(2, 'cursor', 'mneia', expect.any(Object));
+  });
+
+  it('asks which detected clients to configure on the bare interactive path', async () => {
+    const config = configApi();
+    vi.mocked(config.detectClients).mockResolvedValue(['codex', 'cursor']);
+    const selectClients = vi.fn().mockResolvedValue(['cursor']);
+
+    await run(createMcpCommand({ config, selectClients }), ['install']);
+
+    expect(selectClients).toHaveBeenCalledWith(['codex', 'cursor']);
+    expect(config.upsert).toHaveBeenCalledTimes(1);
+    expect(config.upsert).toHaveBeenCalledWith('cursor', 'mneia', expect.any(Object));
+  });
+
   it('requires --yes before replacing a different mneia entry', async () => {
     const config = configApi([installed('codex', 'different-command')]);
     const error = await failure(createMcpCommand({ config }), ['install'], { client: 'codex' });
 
     expect(error.kind).toBe('usage');
     expect(error.message).toContain('--yes');
+    expect(config.upsert).not.toHaveBeenCalled();
+  });
+
+  it('requires --yes when an explicitly targeted client cannot be inspected', async () => {
+    const config = configApi([
+      {
+        agentType: 'codex',
+        displayName: 'Codex',
+        detected: false,
+        scope: 'global',
+        configPath: '/portable/.codex/config.toml',
+        servers: [],
+      },
+    ]);
+    const error = await failure(createMcpCommand({ config }), ['install'], { client: 'codex' });
+
+    expect(error.message).toContain('--yes');
+    expect(error.message).toContain('could not be inspected');
     expect(config.upsert).not.toHaveBeenCalled();
   });
 
@@ -121,6 +172,18 @@ describe('mneia mcp', () => {
       installed: [{ client: 'codex', configPath: '/tmp/codex.config' }],
       failed: [],
     });
+  });
+
+  it('lists every detected client without asking for an interactive selection', async () => {
+    const config = configApi([installed('codex')]);
+    vi.mocked(config.detectClients).mockResolvedValue(['codex', 'cursor']);
+    const selectClients = vi.fn();
+
+    const result = await run(createMcpCommand({ config, selectClients }), ['list'], {}, true);
+
+    expect(result.code).toBe(EXIT_OK);
+    expect(selectClients).not.toHaveBeenCalled();
+    expect(config.list).toHaveBeenCalledWith(['codex', 'cursor']);
   });
 
   it('uninstalls MNEIA without touching other server names', async () => {

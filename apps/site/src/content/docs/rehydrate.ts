@@ -51,7 +51,7 @@ export const REHYDRATE: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Each candidate item is scored against the stated task. The weights are tuned empirically and are not gospel — the shape is what matters:',
+            'Each candidate item is scored against the stated task. The weights are tuned empirically and are not gospel - the shape is what matters:',
           ],
         },
         {
@@ -72,7 +72,7 @@ export const REHYDRATE: DocPage = {
           kind: 'bullets',
           items: [
             '**Human confirmation is a term, not a tiebreak.** An item a person ratified outranks an equally relevant item an agent guessed at.',
-            '**Disputed items are penalised, not hidden.** An unresolved disagreement that is highly relevant should still be visible — as disputed.',
+            '**Disputed items are penalised, not hidden.** An unresolved disagreement that is highly relevant should still be visible - as disputed.',
             '**Freshness is separate from recency.** An old standing rule is not stale. A fact past its `decayAfter` is, however recently it was restated.',
           ],
         },
@@ -102,7 +102,7 @@ export const REHYDRATE: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Unused quota is not wasted — a project with no open questions gives that share back to the kinds that have candidates. The quotas are a floor against crowding out, not a fixed layout.',
+            'Unused quota is not wasted - a project with no open questions gives that share back to the kinds that have candidates. The quotas are a floor against crowding out, not a fixed layout.',
           ],
         },
       ],
@@ -115,7 +115,7 @@ export const REHYDRATE: DocPage = {
           kind: 'text',
           paragraphs: [
             'Every active, load-bearing constraint is included, whatever its score and whatever the budget pressure. This runs as its own pass, after packing, and it is the reason rehydration can be trusted at all.',
-            'A dropped constraint is not a slightly worse slice. It is how an agent confidently redoes the approach a human already rejected — which is the exact failure the product exists to prevent, arriving from the tool that was supposed to prevent it.',
+            'A dropped constraint is not a slightly worse slice. It is how an agent confidently redoes the approach a human already rejected - which is the exact failure the product exists to prevent, arriving from the tool that was supposed to prevent it.',
           ],
         },
         {
@@ -161,7 +161,7 @@ export const REHYDRATE: DocPage = {
           kind: 'text',
           paragraphs: [
             'The sections are fixed and appear in a fixed order: constraints, decisions and why, open questions, facts, artifacts, and superseded recently. A section with no items is omitted rather than rendered empty.',
-            'Alongside the markdown, the response carries the slice id and the ids of the items in it. That is what lets a later checkpoint say which items the agent actually used — see the reference detection below.',
+            'Alongside the markdown, the response carries the slice id and the ids of the items in it. That is what lets a later checkpoint say which items the agent actually used - see the reference detection below.',
           ],
         },
         {
@@ -177,7 +177,7 @@ export const REHYDRATE: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'The budget is yours to set — `--budget` on the CLI, a parameter on the MCP tool. The default suits a session that has other things to hold; raise it when rehydrating into a fresh window and lower it when the slice is one input among several.',
+            'The budget is yours to set - `--budget` on the CLI, a parameter on the MCP tool. The default suits a session that has other things to hold; raise it when rehydrating into a fresh window and lower it when the slice is one input among several.',
             'When items do not fit, the count of what was left out is reported in the header rather than silently omitted. A slice that says *3 more not shown* is telling you something a slice that just ends is not.',
           ],
         },
@@ -217,7 +217,7 @@ export const REHYDRATE: DocPage = {
         },
         {
           kind: 'note',
-          text: 'Pass the slice id back when you checkpoint, along with the ids of the items that actually changed what you did. That correlation cannot be reconstructed afterwards — it exists only if the client reports it.',
+          text: 'Pass the slice id back when you checkpoint, along with the ids of the items that actually changed what you did. That correlation cannot be reconstructed afterwards - it exists only if the client reports it.',
         },
       ],
     },

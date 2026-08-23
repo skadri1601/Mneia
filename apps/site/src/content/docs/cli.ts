@@ -5,7 +5,7 @@ export const CLI: DocPage = {
   name: 'CLI reference',
   title: 'CLI reference',
   description:
-    'Every Mneia CLI command — init, login, whoami, brief, checkpoint, handoff, pickup, conflicts, log, and status — plus the interactive session, with flags, environment variables, JSON output, and exit codes.',
+    'Every Mneia CLI command - init, login, whoami, brief, checkpoint, handoff, pickup, conflicts, log, and status - plus the interactive session, with flags, environment variables, JSON output, and exit codes.',
   eyebrow: 'Reference',
   heading: 'The mneia command, in full.',
   lead: 'The CLI is a thin surface over the same core the MCP server uses, so the two return the same answer for the same input. Every command takes --json and --help.',
@@ -40,12 +40,12 @@ export const CLI: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Running `mneia` with no arguments opens an interactive session over the same commands — see **the interactive session** below.',
+            'Running `mneia` with no arguments opens an interactive session over the same commands - see **the interactive session** below.',
           ],
         },
         {
           kind: 'note',
-          text: 'There is no `sync`, and there will not be one. Every command is an authenticated API call against a single store, so there is nothing to reconcile — no watermarks, no clock skew, no offline write queue, and no local-versus-hosted parity to keep.',
+          text: 'There is no `sync`, and there will not be one. Every command is an authenticated API call against a single store, so there is nothing to reconcile - no watermarks, no clock skew, no offline write queue, and no local-versus-hosted parity to keep.',
         },
       ],
     },
@@ -77,13 +77,13 @@ export const CLI: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Anything you type that does not begin with `/` is rehydrated as a task, because that is the thing you do most often. The commands are the same ones above, slash-prefixed and taking the same flags — `/status --json`, `/log --limit 5`, `/checkpoint -m "chose the token bucket"`.',
+            'Anything you type that does not begin with `/` is rehydrated as a task, because that is the thing you do most often. The commands are the same ones above, slash-prefixed and taking the same flags - `/status --json`, `/log --limit 5`, `/checkpoint -m "chose the token bucket"`.',
             'Tab completes a slash command, the up arrow walks your history, `/clear` clears the screen, and `/exit` or Ctrl+D leaves. Ctrl+C cancels the line you are typing; press it twice to leave. If the machine is not signed in, or the stored token has expired, the session runs the device flow for you rather than telling you to go and run **mneia login** first.',
           ],
         },
         {
           kind: 'note',
-          text: '**Only a terminal gets the session.** Piped, redirected, or run in CI, bare `mneia` still prints the command list to stderr and exits `2` — so a script that depends on that behaviour keeps working. It dispatches commands and does not talk to a model; a prompt that answered questions would be a chat interface, which is deliberately not what this is.',
+          text: '**Only a terminal gets the session.** Piped, redirected, or run in CI, bare `mneia` still prints the command list to stderr and exits `2` - so a script that depends on that behaviour keeps working. It dispatches commands and does not talk to a model; a prompt that answered questions would be a chat interface, which is deliberately not what this is.',
         },
       ],
     },
@@ -137,7 +137,7 @@ export const CLI: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            '`login` runs a browser device flow. It prints a link, a user code, and a confirmation number; approve it in the browser — checking that the workspace named on that page is the one you expect — and the token is written to `~/.mneia/credentials` with `0600` permissions.',
+            '`login` runs a browser device flow. It prints a link, a user code, and a confirmation number; approve it in the browser - checking that the workspace named on that page is the one you expect - and the token is written to `~/.mneia/credentials` with `0600` permissions.',
             '`whoami` is how you confirm it worked, and the first thing worth running when something behaves unexpectedly. It prints the actor, workspace, team, and endpoint this machine is signed in as.',
           ],
         },
@@ -170,7 +170,7 @@ export const CLI: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'The terminal-side rehydration. State the task in the words you would use to a colleague — the slice is chosen for that task, so "fix the ledger rounding bug" and "migrate the ledger schema" return different context from the same project.',
+            'The terminal-side rehydration. State the task in the words you would use to a colleague - the slice is chosen for that task, so "fix the ledger rounding bug" and "migrate the ledger schema" return different context from the same project.',
             '`--budget` caps the slice in tokens. Load-bearing active constraints are included regardless of what you set it to.',
           ],
         },
@@ -188,7 +188,7 @@ export const CLI: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Captures what the session decided. `-m` attaches your own one-line summary, which is worth using when the session covered more than its commits suggest. `--trigger` records why the checkpoint ran — useful when a hook fires it rather than a person.',
+            'Captures what the session decided. `-m` attaches your own one-line summary, which is worth using when the session covered more than its commits suggest. `--trigger` records why the checkpoint ran - useful when a hook fires it rather than a person.',
             'This is the surface that asks you to confirm things, and it only asks about what genuinely needs a human: items that are load-bearing, and items that contradict something already recorded. Everything else is written without interrupting you.',
           ],
         },
@@ -231,7 +231,7 @@ export const CLI: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Lists the unresolved disagreements on this project and walks them one at a time — both items side by side with full provenance, then the resolution and the reason for it.',
+            'Lists the unresolved disagreements on this project and walks them one at a time - both items side by side with full provenance, then the resolution and the reason for it.',
             'The reason is not optional. The outcome could be inferred from the rows afterwards; the reasoning could not, and it is the half that explains the decision to whoever reads it next year.',
           ],
         },
@@ -252,7 +252,7 @@ export const CLI: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            '`log` is the decision history, newest first — what was decided, by whom, and what it superseded. `--since` takes a duration such as `7d` or an absolute date, and supersede chains read as a sequence rather than a pile.',
+            '`log` is the decision history, newest first - what was decided, by whom, and what it superseded. `--since` takes a duration such as `7d` or an absolute date, and supersede chains read as a sequence rather than a pile.',
             '`status` is the health of the project rather than its history: what is stale, what is disputed, and which open questions have been sitting unanswered. It is the command worth running before a planning meeting.',
           ],
         },
@@ -268,7 +268,7 @@ export const CLI: DocPage = {
           rows: [
             [
               '`MNEIA_TOKEN`',
-              '—',
+              '-',
               'The auth token. Wins over the credentials file; required in CI',
             ],
             [
@@ -291,7 +291,7 @@ export const CLI: DocPage = {
               '`~/.mneia/credentials`',
               'Absolute path to the credentials file',
             ],
-            ['`MNEIA_DEBUG`', '—', 'Set to `1` to print the underlying stack trace on failure'],
+            ['`MNEIA_DEBUG`', '-', 'Set to `1` to print the underlying stack trace on failure'],
           ],
         },
         {
@@ -307,7 +307,7 @@ export const CLI: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Every command takes `--json`, and the JSON is the contract — human output may be reformatted, the JSON shape may not. Errors carry a kind, a message naming what was expected and what was received, and a fix.',
+            'Every command takes `--json`, and the JSON is the contract - human output may be reformatted, the JSON shape may not. Errors carry a kind, a message naming what was expected and what was received, and a fix.',
             'Nothing is colour-only. Meaning is carried in the text, so piped output stays intelligible and a terminal that does not do colour loses nothing.',
           ],
         },
@@ -316,11 +316,11 @@ export const CLI: DocPage = {
           head: ['Code', 'Meaning'],
           rows: [
             ['`0`', 'Success'],
-            ['`1`', 'Failed — the operation was understood and did not succeed'],
-            ['`2`', 'Usage — the invocation was wrong. Nothing was read or written'],
-            ['`3`', 'Not configured — no `.mneia/config.json` for this directory'],
-            ['`4`', 'Auth — no usable token'],
-            ['`5`', 'Network — the API could not be reached. Your token was not the problem'],
+            ['`1`', 'Failed - the operation was understood and did not succeed'],
+            ['`2`', 'Usage - the invocation was wrong. Nothing was read or written'],
+            ['`3`', 'Not configured - no `.mneia/config.json` for this directory'],
+            ['`4`', 'Auth - no usable token'],
+            ['`5`', 'Network - the API could not be reached. Your token was not the problem'],
           ],
         },
         {

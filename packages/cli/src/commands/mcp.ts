@@ -1,3 +1,5 @@
+import { stdin, stdout } from 'node:process';
+import { createInterface } from 'node:readline/promises';
 import type { CommandDefinition, CommandIo } from '../command.js';
 import { CliError, EXIT_FAILED, EXIT_OK } from '../command.js';
 import {
@@ -11,12 +13,13 @@ export type { McpConfigApi } from '../mcp-config.js';
 
 export interface McpCommandDependencies {
   readonly config: McpConfigApi;
+  readonly selectClients?: (detected: readonly McpClient[]) => Promise<readonly McpClient[]>;
 }
 
-const clientFlag = (
+const clientFlags = (
   value: string | boolean | undefined,
   supported: readonly McpClient[],
-): McpClient | undefined => {
+): readonly McpClient[] | undefined => {
   if (value === undefined) return undefined;
   if (typeof value !== 'string') {
     throw new CliError(
@@ -25,14 +28,16 @@ const clientFlag = (
       `choose one of: ${supported.join(', ')}`,
     );
   }
-  if (!supported.includes(value as McpClient)) {
+  const requested = [...new Set(value.split(',').map((client) => client.trim()))].filter(Boolean);
+  const unknown = requested.filter((client) => !supported.includes(client as McpClient));
+  if (requested.length === 0 || unknown.length > 0) {
     throw new CliError(
       'usage',
-      `unknown MCP client "${value}"`,
+      `unknown MCP client "${unknown.join(', ') || value}"`,
       `choose one of: ${supported.join(', ')}`,
     );
   }
-  return value as McpClient;
+  return requested as McpClient[];
 };
 
 type McpAction = 'install' | 'list' | 'uninstall';
@@ -52,10 +57,41 @@ const readAction = (args: readonly string[]): McpAction => {
 const isTrueFlag = (value: string | boolean | undefined): boolean =>
   value === true || value === 'true';
 
+const selectClientsInteractive = async (
+  detected: readonly McpClient[],
+): Promise<readonly McpClient[]> => {
+  if (stdin.isTTY !== true || stdout.isTTY !== true) {
+    throw new CliError(
+      'usage',
+      `detected ${detected.join(', ')}, but client selection needs an interactive terminal`,
+      'pass one or more --client values, or use --all --yes',
+    );
+  }
+  const reader = createInterface({ input: stdin, output: stdout });
+  try {
+    const answer = await reader.question(
+      `Detected ${detected.join(', ')}. Which clients should MNEIA configure? `,
+    );
+    const selected = clientFlags(answer, detected);
+    if (selected === undefined || selected.length === 0) {
+      throw new CliError(
+        'usage',
+        'no MCP client was selected',
+        'run the command again and name a client',
+      );
+    }
+    return selected;
+  } finally {
+    reader.close();
+  }
+};
+
 const resolveClients = async (
   config: McpConfigApi,
   client: string | boolean | undefined,
   all: string | boolean | undefined,
+  selectClients: (detected: readonly McpClient[]) => Promise<readonly McpClient[]>,
+  interactiveSelection: boolean,
 ): Promise<readonly McpClient[]> => {
   const supported = [...config.supportedClients()].sort();
   if (client !== undefined && isTrueFlag(all)) {
@@ -65,13 +101,10 @@ const resolveClients = async (
       'choose one client or pass --all',
     );
   }
-  const explicit = clientFlag(client, supported);
-  const clients =
-    explicit !== undefined
-      ? [explicit]
-      : isTrueFlag(all)
-        ? supported
-        : [...(await config.detectClients())].sort();
+  const explicit = clientFlags(client, supported);
+  const detected =
+    explicit === undefined && !isTrueFlag(all) ? [...(await config.detectClients())].sort() : [];
+  const clients = explicit ?? (isTrueFlag(all) ? supported : detected);
 
   if (clients.length === 0) {
     throw new CliError(
@@ -80,7 +113,9 @@ const resolveClients = async (
       `choose one explicitly with --client (${supported.join(', ')})`,
     );
   }
-  return clients;
+  return explicit !== undefined || isTrueFlag(all) || !interactiveSelection
+    ? clients
+    : selectClients(clients);
 };
 
 const mneiaServer = (groups: Awaited<ReturnType<McpConfigApi['list']>>, client: McpClient) =>
@@ -136,13 +171,19 @@ const assertReplaceAllowed = (
   yes: boolean,
 ): void => {
   const conflicts = clients.filter((client) => {
+    const group = groups.find((entry) => entry.agentType === client);
     const server = mneiaServer(groups, client);
-    return server !== undefined && !isCanonicalMneia(server.config);
+    return group?.detected === false || (server !== undefined && !isCanonicalMneia(server.config));
   });
   if (conflicts.length > 0 && !yes) {
+    const uninspected = conflicts.filter(
+      (client) => groups.find((entry) => entry.agentType === client)?.detected === false,
+    );
     throw new CliError(
       'usage',
-      `MNEIA already has different configuration in ${conflicts.join(', ')}; pass --yes to replace it`,
+      uninspected.length > 0
+        ? `${uninspected.join(', ')} could not be inspected because the client was not detected; pass --yes to allow a safe merge`
+        : `MNEIA already has different configuration in ${conflicts.join(', ')}; pass --yes to replace it`,
       'review the existing entry, then run the same command with --yes',
     );
   }
@@ -241,7 +282,13 @@ export const createMcpCommand = (dependencies: McpCommandDependencies): CommandD
       );
     }
 
-    const clients = await resolveClients(dependencies.config, flags.client, flags.all);
+    const clients = await resolveClients(
+      dependencies.config,
+      flags.client,
+      flags.all,
+      dependencies.selectClients ?? selectClientsInteractive,
+      action !== 'list',
+    );
     const groups = await dependencies.config.list([...clients]);
 
     if (action === 'list') {
