@@ -5,7 +5,10 @@ import {
   BRANCH_RE,
   BRANCH_TYPES,
   classify,
+  isReleaseSubject,
   PR_BODY_RE,
+  RELEASE_AUTHOR_TYPE,
+  RELEASE_BRANCH_RE,
   SUBJECT_RE,
   TICKET_RE,
 } from './git-lanes.mjs';
@@ -51,6 +54,7 @@ function readEvent() {
 
 function checkSubjects(list) {
   for (const subject of list) {
+    if (isReleaseSubject(subject)) continue;
     if (!TICKET_RE.test(subject)) {
       fail(
         `commit subject has no MNE-nnn reference: "${subject}"`,
@@ -71,6 +75,12 @@ function checkPullRequest(event) {
   const branch = event?.pull_request?.head?.ref ?? process.env.GITHUB_HEAD_REF ?? '';
   const base = event?.pull_request?.base?.ref ?? process.env.GITHUB_BASE_REF ?? 'main';
   const body = event?.pull_request?.body ?? '';
+  const authorType = event?.pull_request?.user?.type ?? '';
+
+  if (RELEASE_BRANCH_RE.test(branch) && authorType === RELEASE_AUTHOR_TYPE) {
+    process.stdout.write('git policy: release pull request, opened by a bot — exempt\n');
+    return { branch, range: '' };
+  }
 
   if (!BRANCH_RE.test(branch)) {
     fail(
