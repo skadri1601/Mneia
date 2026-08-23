@@ -335,7 +335,7 @@ describe('readStripeConfiguration', () => {
   });
 
   it('prices a seat at the §14 figure', () => {
-    expect(SEAT_PRICE_USD_CENTS).toBe(2400);
+    expect(SEAT_PRICE_USD_CENTS).toBe(2500);
   });
 });
 

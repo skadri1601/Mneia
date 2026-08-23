@@ -11,7 +11,7 @@ to stop instead of guessing. Where the two disagree, `vision.md` wins and this f
 Mneia is the shared project memory and handoff layer for teams working with AI agents. Three
 operations: **checkpoint** (capture decisions and constraints at a boundary), **rehydrate** (assemble
 the minimal high-signal context for the next task under a token budget), and **handoff** (produce a
-receivable artifact when work changes hands). It is a hosted SaaS at **$24 per user per month**.
+receivable artifact when work changes hands). It is a hosted SaaS at **$25 per user per month**.
 Everything else serves those three verbs.
 
 ## The bet
@@ -42,7 +42,7 @@ We *land* through engineering because the pain is sharpest there, but the schema
 | 3 | A multi-team engineering org | Budget owner. Governance SKU. |
 | 4 | The whole company — sales, support, marketing, ops | Where the ACV actually is. |
 
-**The commercial reason non-engineers matter:** at $24/seat, a 100-person company where only
+**The commercial reason non-engineers matter:** at $25/seat, a 100-person company where only
 engineers buy is ~40 seats. With every function it is ~100. That **~2.5× ACV multiplier on the same
 customer** is the difference between a developer tool and company infrastructure. It is why `team`,
 `function`, and a five-value `access_scope` hierarchy ship in M0 rather than month 18 — see
@@ -53,7 +53,7 @@ customer** is the difference between a developer tool and company infrastructure
 **Do not charge for the individual tier** (§14, standing rule 7). Developers do not pay for something
 they can replace with a markdown file. That tier's job is distribution.
 
-**We pay for inference. BYOK is rejected on every tier** (MNE-174, ruled 2026-07-29). Charging $24 a
+**We pay for inference. BYOK is rejected on every tier** (MNE-174, ruled 2026-07-29). Charging $25 a
 seat *and* asking for the customer's own API key funds the product twice and puts our COGS on their
 bill. Owning the call also keeps prompt caching and the Batches API discount, both of which require
 the call to be ours.
@@ -66,7 +66,7 @@ customers experience it as seat pricing and a runaway CI loop cannot quietly inv
 **The §17 event spine is the metering spine.** `checkpoint.item_extracted` already fires per
 checkpoint for the arbitration dataset. One system, two purposes — **do not build a second.**
 
-**$24 is not yet load-bearing.** The allowance has to be sized against measured checkpoint cost from
+**$25 is not yet load-bearing.** The allowance has to be sized against measured checkpoint cost from
 the MNE-86 dogfood (MNE-180). Treat the number as provisional.
 
 ## What we may not say

@@ -8,7 +8,7 @@ export const STRIPE_PRICE_ID_VAR = 'STRIPE_PRICE_ID';
 
 const STRIPE_API = 'https://api.stripe.com/v1';
 
-export const SEAT_PRICE_USD_CENTS = 2400;
+export const SEAT_PRICE_USD_CENTS = 2500;
 
 export type BillingErrorCode =
   | 'not_configured'
