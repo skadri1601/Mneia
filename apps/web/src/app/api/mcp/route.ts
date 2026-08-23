@@ -10,16 +10,20 @@ export const runtime = 'nodejs';
 // than guessing, and the WWW-Authenticate header below points at it. We are the resource server;
 // we do not yet run an authorization server, so this advertises the token endpoint a caller
 // already has — `mneia login`, the RFC 8628 device grant at /api/device/code.
-const resourceMetadataUrl = (request: Request): string =>
-  new URL('/.well-known/oauth-protected-resource', request.url).toString();
+// Must match what the metadata document itself advertises, and for the same reason: behind Caddy
+// the request URL is the container's internal address, so a WWW-Authenticate built from it points
+// a client at somewhere it cannot reach.
+const APP_ORIGIN = (process.env.MNEIA_APP_ORIGIN ?? 'https://app.mneia.dev').replace(/\/+$/, '');
 
-const unauthorized = (request: Request, message: string): Response =>
+const resourceMetadataUrl = (): string => `${APP_ORIGIN}/.well-known/oauth-protected-resource`;
+
+const unauthorized = (message: string): Response =>
   Response.json(
     { error: 'invalid_token', message },
     {
       status: 401,
       headers: {
-        'www-authenticate': `Bearer error="invalid_token", error_description="${message.replace(/"/g, "'")}", resource_metadata="${resourceMetadataUrl(request)}"`,
+        'www-authenticate': `Bearer error="invalid_token", error_description="${message.replace(/"/g, "'")}", resource_metadata="${resourceMetadataUrl()}"`,
       },
     },
   );
@@ -46,7 +50,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   } catch (error) {
     if (error instanceof ApiAuthError) {
-      return unauthorized(request, error.message);
+      return unauthorized(error.message);
     }
     throw error;
   }

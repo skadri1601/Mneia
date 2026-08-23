@@ -259,12 +259,22 @@ export {
   INVITATION_TOKEN_HASH_SETTING,
   ITEM_KINDS,
   ITEM_STATUSES,
+  OAUTH_APPLICATION_TYPES,
+  OAUTH_CLIENT_ID_SETTING,
+  OAUTH_CODE_HASH_SETTING,
+  OAUTH_CODE_STATUSES,
+  OAUTH_TOKEN_ENDPOINT_AUTH_METHODS,
   TEAM_FUNCTIONS,
   TEAM_ROLES,
   teamRoleForWorkspaceRole,
   WORKSPACE_PLANS,
   WORKSPACE_ROLES,
   WORKSPACE_SETTING,
+} from './store/schema.js';
+export type {
+  OAuthApplicationType,
+  OAuthCodeStatus,
+  OAuthTokenEndpointAuthMethod,
 } from './store/schema.js';
 export type {
   JsonlSinkOptions,
