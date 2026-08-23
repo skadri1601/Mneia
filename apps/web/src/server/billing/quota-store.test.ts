@@ -144,8 +144,22 @@ describe('PostgresQuotaStore.quotaFor', () => {
     await store.quotaFor(WORKSPACE_ID, NOW);
 
     const read = session.exchanges.find((exchange) => exchange.sql.includes('FROM workspace'));
-    expect(read?.params[1]).toBe('2026-08-01T00:00:00.000Z');
-    expect(read?.sql).toContain("date_trunc('month', $2::timestamptz)");
+    expect(read?.params[1]).toBe('2026-08-01');
+    expect(read?.sql).toContain('p.period_start = $2::date');
+  });
+
+  it('does not re-truncate the period in SQL, which would move with the session timezone', async () => {
+    // date_trunc('month', $2::timestamptz) re-reads an instant that is already a UTC month
+    // start in the session's TimeZone. On a non-UTC connection that resolves the first
+    // hours of a month to the previous month's row, metering the workspace against a
+    // period it is not in.
+    const { session, store } = storeWith(() => [ROW]);
+
+    await store.quotaFor(WORKSPACE_ID, new Date('2026-09-01T00:30:00.000Z'));
+
+    const read = session.exchanges.find((exchange) => exchange.sql.includes('FROM workspace'));
+    expect(read?.sql).not.toContain('date_trunc');
+    expect(read?.params[1]).toBe('2026-09-01');
   });
 
   it('reads a workspace with no period row yet as zero, not as missing', async () => {

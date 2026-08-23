@@ -1,10 +1,12 @@
 import 'server-only';
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
+import type { WorkspacePlan } from '@mneia/core';
 
 export const STRIPE_SECRET_KEY_VAR = 'STRIPE_SECRET_KEY';
 export const STRIPE_WEBHOOK_SECRET_VAR = 'STRIPE_WEBHOOK_SECRET';
 export const STRIPE_PRICE_ID_VAR = 'STRIPE_PRICE_ID';
+export const STRIPE_PRICE_ID_PRO_VAR = 'STRIPE_PRICE_ID_PRO';
 
 const STRIPE_API = 'https://api.stripe.com/v1';
 
@@ -29,9 +31,41 @@ export class BillingError extends Error {
 
 export interface StripeConfiguration {
   readonly secretKey: string;
+  /** The Team seat price, §14 — $25 per user per month. Checkout only ever sells this one. */
   readonly priceId: string;
+  /**
+   * The Pro price, §14 — $15 a month for one seat. Optional because Pro is not self-serve
+   * yet: until it is, a Pro subscription can only exist because someone made it in the
+   * Stripe dashboard, and leaving this unset is what makes the webhook refuse to act on
+   * one rather than quietly granting it Team.
+   */
+  readonly proPriceId: string | null;
   readonly webhookSecret: string;
 }
+
+/**
+ * Which plan a subscription on this price grants.
+ *
+ * Returns null for a price this deployment does not know about. The caller must refuse
+ * rather than pick a default: defaulting to `team` gives away the seated allowance to
+ * whatever price was invoiced, and defaulting to `solo` cuts off someone who is paying.
+ * Solo is free and enterprise is not sold (docs/BUSINESS.md), so neither has a price here.
+ */
+export const planForPriceId = (
+  configuration: StripeConfiguration,
+  priceId: string | null,
+): WorkspacePlan | null => {
+  if (priceId === null || priceId === '') {
+    return null;
+  }
+  if (priceId === configuration.priceId) {
+    return 'team';
+  }
+  if (configuration.proPriceId !== null && priceId === configuration.proPriceId) {
+    return 'pro';
+  }
+  return null;
+};
 
 export interface StripeClientOptions {
   readonly configuration: StripeConfiguration;
@@ -57,6 +91,8 @@ export interface StripeSubscription {
   readonly status: string;
   readonly quantity: number | null;
   readonly customerId: string | null;
+  /** The price the first item is on. What the workspace is paying for decides its plan. */
+  readonly priceId: string | null;
 }
 
 export interface StripeHostedSession {
@@ -101,13 +137,21 @@ const decodeHostedSession = (payload: unknown): StripeHostedSession => {
   return { id, url };
 };
 
-const firstItemQuantity = (payload: Record<string, unknown>): number | null => {
+const firstItem = (payload: Record<string, unknown>): Record<string, unknown> => {
   const items = asRecord(payload.items).data;
-  if (!Array.isArray(items)) {
-    return null;
-  }
-  const quantity = asRecord(items[0]).quantity;
+  return Array.isArray(items) ? asRecord(items[0]) : {};
+};
+
+const firstItemQuantity = (payload: Record<string, unknown>): number | null => {
+  const quantity = firstItem(payload).quantity;
   return typeof quantity === 'number' ? quantity : null;
+};
+
+// Stripe sends `price` expanded on subscription items, but the API will also accept a bare
+// id string in some shapes, so both are read rather than assuming the one we usually see.
+const firstItemPriceId = (payload: Record<string, unknown>): string | null => {
+  const price = firstItem(payload).price;
+  return asString(price) ?? asString(asRecord(price).id);
 };
 
 export const decodeSubscription = (payload: unknown): StripeSubscription => {
@@ -128,6 +172,7 @@ export const decodeSubscription = (payload: unknown): StripeSubscription => {
     status,
     quantity: firstItemQuantity(record),
     customerId: asString(customer) ?? asString(asRecord(customer).id),
+    priceId: firstItemPriceId(record),
   };
 };
 
@@ -140,17 +185,15 @@ export class StripeClient {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
-  private async post(path: string, body: string, idempotencyKey?: string): Promise<unknown> {
+  private async send(path: string, init: RequestInit): Promise<unknown> {
     let response: Response;
     try {
       response = await this.fetchImpl(`${STRIPE_API}${path}`, {
-        method: 'POST',
+        ...init,
         headers: {
           authorization: `Bearer ${this.configuration.secretKey}`,
-          'content-type': 'application/x-www-form-urlencoded',
-          ...(idempotencyKey === undefined ? {} : { 'Idempotency-Key': idempotencyKey }),
+          ...init.headers,
         },
-        body,
       });
     } catch (cause) {
       throw new BillingError(
@@ -171,6 +214,35 @@ export class StripeClient {
     }
 
     return payload;
+  }
+
+  private async post(path: string, body: string, idempotencyKey?: string): Promise<unknown> {
+    return this.send(path, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        ...(idempotencyKey === undefined ? {} : { 'Idempotency-Key': idempotencyKey }),
+      },
+      body,
+    });
+  }
+
+  private async get(path: string): Promise<unknown> {
+    return this.send(path, { method: 'GET' });
+  }
+
+  /**
+   * The subscription as Stripe holds it now, rather than as an event described it.
+   *
+   * Stripe does not guarantee delivery order, and a webhook body is a snapshot of the
+   * object at the moment the event fired. Reading it back means a late-arriving event
+   * applies current truth instead of stale truth, and a redelivered event converges on the
+   * same state rather than rewinding it.
+   */
+  async retrieveSubscription(subscriptionId: string): Promise<StripeSubscription> {
+    return decodeSubscription(
+      await this.get(`/subscriptions/${encodeURIComponent(subscriptionId)}`),
+    );
   }
 
   async createCustomer(input: {
@@ -211,6 +283,11 @@ export class StripeClient {
           mode: 'subscription',
           'line_items[0][price]': this.configuration.priceId,
           'line_items[0][quantity]': input.seats,
+          // Three copies of the workspace id on purpose. The webhook resolves a workspace
+          // from `subscription_data[metadata]`, which is the copy that survives onto the
+          // subscription itself; the other two are what a human reads in the dashboard when
+          // reconciling a session that never became a subscription.
+          client_reference_id: input.workspaceId,
           'metadata[workspace_id]': input.workspaceId,
           'subscription_data[metadata][workspace_id]': input.workspaceId,
           customer: input.customerId,
@@ -364,6 +441,7 @@ export const readStripeConfiguration = (
   const secretKey = env[STRIPE_SECRET_KEY_VAR]?.trim();
   const priceId = env[STRIPE_PRICE_ID_VAR]?.trim();
   const webhookSecret = env[STRIPE_WEBHOOK_SECRET_VAR]?.trim();
+  const proPriceId = env[STRIPE_PRICE_ID_PRO_VAR]?.trim();
 
   if (
     secretKey === undefined ||
@@ -376,7 +454,14 @@ export const readStripeConfiguration = (
     return null;
   }
 
-  return { secretKey, priceId, webhookSecret };
+  // Pro is optional: billing runs without it, and a Pro subscription simply cannot be
+  // recognised until it is set. The three above are not — see requireStripeConfiguration.
+  return {
+    secretKey,
+    priceId,
+    proPriceId: proPriceId === undefined || proPriceId === '' ? null : proPriceId,
+    webhookSecret,
+  };
 };
 
 export const requireStripeConfiguration = (

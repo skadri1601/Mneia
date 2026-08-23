@@ -22,6 +22,8 @@ import {
   decodePendingReviewItem,
   discoverTrajectories,
   fetchIdentity,
+  MAX_TRAJECTORY_TURNS,
+  MAX_TURN_TEXT_LENGTH,
   PendingReviewItemWireSchema,
   REVIEW_PATH,
   REVIEW_PENDING_PATH,
@@ -578,11 +580,35 @@ const actionFor = (entry: CommitEntry) =>
 
 export const MAX_UPLOAD_BYTES = 900_000;
 
+const UPLOAD_TRUNCATION_NOTE = '\n… truncated by mneia to the upload limit, %n more characters';
+
+/**
+ * Cut one turn's text down to what the wire schema will accept.
+ *
+ * reduceTrajectory caps tool_call and tool_result at 2000 characters, but leaves `text`
+ * and `thinking` turns whole, and this client reduces with an effectively infinite
+ * maxChars so the global drop loop never runs either. A single long turn — a pasted log,
+ * a large assistant answer — therefore reached the API at full length and was rejected by
+ * TrajectoryTurnWireSchema outright. A rejected request is not lossy, it is fatal: that
+ * session could never be checkpointed at all, which is the same failure mode as the
+ * `.min(1)` probe bug (MNE-100). Truncating loses the tail of one turn; not truncating
+ * loses the session.
+ */
+const withinTurnTextLimit = (text: string): string => {
+  if (text.length <= MAX_TURN_TEXT_LENGTH) {
+    return text;
+  }
+  // Reserve room for the note itself. The reserve is an upper bound rather than the exact
+  // note length, because that depends on the digits in the count it is about to state.
+  const kept = MAX_TURN_TEXT_LENGTH - UPLOAD_TRUNCATION_NOTE.length - 20;
+  return `${text.slice(0, kept)}${UPLOAD_TRUNCATION_NOTE.replace('%n', String(text.length - kept))}`;
+};
+
 const wireTurn = (turn: TrajectoryTurn) => ({
   ref: turn.ref,
   role: turn.role,
   kind: turn.kind,
-  text: turn.text,
+  text: withinTurnTextLimit(turn.text),
   toolName: turn.toolName,
   at: turn.at === null ? null : turn.at.toISOString(),
 });
@@ -596,6 +622,12 @@ export function uploadableFrom(
   let used = 0;
 
   for (let index = start; index < turns.length; index += 1) {
+    // The byte budget is ours; the turn count is the API's, and exceeding it fails the
+    // whole request rather than trimming it. A session of many short turns stays well
+    // inside MAX_UPLOAD_BYTES while going past MAX_TRAJECTORY_TURNS, so both bound this.
+    if (taken.length >= MAX_TRAJECTORY_TURNS) {
+      break;
+    }
     const turn = turns[index];
     if (turn === undefined) {
       break;
@@ -687,6 +719,10 @@ export const httpCheckpointApi: CheckpointApi = {
       source: reduced.trajectory.source,
       sourceSessionRef: reduced.trajectory.sessionRef,
       watermark: proposal.watermark,
+      // Carried so the caller can tell "extraction ran and kept nothing" from "there was
+      // nothing new to extract". Only the first has a watermark worth banking; committing
+      // on the second would write a fresh empty checkpoint on every invocation.
+      consumedTurns: proposal.consumedTurns,
       pendingTurns: proposal.pendingTurns + heldBack,
       incompleteReason: proposal.incompleteReason,
       droppedBeforeUpload: trajectory.turns.length - all.length,
@@ -721,10 +757,13 @@ export const httpCheckpointApi: CheckpointApi = {
         .map((reviewed) => ({ candidate: reviewed.candidate, overrides: reviewed })),
     ];
 
-    if (entries.length === 0) {
+    // An empty commit is legitimate only as a watermark: extraction ran, kept nothing, and
+    // the one thing worth recording is how far it got. Without a watermark there is
+    // genuinely nothing to write, and that stays an error.
+    if (entries.length === 0 && (request.watermark ?? null) === null) {
       throw new CliError(
         'failed',
-        'every candidate was rejected, so there is nothing to write',
+        'every candidate was rejected and no watermark was reached, so there is nothing to write',
         'nothing was recorded; run mneia checkpoint again when there is something to keep',
       );
     }

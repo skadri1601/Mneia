@@ -1,10 +1,18 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_MAX_CHARS, readTrajectoryFile, reduceTrajectory } from '@mneia/core';
+import {
+  CheckpointProposeWireSchema,
+  DEFAULT_MAX_CHARS,
+  MAX_TRAJECTORY_TURNS,
+  MAX_TURN_TEXT_LENGTH,
+  readTrajectoryFile,
+  reduceTrajectory,
+} from '@mneia/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ZodError } from 'zod';
 import type { ProjectConfig } from './config.js';
-import { MAX_UPLOAD_BYTES, httpCheckpointApi, httpInitApi, uploadableFrom } from './http-api.js';
+import { httpCheckpointApi, httpInitApi, MAX_UPLOAD_BYTES, uploadableFrom } from './http-api.js';
 
 const WORKSPACE_ID = '00000000-0000-4000-8000-000000000001';
 const PROJECT_ID = '00000000-0000-4000-8000-000000000002';
@@ -45,11 +53,30 @@ interface FakeServer {
   readonly seen: Set<string>;
   readonly uploads: number[];
   readonly requests: () => number;
+  readonly rejected: string[];
 }
 
+const schemaRejection = (error: ZodError): string =>
+  error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
+
+const badRequest = (message: string): Response =>
+  new Response(JSON.stringify({ error: { code: 'invalid_request', message } }), {
+    status: 400,
+    headers: { 'content-type': 'application/json' },
+  });
+
+/**
+ * A fake that is no more permissive than the schema it stands in for.
+ *
+ * MNE-100 shipped because the earlier version of this was: it accepted any JSON, so the
+ * `.min(1)` on `turns` made the watermark probe a 400 in production while every test here
+ * stayed green. Validating with CheckpointProposeWireSchema is what makes a client that
+ * sends something the API refuses fail here rather than in a customer's terminal.
+ */
 function fakeServer(): FakeServer {
   const seen = new Set<string>();
   const uploads: number[] = [];
+  const rejected: string[] = [];
   let watermark: string | null = null;
   let requests = 0;
 
@@ -70,7 +97,14 @@ function fakeServer(): FakeServer {
     requests += 1;
     const raw = init?.body ?? '{}';
     uploads.push(Buffer.byteLength(raw, 'utf8'));
-    const body = JSON.parse(raw) as { turns: readonly WireTurn[] };
+
+    const parsed = CheckpointProposeWireSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) {
+      const message = schemaRejection(parsed.error);
+      rejected.push(message);
+      return Promise.resolve(badRequest(message));
+    }
+    const body: { turns: readonly WireTurn[] } = parsed.data;
 
     const at = watermark;
     const index = at === null ? -1 : body.turns.findIndex((turn) => turn.ref === at);
@@ -80,6 +114,12 @@ function fakeServer(): FakeServer {
     for (const turn of pending) {
       seen.add(turn.ref);
     }
+    // Known divergence from the real server, and the reason it is spelled out here: the
+    // hosted API advances the stored watermark only when a checkpoint is *committed*, and
+    // commit refuses a checkpoint with no items. So a proposal that yields no candidates
+    // leaves the watermark where it was and the same turns are extracted, and billed,
+    // again on the next run. Tests below that rely on progress across runs are exercising
+    // this fake's optimism, not the product.
     const last = pending.at(-1);
     if (last !== undefined) {
       watermark = last.ref;
@@ -106,7 +146,7 @@ function fakeServer(): FakeServer {
     );
   });
 
-  return { seen, uploads, requests: () => requests };
+  return { seen, uploads, requests: () => requests, rejected };
 }
 
 afterEach(() => {
@@ -127,18 +167,66 @@ describe('uploadableFrom', () => {
     expect(taken[0]?.ref).toBe('t0');
   });
 
-  it('always takes at least one turn, so an oversized turn cannot stall the loop', async () => {
+  it('takes an oversized turn rather than stalling on it', async () => {
     const trajectory = await readTrajectoryFile(await trajectoryFile(3, 2_000_000));
 
     const taken = uploadableFrom(trajectory.turns, 0);
 
-    expect(taken).toHaveLength(1);
+    expect(taken.length).toBeGreaterThan(0);
+    expect(taken[0]?.ref).toBe('t0');
+  });
+
+  it('stops at the turn count the API accepts, not only at the byte budget', async () => {
+    const trajectory = await readTrajectoryFile(
+      await trajectoryFile(MAX_TRAJECTORY_TURNS + 20, 20),
+    );
+
+    const taken = uploadableFrom(trajectory.turns, 0);
+    const bytes = taken.reduce(
+      (total, turn) => total + Buffer.byteLength(JSON.stringify(turn), 'utf8'),
+      0,
+    );
+
+    // The byte budget is nowhere near reached, so only the turn cap can be what stopped
+    // it. Without that cap the request is a 400 and the session never checkpoints.
+    expect(bytes).toBeLessThan(MAX_UPLOAD_BYTES);
+    expect(taken).toHaveLength(MAX_TRAJECTORY_TURNS);
   });
 
   it('resumes from an offset rather than always from the start', async () => {
     const trajectory = await readTrajectoryFile(await trajectoryFile(TURN_COUNT, TURN_CHARS));
 
     expect(uploadableFrom(trajectory.turns, 30)[0]?.ref).toBe('t30');
+  });
+});
+
+describe('httpCheckpointApi.propose against what the API actually accepts', () => {
+  it('uploads a turn longer than the wire limit instead of having it rejected whole', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const path = await trajectoryFile(2, MAX_TURN_TEXT_LENGTH * 3);
+    const server = fakeServer();
+
+    const proposal = await httpCheckpointApi.propose({ config, trigger: 'manual', fromFile: path });
+
+    // reduceTrajectory caps tool output but not a text turn, and this client reduces with
+    // an infinite maxChars — so before MNE-100 the full turn went on the wire and the API
+    // refused the request, leaving the session permanently un-checkpointable.
+    expect(server.rejected).toEqual([]);
+    expect(proposal.droppedBeforeUpload).toBe(0);
+    expect(server.seen.has('t0')).toBe(true);
+  });
+
+  it('keeps a session of many short turns inside the turn cap the API enforces', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const path = await trajectoryFile(MAX_TRAJECTORY_TURNS + 20, 20);
+    const server = fakeServer();
+
+    const first = await httpCheckpointApi.propose({ config, trigger: 'manual', fromFile: path });
+    await httpCheckpointApi.propose({ config, trigger: 'manual', fromFile: path });
+
+    expect(server.rejected).toEqual([]);
+    expect(first.pendingTurns).toBeGreaterThan(0);
+    expect(server.seen.size).toBe(MAX_TRAJECTORY_TURNS + 20);
   });
 });
 

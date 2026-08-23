@@ -795,6 +795,10 @@ export const CheckpointWriteWireSchema = z.object({
     sourceWatermark: z.string().max(300).nullable().optional(),
     coverage: ExtractionCoverageWireSchema.optional(),
   }),
+  // No .min(1). Extraction that consumed turns and found nothing worth keeping still has
+  // something to record: how far it got. Refusing that checkpoint left the watermark
+  // where it was, so the same turns were extracted and billed again on every later run,
+  // and an oversized session never advanced past its first upload (MNE-100).
   items: z
     .array(
       z.object({
@@ -803,9 +807,18 @@ export const CheckpointWriteWireSchema = z.object({
         conflictsWith: uuid.nullable().optional(),
       }),
     )
-    .min(1)
     .max(MAX_CHECKPOINT_ITEMS),
-});
+})
+  // An empty checkpoint is only meaningful as a watermark. Without one it records
+  // nothing at all, so it stays an error rather than becoming a way to write blank rows.
+  .refine(
+    (write) => write.items.length > 0 || (write.checkpoint.sourceWatermark ?? '') !== '',
+    {
+      message:
+        'expected a checkpoint to carry at least one item, or a sourceWatermark when it carries none; received neither — send the items to record, or the watermark the extraction reached',
+      path: ['items'],
+    },
+  );
 
 export type CheckpointWriteWire = z.infer<typeof CheckpointWriteWireSchema>;
 

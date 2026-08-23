@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { redeemInvitation } from '../../../server/account.js';
-import { enterWorkspaceAction } from '../../workspace-actions.js';
 import {
   currentAccountDependencies,
   getCurrentAccount,
   verifiedEmailOf,
 } from '../../../server/current-account.js';
+import { seats } from '../../../server/membership-runtime.js';
+import { enterWorkspaceAction } from '../../workspace-actions.js';
 import styles from './join.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -39,6 +40,20 @@ export default async function JoinPage({ params }: JoinPageProps) {
         });
 
   if (joined !== null) {
+    // Recorded after the fact, from the scope the acceptance produced. The invitation id is
+    // not returned by `redeemInvitation`, so the record names the new member's membership
+    // rather than the row that granted it; carrying the id out of the store transaction is
+    // the durable fix and belongs with `PostgresAccountStore.redeemInvitation`.
+    await seats().recordMembershipAudit(
+      { workspaceId: joined.workspace.id, actorId: joined.actor.id },
+      {
+        action: 'membership.invitation_accepted',
+        targetKind: 'workspace_invitation',
+        targetId: null,
+        metadata: { role: joined.membership.role, teamId: joined.team.id },
+      },
+    );
+
     return (
       <main className={styles.page}>
         <header className={styles.pageHeader}>

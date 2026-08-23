@@ -1,14 +1,30 @@
 import 'server-only';
 
 import type { BillingStore } from './billing-store.js';
-import { billingStatusFor, stateAfterSubscription } from './seats.js';
+import { type BillingState, billingStatusFor, stateAfterSubscription } from './seats.js';
 import {
   BillingError,
   decodeSubscription,
+  planForPriceId,
+  STRIPE_PRICE_ID_PRO_VAR,
+  STRIPE_PRICE_ID_VAR,
   type StripeConfiguration,
+  type StripeSubscription,
   verifyWebhookSignature,
 } from './stripe.js';
 
+/**
+ * The events that move a workspace's billing state.
+ *
+ * Deliberately only the subscription lifecycle. `checkout.session.completed` adds nothing:
+ * a `mode=subscription` session produces `customer.subscription.created` carrying the same
+ * workspace metadata and the customer, so acting on both would apply the same state twice
+ * from two sources of truth. `invoice.payment_failed` and `invoice.paid` add nothing
+ * either: a failed payment moves the subscription to `past_due`, `unpaid` or `incomplete`
+ * and a recovered one moves it back to `active`, and each of those transitions arrives here
+ * as `customer.subscription.updated`. Entitlement is a function of subscription status
+ * (seats.ts), so subscription events are sufficient to drive it.
+ */
 export const HANDLED_EVENTS = [
   'customer.subscription.created',
   'customer.subscription.updated',
@@ -34,10 +50,53 @@ export interface HandleWebhookInput {
   readonly configuration: StripeConfiguration;
   readonly store: BillingStore;
   readonly now: Date;
+  /**
+   * Reads the subscription back from Stripe. Required, not optional: the event body is a
+   * snapshot from when the event fired, and applying it blind is what lets a late delivery
+   * overwrite newer state. Throwing here is the right outcome — the route answers non-2xx
+   * and Stripe redelivers, which is preferable to writing an entitlement we cannot confirm.
+   */
+  readonly readSubscription: (subscriptionId: string) => Promise<StripeSubscription>;
 }
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
+
+/**
+ * The billing state corrected for the price the subscription is actually on.
+ *
+ * What a workspace is entitled to follows from what it pays for, and `stateAfterSubscription`
+ * cannot see a price — it grants Team to anything with a live subscription. Correcting it
+ * here is what stops a $15 Pro subscription buying the $25 Team allowance, and what stops an
+ * unrecognised price buying anything at all.
+ *
+ * `next.plan === 'team'` is exactly the case where the subscription granted entitlement:
+ * `stateAfterSubscription` only reaches `team` for a live subscription on a non-enterprise
+ * workspace. Everywhere else — a cancellation dropping to solo, a sticky enterprise — the
+ * price is not consulted, so a price we do not recognise can never block a downgrade and
+ * leave a lapsed workspace entitled forever.
+ */
+const pricedState = (
+  configuration: StripeConfiguration,
+  next: BillingState,
+  live: StripeSubscription,
+): { readonly state: BillingState } | { readonly refusal: string } => {
+  if (next.plan !== 'team') {
+    return { state: next };
+  }
+
+  const granted = planForPriceId(configuration, live.priceId);
+  if (granted === null) {
+    return {
+      refusal:
+        `subscription ${live.id} is on price ${live.priceId ?? '(none on its first item)'}, which this deployment does not recognise, so no plan was granted. ` +
+        `${STRIPE_PRICE_ID_VAR} is the Team seat price and ${STRIPE_PRICE_ID_PRO_VAR} the Pro price; one of them must name this price, or the subscription must be moved onto a price that is configured. ` +
+        'Nothing is guessed here on purpose: defaulting to team would give away the seated allowance, and defaulting to solo would cut off someone who is paying.',
+    };
+  }
+
+  return { state: granted === 'team' ? next : { ...next, plan: granted } };
+};
 
 export const handleStripeWebhook = async (input: HandleWebhookInput): Promise<WebhookOutcome> => {
   verifyWebhookSignature({
@@ -103,7 +162,14 @@ export const handleStripeWebhook = async (input: HandleWebhookInput): Promise<We
     };
   }
 
-  const status = eventType === 'customer.subscription.deleted' ? 'canceled' : subscription.status;
+  // Everything from here reads the subscription as Stripe holds it now rather than as the
+  // event described it. Two deliveries of the same event therefore converge on one state
+  // instead of replaying an older one, and an event that arrives late applies current
+  // truth. The event body is still what names the workspace, because metadata is what it
+  // is for and re-reading cannot tell us who an unlabelled subscription belongs to.
+  const live = await input.readSubscription(subscription.id);
+
+  const status = eventType === 'customer.subscription.deleted' ? 'canceled' : live.status;
 
   // Stripe does not guarantee delivery order, so a delayed `.updated` carrying `active`
   // can arrive after the `.deleted` that cancelled the same subscription. Applying it
@@ -114,13 +180,13 @@ export const handleStripeWebhook = async (input: HandleWebhookInput): Promise<We
     current.billingStatus === 'canceled' &&
     status !== 'canceled' &&
     current.billingCustomerRef !== null &&
-    subscription.customerId === current.billingCustomerRef
+    live.customerId === current.billingCustomerRef
   ) {
     return {
       eventId,
       eventType,
       applied: false,
-      reason: `workspace ${workspaceId} is already canceled for customer ${current.billingCustomerRef}, and ${eventType} carrying "${subscription.status}" would revive it. Stripe does not guarantee delivery order, so a later-arriving earlier event is ignored rather than applied. Read the subscription from Stripe if the real state is in doubt.`,
+      reason: `workspace ${workspaceId} is already canceled for customer ${current.billingCustomerRef}, and ${eventType} carrying "${live.status}" would revive it. Stripe does not guarantee delivery order, so a later-arriving earlier event is ignored rather than applied. Read the subscription from Stripe if the real state is in doubt.`,
       workspaceId,
     };
   }
@@ -128,17 +194,23 @@ export const handleStripeWebhook = async (input: HandleWebhookInput): Promise<We
   const next = stateAfterSubscription({
     current,
     subscriptionStatus: status,
-    seats: subscription.quantity ?? current.seatsPurchased ?? 1,
-    customerRef: subscription.customerId ?? current.billingCustomerRef ?? '',
+    seats: live.quantity ?? current.seatsPurchased ?? 1,
+    customerRef: live.customerId ?? current.billingCustomerRef ?? '',
   });
 
-  await input.store.applyBillingState({ workspaceId, state: next });
+  const priced = pricedState(input.configuration, next, live);
+  if ('refusal' in priced) {
+    return { eventId, eventType, applied: false, reason: priced.refusal, workspaceId };
+  }
+
+  const state = priced.state;
+  await input.store.applyBillingState({ workspaceId, state });
 
   return {
     eventId,
     eventType,
     applied: true,
-    reason: `plan ${next.plan}, status ${billingStatusFor(status)}, seats ${next.seatsPurchased ?? 0}`,
+    reason: `plan ${state.plan}, status ${billingStatusFor(status)}, seats ${state.seatsPurchased ?? 0}`,
     workspaceId,
   };
 };

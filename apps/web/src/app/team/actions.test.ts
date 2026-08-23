@@ -11,9 +11,17 @@ const mocks = vi.hoisted(() => ({
   revalidatePath: vi.fn(),
   redirect: vi.fn(),
   deliverInvitationEmail: vi.fn(),
+  seatPosition: vi.fn(),
+  recordMembershipAudit: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
+vi.mock('../../server/membership-runtime.js', () => ({
+  seats: () => ({
+    seatPosition: mocks.seatPosition,
+    recordMembershipAudit: mocks.recordMembershipAudit,
+  }),
+}));
 vi.mock('../../server/current-account.js', () => ({
   getCurrentAccount: mocks.getCurrentAccount,
   accountStore: {
@@ -88,10 +96,21 @@ const form = (entries: Readonly<Record<string, string>>): FormData => {
 
 const destination = (): string => String(mocks.redirect.mock.calls.at(-1)?.[0]);
 
+/** A Team workspace with room to spare, unless a test says otherwise. */
+const SEATS_SPARE = {
+  plan: 'team',
+  billingStatus: 'active',
+  seatsPurchased: 10,
+  memberCount: 3,
+  pendingInvitations: 0,
+} as const;
+
 describe('inviteTeammateAction', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getCurrentAccount.mockResolvedValue(ACCOUNT);
+    mocks.seatPosition.mockResolvedValue(SEATS_SPARE);
+    mocks.recordMembershipAudit.mockResolvedValue(undefined);
     mocks.inviteToWorkspace.mockResolvedValue({
       id: INVITATION_ID,
       workspaceId: WORKSPACE_ID,
@@ -184,6 +203,76 @@ describe('inviteTeammateAction', () => {
     expect(destination()).toBe('/team?error=already_invited');
   });
 
+  it('refuses at invite time when the workspace has no spare seat, and creates nothing', async () => {
+    mocks.seatPosition.mockResolvedValue({
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 5,
+      memberCount: 5,
+      pendingInvitations: 0,
+    });
+
+    await inviteTeammateAction(form({ email: 'grace@example.com', role: 'member' }));
+
+    expect(mocks.inviteToWorkspace).not.toHaveBeenCalled();
+    expect(mocks.deliverInvitationEmail).not.toHaveBeenCalled();
+    expect(destination()).toBe('/team?error=seats_exceeded');
+  });
+
+  it('counts invitations already waiting against the seats, not just accepted members', async () => {
+    mocks.seatPosition.mockResolvedValue({
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 6,
+      memberCount: 5,
+      pendingInvitations: 1,
+    });
+
+    await inviteTeammateAction(form({ email: 'grace@example.com', role: 'member' }));
+
+    expect(mocks.inviteToWorkspace).not.toHaveBeenCalled();
+    expect(destination()).toBe('/team?error=seats_exceeded');
+  });
+
+  it('does not gate a plan that is not seat-priced', async () => {
+    mocks.seatPosition.mockResolvedValue({
+      plan: 'solo',
+      billingStatus: 'active',
+      seatsPurchased: null,
+      memberCount: 9,
+      pendingInvitations: 4,
+    });
+
+    await inviteTeammateAction(form({ email: 'grace@example.com', role: 'member' }));
+
+    expect(mocks.inviteToWorkspace).toHaveBeenCalled();
+    expect(destination()).toMatch(/^\/team\?notice=invited&token=/);
+  });
+
+  it('records the invitation in the audit log, scoped to the signed-in account', async () => {
+    await inviteTeammateAction(form({ email: 'grace@example.com', role: 'member' }));
+
+    expect(mocks.recordMembershipAudit).toHaveBeenCalledWith(
+      { workspaceId: WORKSPACE_ID, actorId: ACTOR_ID },
+      expect.objectContaining({
+        action: 'membership.invitation_created',
+        targetKind: 'workspace_invitation',
+        targetId: INVITATION_ID,
+      }),
+    );
+  });
+
+  it('never puts the join token or the invited address in the audit metadata', async () => {
+    await inviteTeammateAction(form({ email: 'grace@example.com', role: 'member' }));
+
+    const recorded = JSON.stringify(mocks.recordMembershipAudit.mock.calls[0]?.[1]);
+    const token = String(destination()).split('token=')[1];
+
+    expect(recorded).not.toContain('grace@example.com');
+    expect(token).toBeDefined();
+    expect(recorded).not.toContain(decodeURIComponent(String(token)));
+  });
+
   it('rethrows anything it does not recognise', async () => {
     const failure = new Error('database is on fire');
     mocks.inviteToWorkspace.mockRejectedValue(failure);
@@ -200,6 +289,31 @@ describe('revokeInvitationAction', () => {
     vi.clearAllMocks();
     mocks.getCurrentAccount.mockResolvedValue(ACCOUNT);
     mocks.revokeInvitation.mockResolvedValue(undefined);
+    mocks.recordMembershipAudit.mockResolvedValue(undefined);
+  });
+
+  it('records the revocation, so a released seat has a trail', async () => {
+    await revokeInvitationAction(form({ invitationId: INVITATION_ID }));
+
+    expect(mocks.recordMembershipAudit).toHaveBeenCalledWith(
+      { workspaceId: WORKSPACE_ID, actorId: ACTOR_ID },
+      expect.objectContaining({
+        action: 'membership.invitation_revoked',
+        targetId: INVITATION_ID,
+      }),
+    );
+  });
+
+  it('refuses a member trying to revoke, before it reaches the store', async () => {
+    mocks.getCurrentAccount.mockResolvedValue({
+      ...ACCOUNT,
+      membership: { ...ACCOUNT.membership, role: 'member' },
+    });
+
+    await revokeInvitationAction(form({ invitationId: INVITATION_ID }));
+
+    expect(mocks.revokeInvitation).not.toHaveBeenCalled();
+    expect(destination()).toBe('/team?error=not_permitted');
   });
 
   it('revokes inside the signed-in workspace only', async () => {

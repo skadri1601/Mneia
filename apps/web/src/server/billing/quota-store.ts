@@ -19,6 +19,12 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3
  *
  * The usage row is absent until the period's first checkpoint, hence the COALESCE: a
  * workspace that has not checkpointed this month has used nothing, not null.
+ *
+ * `$2` is compared as a plain date and not re-truncated in SQL. `monthPeriod` has already
+ * computed the UTC month start; running `date_trunc('month', $2::timestamptz)` over it
+ * again re-interprets that instant in the *session's* TimeZone, so on a connection that is
+ * not UTC the first hours of a month resolve to the previous month's row and the workspace
+ * is metered against a period it is not in.
  */
 const QUOTA_SQL = `SELECT w.plan,
           w.billing_status,
@@ -36,7 +42,7 @@ const QUOTA_SQL = `SELECT w.plan,
      FROM workspace AS w
      LEFT JOIN workspace_usage_period AS p
             ON p.workspace_id = w.id
-           AND p.period_start = date_trunc('month', $2::timestamptz)::date
+           AND p.period_start = $2::date
     WHERE w.id = $1`;
 
 export interface QuotaStore {
@@ -122,7 +128,8 @@ export class PostgresQuotaStore implements QuotaStore {
     return this.withWorkspace(workspaceId, async (session) => {
       const { rows } = await session.execute<SqlRow>(QUOTA_SQL, [
         workspaceId,
-        period.start.toISOString(),
+        // The calendar date alone, so Postgres parses it as a date with no zone to apply.
+        period.start.toISOString().slice(0, 10),
       ]);
       const row = rows[0];
       if (row === undefined) {

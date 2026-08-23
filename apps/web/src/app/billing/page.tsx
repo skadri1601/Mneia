@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { WorkspaceSwitcher } from '../../components/WorkspaceSwitcher.js';
 import { canOpenPortal, canStartCheckout } from '../../server/billing/checkout.js';
-import { billingStore } from '../../server/billing/runtime.js';
+import { effectiveAllowances } from '../../server/billing/quota.js';
+import { billingStore, quotaStore } from '../../server/billing/runtime.js';
 import { getCurrentAccount } from '../../server/current-account.js';
 import { checkoutAction, portalAction } from './actions.js';
 import styles from './Billing.module.css';
@@ -18,15 +19,42 @@ const first = (value: string | readonly string[] | undefined): string | undefine
 
 const title = (value: string): string => value.slice(0, 1).toUpperCase() + value.slice(1);
 
+const count = (value: number): string => value.toLocaleString('en-US');
+
+/**
+ * One dial, as `used of allowance`.
+ *
+ * A null allowance is unmetered, and saying so is not the same as saying zero — a plan
+ * with no ceiling must not render as one that has been exhausted.
+ */
+const meter = (used: number, allowance: number | null): string =>
+  allowance === null ? `${count(used)} used — unmetered` : `${count(used)} of ${count(allowance)}`;
+
+/** The reset instant, as a date a person reads rather than the ISO string the API returns. */
+const resetDate = (at: Date): string =>
+  at.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  });
+
+const dollars = (micros: number): string => `$${(micros / 1_000_000).toFixed(2)}`;
+
 export default async function BillingPage({ searchParams }: BillingPageProps) {
   const account = await getCurrentAccount();
-  const [snapshot, query] = await Promise.all([
+  // Read together: both are one indexed query against workspace under the same scope, and
+  // this page is not on the rehydrate path, so there is no §12.1 budget to protect here.
+  const [snapshot, quota, query] = await Promise.all([
     billingStore().snapshot(account.workspace.id),
+    quotaStore().quotaFor(account.workspace.id, new Date()),
     searchParams,
   ]);
-  if (snapshot === null) {
+  if (snapshot === null || quota === null) {
     throw new Error('expected the authenticated workspace to have a billing snapshot; found none');
   }
+
+  const allowances = effectiveAllowances(quota);
 
   const billingAccount = {
     workspaceId: account.workspace.id,
@@ -73,9 +101,53 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
           </div>
           <div>
             <dt>Seats</dt>
-            <dd>{snapshot.seatsPurchased ?? snapshot.memberCount}</dd>
+            {/*
+              Purchased seats, not the member count standing in for them. Showing members
+              under a "Seats" label told an unsubscribed workspace it had seats it had
+              never bought, and on Team it is the purchased count the quota pools against.
+            */}
+            <dd>
+              {snapshot.seatsPurchased === null
+                ? 'None purchased'
+                : `${count(snapshot.memberCount)} of ${count(snapshot.seatsPurchased)} purchased`}
+            </dd>
           </div>
         </dl>
+      </section>
+
+      <section className={styles.card} aria-labelledby="billing-usage">
+        <h2 id="billing-usage">This period</h2>
+        <dl className={styles.facts}>
+          <div>
+            <dt>Extractions</dt>
+            <dd>{meter(quota.extractionsUsed, allowances.extractions)}</dd>
+          </div>
+          <div>
+            <dt>Turns</dt>
+            <dd>{meter(quota.turnsUsed, allowances.turns)}</dd>
+          </div>
+          <div>
+            <dt>Embedding tokens</dt>
+            <dd>{meter(quota.embeddingTokensUsed, allowances.embeddingTokens)}</dd>
+          </div>
+          <div>
+            <dt>Prepaid balance</dt>
+            <dd>{dollars(quota.walletBalanceMicros)}</dd>
+          </div>
+          <div>
+            <dt>Resets</dt>
+            <dd>{resetDate(quota.period.end)}</dd>
+          </div>
+        </dl>
+        {/*
+          Said out loud rather than left for a customer to infer from a dial that never
+          moves: nothing in the product writes embedding_tokens_used, and nothing credits
+          wallet_balance_micros, so both read zero for every workspace today.
+        */}
+        <p>
+          Embedding usage is not yet recorded, so that dial reads zero. Prepaid balance can
+          currently only be credited by us — there is no self-serve top-up.
+        </p>
       </section>
 
       {account.membership.role !== 'lead' ? (

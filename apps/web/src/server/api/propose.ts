@@ -21,7 +21,7 @@ import {
   resolveProject,
   turnsSince,
 } from '@mneia/core';
-import { costMicrosFor, estimateCostMicros } from '../billing/pricing.js';
+import { estimateCostMicros } from '../billing/pricing.js';
 import { ExtractionRunError } from '../extraction/select.js';
 import { ApiRequestError } from './handlers.js';
 
@@ -52,6 +52,17 @@ export interface ExtractionAttemptRecord {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly durationMs: number;
+  /**
+   * Which processing tier the provider actually served this attempt on.
+   *
+   * Optional because the runner does not report it yet: `ExtractionAttempt` in
+   * extraction/select.ts carries no tier, and the flex-to-standard retry happens inside
+   * the provider where select.ts cannot see it. Until it does, this is stamped from the
+   * configured tier below. Declared optional rather than required so select.ts can start
+   * reporting the tier that really served — including that internal retry — and have it
+   * win here with no further change.
+   */
+  readonly serviceTier?: 'auto' | 'flex' | undefined;
 }
 
 export type QuotaVerdict =
@@ -88,17 +99,51 @@ export interface ProposeDependencies {
   }) => Promise<string | null>;
   readonly recordUsage: (input: {
     projectId: string;
+    /**
+     * Every attempt, committed or not. This is our own cost accounting, and a provider
+     * call we paid for and could not use is still a cost we need to see.
+     */
     attempts: readonly ExtractionAttemptRecord[];
+    /**
+     * How many of `attempts`, counting from the front, belong to chunks that were
+     * committed. Only these reach the customer's wallet.
+     *
+     * A chunked extraction that dies on chunk 3 has really produced chunks 1 and 2, and
+     * the watermark stops there — so the customer is charged for two chunks and we absorb
+     * the third. `attempts` is append-only in chunk order, which is what makes a prefix
+     * count sufficient to express that.
+     */
+    chargeableAttempts: number;
     /** Turns actually consumed, which is what the turn dial meters. */
     turns: number;
-    /** Real cost of the attempts above, priced from their reported token counts. */
-    costMicros: number;
-    /** Non-zero when this checkpoint ran on wallet balance rather than allowance. */
-    walletDebitMicros: number;
+    /**
+     * What the pre-flight quota check authorized against prepaid balance, or 0 when this
+     * checkpoint ran on allowance and no debit is owed.
+     *
+     * ## Authorization is not the charge
+     *
+     * This is the *estimate* — `estimateCostMicros` prices the prompt against
+     * ASSUMED_OUTPUT_TOKENS, which pricing.ts sets deliberately high so a request is never
+     * admitted that the balance cannot cover. Settling that figure would over-charge every
+     * checkpoint whose completion came in under the assumption, which is nearly all of
+     * them. So it travels as a ceiling only: the store prices the attempts that actually
+     * ran and debits the smaller of the two. Under-charging is a margin miss; over-charging
+     * is a refund and a support thread, so the reconciliation only ever moves downwards.
+     *
+     * One field rather than a flag plus an amount, so "funded by the wallet" and "nothing
+     * was authorized" cannot disagree.
+     */
+    walletAuthorizationMicros: number;
   }) => Promise<void>;
   readonly servableContextTokens: number;
   /** Which model the estimate should be priced against, before any fallback happens. */
   readonly primaryModel: string;
+  /**
+   * The tier the runner is configured to request, used to price any attempt that does not
+   * report its own. Standard bills at twice flex, so guessing it would put a 2x error
+   * straight into both the ledger and the customer's debit.
+   */
+  readonly serviceTier: 'auto' | 'flex';
 }
 
 const decodeTurns = (wire: CheckpointProposeWire): readonly TrajectoryTurn[] =>
@@ -215,6 +260,9 @@ export const handleProposeCheckpoint = async (
   const candidates: ExtractionCandidate[] = [];
   const attempts: ExtractionAttemptRecord[] = [];
   const sent = reduced.trajectory.turns;
+  // Moves to attempts.length only when a chunk has been parsed and committed, so it marks
+  // the boundary between work the customer received and work we absorbed.
+  let chargeableAttempts = 0;
   let completedThrough = -1;
   let model = '';
   let incompleteReason: string | null = null;
@@ -262,6 +310,7 @@ export const handleProposeCheckpoint = async (
 
     candidates.push(...output.candidates);
     completedThrough = chunk.completedThrough;
+    chargeableAttempts = attempts.length;
   }
 
   // Only when something actually ran. An empty attempt list means no provider call was
@@ -270,19 +319,15 @@ export const handleProposeCheckpoint = async (
   if (attempts.length > 0) {
     await deps.recordUsage({
       projectId: project.id,
-      attempts,
+      // Stamped with the configured tier where the attempt did not report one, so the
+      // store never has to fall back to a rate and guess which one.
+      attempts: attempts.map((attempt) => ({
+        ...attempt,
+        serviceTier: attempt.serviceTier ?? deps.serviceTier,
+      })),
+      chargeableAttempts,
       turns: completedThrough + 1,
-      costMicros: attempts.reduce(
-        (total, attempt) =>
-          total +
-          costMicrosFor({
-            model: attempt.model,
-            inputTokens: attempt.inputTokens,
-            outputTokens: attempt.outputTokens,
-          }),
-        0,
-      ),
-      walletDebitMicros: verdict.allowed && verdict.source === 'wallet' ? verdict.debitMicros : 0,
+      walletAuthorizationMicros: verdict.source === 'wallet' ? verdict.debitMicros : 0,
     });
   }
 

@@ -257,6 +257,15 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
           sessionId: write.checkpoint.sessionId ?? null,
           trigger: write.checkpoint.trigger,
           summary: write.checkpoint.summary ?? null,
+          // Provenance, and the reason it must be sent: source_watermark is how the server
+          // answers "how far into this session have we already extracted?". Omitting these
+          // three left it NULL on every hosted checkpoint, so watermarkFor always returned
+          // null and every run re-extracted the session from turn 0 and billed for it
+          // (MNE-100). actorId, assertedBy and humanConfirmed are still deliberately not
+          // sent — the server resolves those from the token, and must keep doing so.
+          source: write.checkpoint.source ?? null,
+          sourceSessionRef: write.checkpoint.sourceSessionRef ?? null,
+          sourceWatermark: write.checkpoint.sourceWatermark ?? null,
         },
         items: write.items.map((entry) => ({
           action: entry.action,

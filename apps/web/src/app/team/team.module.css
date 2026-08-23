@@ -40,6 +40,35 @@
   line-height: var(--leading-tagline);
 }
 
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-md);
+}
+
+.facts div {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.facts dt {
+  color: var(--tile-muted);
+  font-size: var(--size-fine-print);
+}
+
+.facts dd {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.card p.seatWarning {
+  color: var(--ink);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-sm);
+  background: var(--surface-pearl);
+  padding: var(--space-md);
+}
+
 .token {
   border: 1px solid var(--tile-hairline);
   border-radius: var(--rounded-sm);

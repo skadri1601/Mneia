@@ -1,6 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import type { BillingSnapshot, BillingStore } from './billing-store.js';
+import type { StripeConfiguration, StripeSubscription } from './stripe.js';
 
 vi.mock('server-only', () => ({}));
 
@@ -15,6 +16,7 @@ const {
   BillingError,
   decodeSubscription,
   parseSignatureHeader,
+  planForPriceId,
   readStripeConfiguration,
   requireStripeConfiguration,
   SEAT_PRICE_USD_CENTS,
@@ -23,7 +25,12 @@ const {
 } = await import('./stripe.js');
 const { handleStripeWebhook } = await import('./webhook.js');
 
-const CONFIG = { secretKey: 'sk_test', priceId: 'price_1', webhookSecret: 'whsec_test' };
+const CONFIG: StripeConfiguration = {
+  secretKey: 'sk_test',
+  priceId: 'price_1',
+  proPriceId: 'price_pro',
+  webhookSecret: 'whsec_test',
+};
 const NOW = new Date('2026-08-08T12:00:00.000Z');
 const WORKSPACE = '11111111-1111-4111-8111-111111111111';
 
@@ -48,10 +55,42 @@ const subscriptionEvent = (
         status: 'active',
         customer: 'cus_1',
         metadata: { workspace_id: WORKSPACE },
-        items: { data: [{ id: 'si_1', quantity: 4 }] },
+        items: { data: [{ id: 'si_1', quantity: 4, price: { id: 'price_1' } }] },
         ...overrides,
       },
     },
+  });
+
+/**
+ * The default read-back: Stripe agrees with the event body.
+ *
+ * Every delivery now reads the subscription back before acting on it, so a test that only
+ * cares about the event says so by echoing it. A test about ordering passes its own reader
+ * returning something the event does not say, which is exactly the case that used to be
+ * applied blind.
+ */
+const echoSubscription = (payload: string) => async (): Promise<StripeSubscription> => {
+  const event = JSON.parse(payload) as { data?: { object?: unknown } };
+  return decodeSubscription(event.data?.object);
+};
+
+interface Delivery {
+  readonly payload: string;
+  readonly signatureHeader: string;
+  readonly store: BillingStore;
+  readonly configuration?: StripeConfiguration;
+  readonly now?: Date;
+  readonly readSubscription?: (subscriptionId: string) => Promise<StripeSubscription>;
+}
+
+const deliver = async (input: Delivery) =>
+  handleStripeWebhook({
+    payload: input.payload,
+    signatureHeader: input.signatureHeader,
+    store: input.store,
+    configuration: input.configuration ?? CONFIG,
+    now: input.now ?? NOW,
+    readSubscription: input.readSubscription ?? echoSubscription(input.payload),
   });
 
 const storeStub = (overrides: Partial<BillingStore> = {}): BillingStore => {
@@ -326,7 +365,27 @@ describe('readStripeConfiguration', () => {
         STRIPE_PRICE_ID: 'price_1',
         STRIPE_WEBHOOK_SECRET: 'whsec',
       }),
-    ).toEqual({ secretKey: 'sk', priceId: 'price_1', webhookSecret: 'whsec' });
+    ).toEqual({ secretKey: 'sk', priceId: 'price_1', proPriceId: null, webhookSecret: 'whsec' });
+  });
+
+  it('reads the optional Pro price when it is set, and leaves it null when it is not', () => {
+    expect(
+      readStripeConfiguration({
+        STRIPE_SECRET_KEY: 'sk',
+        STRIPE_PRICE_ID: 'price_team',
+        STRIPE_PRICE_ID_PRO: ' price_pro ',
+        STRIPE_WEBHOOK_SECRET: 'whsec',
+      })?.proPriceId,
+    ).toBe('price_pro');
+
+    expect(
+      readStripeConfiguration({
+        STRIPE_SECRET_KEY: 'sk',
+        STRIPE_PRICE_ID: 'price_team',
+        STRIPE_PRICE_ID_PRO: '   ',
+        STRIPE_WEBHOOK_SECRET: 'whsec',
+      })?.proPriceId,
+    ).toBeNull();
   });
 
   it('names every missing variable when something demands configuration', () => {
@@ -401,9 +460,22 @@ describe('decodeSubscription', () => {
         id: 'sub_1',
         status: 'active',
         customer: 'cus_1',
-        items: { data: [{ quantity: 6 }] },
+        items: { data: [{ quantity: 6, price: { id: 'price_1' } }] },
       }),
-    ).toEqual({ id: 'sub_1', status: 'active', quantity: 6, customerId: 'cus_1' });
+    ).toEqual({
+      id: 'sub_1',
+      status: 'active',
+      quantity: 6,
+      customerId: 'cus_1',
+      priceId: 'price_1',
+    });
+  });
+
+  it('reports no price rather than inventing one when the item carries none', () => {
+    expect(
+      decodeSubscription({ id: 'sub_1', status: 'active', items: { data: [{ quantity: 1 }] } })
+        .priceId,
+    ).toBeNull();
   });
 
   it('accepts an expanded customer object as well as a bare id', () => {
@@ -417,7 +489,53 @@ describe('decodeSubscription', () => {
   });
 });
 
+describe('planForPriceId', () => {
+  it('maps the configured Team and Pro prices, and refuses everything else', () => {
+    expect(planForPriceId(CONFIG, 'price_1')).toBe('team');
+    expect(planForPriceId(CONFIG, 'price_pro')).toBe('pro');
+    expect(planForPriceId(CONFIG, 'price_someone_made_in_the_dashboard')).toBeNull();
+    expect(planForPriceId(CONFIG, null)).toBeNull();
+    expect(planForPriceId(CONFIG, '')).toBeNull();
+  });
+
+  it('recognises no Pro price at all when one is not configured', () => {
+    expect(planForPriceId({ ...CONFIG, proPriceId: null }, 'price_pro')).toBeNull();
+  });
+});
+
 describe('StripeClient', () => {
+  it('reads a subscription back with a GET, so a late event applies current state', async () => {
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            id: 'sub_1',
+            status: 'past_due',
+            customer: 'cus_1',
+            items: { data: [{ quantity: 2, price: { id: 'price_1' } }] },
+          }),
+          { status: 200 },
+        ),
+    ) as unknown as typeof fetch;
+
+    const client = new StripeClient({ configuration: CONFIG, fetchImpl });
+
+    await expect(client.retrieveSubscription('sub_1')).resolves.toEqual({
+      id: 'sub_1',
+      status: 'past_due',
+      quantity: 2,
+      customerId: 'cus_1',
+      priceId: 'price_1',
+    });
+
+    const [url, init] = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
+      .calls[0] as [string, RequestInit];
+    expect(url).toBe('https://api.stripe.com/v1/subscriptions/sub_1');
+    expect(init.method).toBe('GET');
+    expect(init.body).toBeUndefined();
+    expect(init.headers).toMatchObject({ authorization: 'Bearer sk_test' });
+  });
+
   it('creates a subscription Checkout Session bound to the workspace', async () => {
     const fetchImpl = vi.fn(
       async () =>
@@ -444,6 +562,7 @@ describe('StripeClient', () => {
       mode: 'subscription',
       'line_items[0][price]': CONFIG.priceId,
       'line_items[0][quantity]': '3',
+      client_reference_id: WORKSPACE,
       'metadata[workspace_id]': WORKSPACE,
       'subscription_data[metadata][workspace_id]': WORKSPACE,
       customer: 'cus_1',
@@ -572,7 +691,7 @@ describe('handleStripeWebhook', () => {
     const store = storeStub();
     const payload = subscriptionEvent();
 
-    const outcome = await handleStripeWebhook({
+    const outcome = await deliver({
       payload,
       signatureHeader: signed(payload),
       configuration: CONFIG,
@@ -592,7 +711,7 @@ describe('handleStripeWebhook', () => {
     const payload = subscriptionEvent();
 
     await expect(
-      handleStripeWebhook({
+      deliver({
         payload,
         signatureHeader: signed(payload, 'whsec_wrong'),
         configuration: CONFIG,
@@ -607,7 +726,7 @@ describe('handleStripeWebhook', () => {
   it('ignores an event type it does not act on, without failing the delivery', async () => {
     const payload = JSON.stringify({ id: 'evt_2', type: 'invoice.paid', data: { object: {} } });
 
-    const outcome = await handleStripeWebhook({
+    const outcome = await deliver({
       payload,
       signatureHeader: signed(payload),
       configuration: CONFIG,
@@ -622,7 +741,7 @@ describe('handleStripeWebhook', () => {
   it('declines an event with no workspace_id in metadata, and says why there is no fallback', async () => {
     const payload = subscriptionEvent({ metadata: {} });
 
-    const outcome = await handleStripeWebhook({
+    const outcome = await deliver({
       payload,
       signatureHeader: signed(payload),
       configuration: CONFIG,
@@ -638,7 +757,7 @@ describe('handleStripeWebhook', () => {
     const store = storeStub();
     const payload = subscriptionEvent({ status: 'active' }, 'customer.subscription.deleted');
 
-    const outcome = await handleStripeWebhook({
+    const outcome = await deliver({
       payload,
       signatureHeader: signed(payload),
       configuration: CONFIG,
@@ -663,7 +782,7 @@ describe('handleStripeWebhook', () => {
     const incomplete = subscriptionEvent({ status: 'incomplete' });
 
     await expect(
-      handleStripeWebhook({
+      deliver({
         payload: incomplete,
         signatureHeader: signed(incomplete),
         configuration: CONFIG,
@@ -679,7 +798,7 @@ describe('handleStripeWebhook', () => {
 
     const recovery = subscriptionEvent({ status: 'active' });
     await expect(
-      handleStripeWebhook({
+      deliver({
         payload: recovery,
         signatureHeader: signed(recovery),
         configuration: CONFIG,
@@ -706,7 +825,7 @@ describe('handleStripeWebhook', () => {
     const deletion = subscriptionEvent({}, 'customer.subscription.deleted');
 
     await expect(
-      handleStripeWebhook({
+      deliver({
         payload: deletion,
         signatureHeader: signed(deletion),
         configuration: CONFIG,
@@ -717,7 +836,7 @@ describe('handleStripeWebhook', () => {
 
     const lateUpdate = subscriptionEvent({ status: 'active' });
     await expect(
-      handleStripeWebhook({
+      deliver({
         payload: lateUpdate,
         signatureHeader: signed(lateUpdate),
         configuration: CONFIG,
@@ -743,7 +862,7 @@ describe('handleStripeWebhook', () => {
     const store = cancelled('cus_1');
     const payload = subscriptionEvent({ status: 'active' });
 
-    const outcome = await handleStripeWebhook({
+    const outcome = await deliver({
       payload,
       signatureHeader: signed(payload),
       configuration: CONFIG,
@@ -759,7 +878,7 @@ describe('handleStripeWebhook', () => {
   it('still applies a cancellation to an already cancelled workspace, which is idempotent', async () => {
     const payload = subscriptionEvent({}, 'customer.subscription.deleted');
 
-    const outcome = await handleStripeWebhook({
+    const outcome = await deliver({
       payload,
       signatureHeader: signed(payload),
       configuration: CONFIG,
@@ -773,7 +892,7 @@ describe('handleStripeWebhook', () => {
   it('lets a different customer move a cancelled workspace back onto a plan', async () => {
     const payload = subscriptionEvent({ status: 'active', customer: 'cus_new' });
 
-    const outcome = await handleStripeWebhook({
+    const outcome = await deliver({
       payload,
       signatureHeader: signed(payload),
       configuration: CONFIG,
@@ -785,7 +904,7 @@ describe('handleStripeWebhook', () => {
   });
 
   it('declines when the workspace named does not exist here', async () => {
-    const outcome = await handleStripeWebhook({
+    const outcome = await deliver({
       payload: subscriptionEvent(),
       signatureHeader: signed(subscriptionEvent()),
       configuration: CONFIG,
@@ -795,5 +914,124 @@ describe('handleStripeWebhook', () => {
 
     expect(outcome.applied).toBe(false);
     expect(outcome.reason).toContain('does not exist');
+  });
+
+  it('applies what Stripe holds now, not what a stale event body says', async () => {
+    const store = storeStub();
+    // The event was signed while the subscription was live. By the time it is delivered
+    // Stripe has cancelled it. Before the read-back this wrote plan team, seats 4.
+    const payload = subscriptionEvent({ status: 'active' });
+
+    const outcome = await deliver({
+      payload,
+      signatureHeader: signed(payload),
+      store,
+      readSubscription: async () => ({
+        id: 'sub_1',
+        status: 'canceled',
+        quantity: 4,
+        customerId: 'cus_1',
+        priceId: 'price_1',
+      }),
+    });
+
+    expect(outcome.applied).toBe(true);
+    const applied = (store as unknown as { applied: BillingSnapshot[] }).applied;
+    expect(applied[0]).toMatchObject({
+      plan: 'solo',
+      billingStatus: 'canceled',
+      seatsPurchased: null,
+    });
+  });
+
+  it('writes nothing when the subscription cannot be read back, so Stripe redelivers', async () => {
+    const store = storeStub();
+    const payload = subscriptionEvent();
+
+    await expect(
+      deliver({
+        payload,
+        signatureHeader: signed(payload),
+        store,
+        readSubscription: async () => {
+          throw new BillingError('stripe_unreachable', 'connection reset');
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'stripe_unreachable' });
+
+    expect((store as unknown as { applied: unknown[] }).applied).toHaveLength(0);
+  });
+
+  it('converges rather than doubling when the same event is delivered twice', async () => {
+    const store = statefulStoreStub({
+      workspaceId: WORKSPACE,
+      plan: 'solo',
+      billingStatus: 'active',
+      seatsPurchased: null,
+      billingCustomerRef: null,
+      memberCount: 3,
+    });
+    const payload = subscriptionEvent();
+
+    await deliver({ payload, signatureHeader: signed(payload), store });
+    const first = await store.snapshot(WORKSPACE);
+    await deliver({ payload, signatureHeader: signed(payload), store });
+
+    expect(await store.snapshot(WORKSPACE)).toEqual(first);
+    expect(first).toMatchObject({ plan: 'team', seatsPurchased: 4 });
+  });
+
+  it('grants Pro, not Team, for a subscription on the Pro price', async () => {
+    const store = storeStub();
+    const payload = subscriptionEvent({
+      items: { data: [{ id: 'si_1', quantity: 1, price: { id: 'price_pro' } }] },
+    });
+
+    const outcome = await deliver({ payload, signatureHeader: signed(payload), store });
+
+    expect(outcome.applied).toBe(true);
+    const applied = (store as unknown as { applied: BillingSnapshot[] }).applied;
+    expect(applied[0]).toMatchObject({ plan: 'pro', billingStatus: 'active' });
+  });
+
+  it('grants nothing for a price it does not recognise, rather than defaulting to Team', async () => {
+    const store = storeStub();
+    const payload = subscriptionEvent({
+      items: { data: [{ id: 'si_1', quantity: 9, price: { id: 'price_mystery' } }] },
+    });
+
+    const outcome = await deliver({ payload, signatureHeader: signed(payload), store });
+
+    expect(outcome.applied).toBe(false);
+    expect(outcome.reason).toContain('price_mystery');
+    expect(outcome.reason).toContain('STRIPE_PRICE_ID');
+    expect((store as unknown as { applied: unknown[] }).applied).toHaveLength(0);
+  });
+
+  it('still cancels a subscription on an unrecognised price, so nothing stays entitled', async () => {
+    const store = storeStub({
+      snapshot: async () => ({
+        workspaceId: WORKSPACE,
+        plan: 'team',
+        billingStatus: 'active',
+        seatsPurchased: 4,
+        billingCustomerRef: 'cus_1',
+        memberCount: 3,
+      }),
+    });
+    const payload = subscriptionEvent(
+      { items: { data: [{ id: 'si_1', quantity: 4, price: { id: 'price_mystery' } }] } },
+      'customer.subscription.deleted',
+    );
+
+    const outcome = await deliver({ payload, signatureHeader: signed(payload), store });
+
+    expect(outcome.applied).toBe(true);
+    const applied = (store as unknown as { applied: BillingSnapshot[] }).applied;
+    expect(applied[0]).toMatchObject({
+      plan: 'solo',
+      billingStatus: 'canceled',
+      seatsPurchased: null,
+    });
   });
 });
