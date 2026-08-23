@@ -224,6 +224,10 @@ type Surface = ItemRenderingSurface | NonRenderingSurface;
 const ATTRIBUTION_SURFACES: Readonly<Record<ShippedCommandName, Surface>> = {
   init: { rendersContextItems: false, why: 'writes the project binding and renders no items' },
   login: { rendersContextItems: false, why: 'runs a device flow and renders no items' },
+  mcp: {
+    rendersContextItems: false,
+    why: 'configures local MCP client registrations and renders no project context items',
+  },
   whoami: {
     rendersContextItems: false,
     why: 'renders the signed-in actor, not context items',
