@@ -111,30 +111,19 @@ export const QUICKSTART: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'The MCP server speaks stdio, so any MCP client can start it. Register it once per client. Claude Code, Cursor, and Codex all take the same shape:',
+            'Let the Mneia CLI detect the MCP clients on this machine and register the server in each client’s native format:',
           ],
         },
         {
           kind: 'code',
-          label: 'json',
-          lines: [
-            '{',
-            '  "mcpServers": {',
-            '    "mneia": {',
-            '      "command": "mneia-mcp",',
-            '      "env": {',
-            '        "MNEIA_TOKEN": "<token>"',
-            '      }',
-            '    }',
-            '  }',
-            '}',
-          ],
+          label: 'shell',
+          lines: ['mneia mcp install', 'mneia mcp list'],
         },
         {
           kind: 'text',
           paragraphs: [
-            'The server resolves its configuration before it accepts a connection, so a missing token or a malformed endpoint stops it at startup rather than on the first tool call. MCP clients tend to bury server stderr — if the tools do not appear, read the client’s log pane before assuming the server is broken.',
-            'Drop the `env` block if you ran **mneia login**; the server reads the same credentials file the CLI wrote. The project binding comes from `.mneia/config.json` in the working directory, so the agent inherits it without being told.',
+            'To target one client, run **mneia mcp install --client codex --yes** and replace `codex` with the client you selected. The complete client tabs, copyable agent prompts, native fallbacks, and verification steps are at **/docs/integrations#mcp-clients**.',
+            'The server reads the same credentials file written by **mneia login**. The project binding comes from `.mneia/config.json` in the working directory, so the agent inherits it without being told. Restart a client that was already open, then verify setup by asking it to call `mneia_rehydrate`.',
           ],
         },
       ],

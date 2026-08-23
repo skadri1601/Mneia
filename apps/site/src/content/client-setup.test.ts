@@ -1,6 +1,10 @@
+import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { CLIENT_SETUPS, setupPrompt } from './client-setup.js';
 import { INTEGRATIONS } from './docs/integrations.js';
+import { MCP } from './docs/mcp.js';
+import { QUICKSTART } from './docs/quickstart.js';
+import { FAQ_GETTING_STARTED } from './faq.js';
 
 const FIRST_CLASS_CLIENTS = [
   'codex',
@@ -58,5 +62,26 @@ describe('client setup content', () => {
   it('embeds the selector in the published MCP clients section', () => {
     const section = INTEGRATIONS.sections.find((entry) => entry.id === 'mcp-clients');
     expect(section?.blocks).toContainEqual({ kind: 'client-setup' });
+  });
+
+  it('makes the installer the primary journey across public setup copy', async () => {
+    const quickstart = JSON.stringify(QUICKSTART);
+    const mcp = JSON.stringify(MCP);
+    const faq = JSON.stringify(FAQ_GETTING_STARTED);
+    const cliReadme = await readFile(
+      new URL('../../../../packages/cli/README.md', import.meta.url),
+      'utf8',
+    );
+    const serverReadme = await readFile(
+      new URL('../../../../packages/mcp-server/README.md', import.meta.url),
+      'utf8',
+    );
+
+    expect(quickstart).toContain('mneia mcp install');
+    expect(quickstart).toContain('/docs/integrations#mcp-clients');
+    expect(mcp).toContain('/docs/integrations#mcp-clients');
+    expect(faq).toContain('mneia mcp install');
+    expect(cliReadme).toContain('mneia mcp install --client');
+    expect(serverReadme).toContain('mneia mcp install --client');
   });
 });

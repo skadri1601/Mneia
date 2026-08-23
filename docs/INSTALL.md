@@ -48,28 +48,24 @@ reasons.
 
 ## 3. Add the MCP server to your agent — about two minutes
 
-**Claude Code**, `.mcp.json` in the repository or `~/.claude.json` for every repository:
-
-```json
-{
-  "mcpServers": {
-    "mneia": {
-      "command": "npx",
-      "args": ["-y", "@mneia/mcp-server"],
-      "env": { "MNEIA_TOKEN": "<token>" }
-    }
-  }
-}
-```
-
-**Codex CLI** — TOML, not JSON. Let the CLI write it:
+Install the two npm clients globally if step 1 used `npx`, then let Mneia detect and configure the
+installed MCP clients:
 
 ```bash
-codex mcp add mneia --env MNEIA_TOKEN=<token> -- npx -y @mneia/mcp-server
+npm install -g @mneia/cli @mneia/mcp-server
+mneia mcp install
+mneia mcp list
 ```
 
-**Cursor** — same JSON shape as Claude Code, in Cursor's MCP settings. Note `CLIENTS.md` records this
-as documented-but-not-run.
+To configure only the client the user selected, pass its id:
+
+```bash
+mneia mcp install --client codex --yes
+```
+
+The public [client setup page](https://mneia.dev/docs/integrations#mcp-clients) has separate tabs for
+Codex, Claude Code, Claude Desktop, Cursor, Gemini CLI, VS Code, Windsurf, and other MCP clients.
+Each tab copies one complete prompt for that client only, plus its native manual fallback.
 
 Restart the client. It should list eleven tools: `mneia_rehydrate`, `mneia_assert`, `mneia_retire`,
 `mneia_checkpoint`, `mneia_search`, `mneia_handoff_create`, `mneia_handoff_receive`,
@@ -115,7 +111,7 @@ temporary repository has none — use `--in` with a repository you have an open 
 |---|---|---|
 | Client reports the server failed to start | No credential the server can find | It names all three places it looked. Set `MNEIA_TOKEN` in the **client's** server config — the client does not inherit your shell |
 | `mneia login` never completes | Approval opened in a browser signed in as someone else, or the email is unverified | Verify the address, then approve in the same browser profile |
-| Tools do not appear in Codex | JSON pasted where TOML belongs | Use `codex mcp add`; see `CLIENTS.md` |
+| Tools do not appear in a client | The wrong native config format or a client that was already open | Run `mneia mcp install --client <client> --yes`, restart the client, then run `mneia mcp list` |
 | Tools appear, every call fails with a store error | Token expired or revoked | `npx @mneia/cli whoami`, then log in again |
 | `rls` is not `enforced` at `/api/health` | A privileged connection reached the app | Stop and read `AGENTS.md` §RLS. Do not work around it |
 

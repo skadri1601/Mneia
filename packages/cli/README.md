@@ -26,6 +26,7 @@ Mneia is a hosted service. Create a workspace at [app.mneia.dev](https://app.mne
 ```
 mneia login          # sign this machine in, via a browser device-code flow
 mneia init           # attach this repo to a project and import its existing constraints
+mneia mcp install    # detect installed MCP clients and connect MNEIA
 ```
 
 `login` prints a link to open, a user code, and a confirmation number. Approve it in the browser —
@@ -62,6 +63,15 @@ rehydration is not empty.
 | `mneia status` | Show what is stale, disputed, or unanswered in this project. |
 | `mneia handoff [--to <actor-id>] [--window <days>]` | Freeze a receivable handoff artifact for whoever picks the work up next. |
 | `mneia pickup [<handoff-id>]` | Receive a handoff, or list the open ones when no id is given. |
+| `mneia mcp install [--client <client> \| --all] [--yes]` | Detect or select MCP clients and register `mneia-mcp` in their native configuration. |
+| `mneia mcp list [--client <client> \| --all]` | Show where MNEIA is registered. |
+| `mneia mcp uninstall [--client <client> \| --all] --yes` | Remove only the MNEIA server entry from selected clients. |
+
+For an agent setting up one selected client, use an explicit, non-interactive command:
+
+```
+mneia mcp install --client codex --yes
+```
 
 `--help` on any command prints its full usage. `--json` makes the output machine-readable. `mneia
 --version` prints the version.
@@ -86,7 +96,7 @@ $ mneia
 ```
 
 Anything you type that does not start with `/` is rehydrated as a task, because that is the thing
-you do most. Commands are the same nine, prefixed with a slash and taking the same flags —
+you do most. Commands use the same names, prefixed with a slash and taking the same flags —
 `/status --json`, `/log --limit 5`, `/checkpoint -m "chose the token bucket"`.
 
 Typing `/` opens a menu of every command, and each further character narrows it. The arrow keys move

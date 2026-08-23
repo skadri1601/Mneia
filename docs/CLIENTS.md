@@ -313,6 +313,18 @@ Its tool-call support is what lets *other* MCP clients drive it as a backend.
 
 ## Configuration
 
+The supported customer path is the cross-client installer. It detects installed clients by default,
+or accepts a client id when the user already chose one:
+
+```
+mneia mcp install
+mneia mcp install --client codex --yes
+mneia mcp list
+```
+
+Use the native examples below only as manual fallbacks. The copyable prompts at
+`https://mneia.dev/docs/integrations#mcp-clients` keep each client's command isolated from the others.
+
 **Claude Code and Cursor** — JSON:
 
 ```json

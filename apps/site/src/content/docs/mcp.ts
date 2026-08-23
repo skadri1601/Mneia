@@ -17,24 +17,14 @@ export const MCP: DocPage = {
       blocks: [
         {
           kind: 'code',
-          label: 'json',
-          lines: [
-            '{',
-            '  "mcpServers": {',
-            '    "mneia": {',
-            '      "command": "mneia-mcp",',
-            '      "env": {',
-            '        "MNEIA_TOKEN": "<token>"',
-            '      }',
-            '    }',
-            '  }',
-            '}',
-          ],
+          label: 'shell',
+          lines: ['mneia mcp install', 'mneia mcp list'],
         },
         {
           kind: 'text',
           paragraphs: [
-            'Omit `env` if you ran **mneia login** — the server reads the same `~/.mneia/credentials` the CLI wrote. The project binding comes from `.mneia/config.json` in the working directory, so an agent working in a bound repository needs no further configuration.',
+            'The installer detects supported clients and writes each native configuration. Use **mneia mcp install --client codex --yes** to target one explicitly. See **/docs/integrations#mcp-clients** for Codex, Claude Code, Claude Desktop, Cursor, Gemini CLI, VS Code, Windsurf, and generic MCP instructions, including a complete prompt to paste into the selected agent.',
+            'The server reads the same `~/.mneia/credentials` written by **mneia login**. The project binding comes from `.mneia/config.json` in the working directory, so an agent working in a bound repository needs no further configuration.',
             'Configuration is resolved before the server accepts a connection. A missing token, an empty token, a malformed endpoint, or an unparseable project config stops the server at startup with a message naming the variable at fault.',
           ],
         },

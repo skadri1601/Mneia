@@ -9,37 +9,26 @@ matters.
 
 ## Install
 
-Nothing to install: point your MCP client at it with `npx`. Node 20.11 or newer.
-
-**Claude Code**
+Install both customer clients once. Node 20.11 or newer.
 
 ```
-claude mcp add mneia --env MNEIA_TOKEN=<your token> -- npx -y @mneia/mcp-server
+npm install -g @mneia/cli @mneia/mcp-server
+mneia login
+mneia init
+mneia mcp install
 ```
 
-**Cursor, Claude Desktop, and other clients that read a JSON config:**
-
-```json
-{
-  "mcpServers": {
-    "mneia": {
-      "command": "npx",
-      "args": ["-y", "@mneia/mcp-server"],
-      "env": { "MNEIA_TOKEN": "<your token>" }
-    }
-  }
-}
-```
-
-**Codex CLI reads TOML, not JSON** — a pasted JSON block silently does nothing there. Let the CLI
-write it:
+The last command detects installed MCP clients and writes each client’s native format. Target one
+explicitly when an agent is doing the setup:
 
 ```
-codex mcp add mneia --env MNEIA_TOKEN=<your token> -- npx -y @mneia/mcp-server
+mneia mcp install --client codex --yes
+mneia mcp list --client codex
 ```
 
-Get the token by installing [`@mneia/cli`](https://www.npmjs.com/package/@mneia/cli) and running
-`mneia login`; it is written to `~/.mneia/credentials`.
+Supported client ids include `codex`, `claude-code`, `claude-desktop`, `cursor`, `gemini-cli`,
+`vscode`, and `windsurf`. Complete copyable agent prompts and manual fallbacks live in the
+[client setup docs](https://mneia.dev/docs/integrations#mcp-clients).
 
 Confirm the client picked it up — in Claude Code, `/mcp` should list `mneia` as connected with eleven
 tools. Then ask the agent to rehydrate; on a fresh project it will say there is nothing stored yet
@@ -59,6 +48,10 @@ The server speaks MCP over stdio. Run it from a client, not by hand — `mneia-m
 | `mneia_retire` | An item was never right, or has stopped being true, and nothing replaces it. A correction, not a deletion: the row stays and the reason is recorded. Only a human actor may retire. |
 | `mneia_handoff_create` | Work is stopping and somebody else will resume it. Freezes a receivable artifact; the rendered markdown is fixed at that moment, the item links stay live. |
 | `mneia_handoff_receive` | Resuming work somebody handed over. Call it before rehydrating — the handoff says what the sender thought mattered, the slice says what the store thinks matters now. |
+| `mneia_handoff_inbox` | Checking whether work was handed to the current actor before starting. |
+| `mneia_team` | Resolving the names and ids a handoff can be addressed to. |
+| `mneia_sessions` | Seeing which client sessions have worked in the bound repository. |
+| `mneia_review_queue` | Surfacing items that still require a human decision. |
 
 Two rules are enforced by the server, not left to the agent:
 
@@ -93,8 +86,8 @@ Read the [privacy policy](https://mneia.dev/privacy) for what is kept and for ho
 
 ## See also
 
-- [`@mneia/cli`](https://www.npmjs.com/package/@mneia/cli) — `mneia login`, `init`, `brief`,
-  `checkpoint`, `log`, `status`
+- [`@mneia/cli`](https://www.npmjs.com/package/@mneia/cli) — login, init, MCP client setup, brief,
+  checkpoint, handoff, and project administration
 - [`@mneia/core`](https://www.npmjs.com/package/@mneia/core) — the library underneath both
 
 Apache-2.0.

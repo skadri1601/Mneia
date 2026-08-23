@@ -28,7 +28,7 @@ export const FAQ_GETTING_STARTED: readonly Faq[] = [
   {
     question: 'What do I install?',
     answer:
-      'Two packages, and most people want both. The CLI — npm install -g @mneia/cli — gives you mneia init, brief, checkpoint, log, and status in the terminal. The MCP server exposes mneia_rehydrate, mneia_assert, mneia_checkpoint, and mneia_search to Claude Code, Cursor, Codex, or any other MCP client, so the agent reads and writes project memory without you relaying it; add it with claude mcp add mneia -- npx -y @mneia/mcp-server. Node 20.11 or newer for both.',
+      'Install both clients with npm install -g @mneia/cli @mneia/mcp-server. Run mneia login, mneia init, then mneia mcp install to detect and configure Codex, Claude Code, Claude Desktop, Cursor, Gemini CLI, VS Code, Windsurf, or another supported MCP client. The CLI drives the terminal surface; the MCP server exposes all eleven shipped tools so the agent can rehydrate, checkpoint, and hand work off without you relaying it. Node 20.11 or newer for both.',
   },
   {
     question: 'How do I get my team into the same workspace?',
