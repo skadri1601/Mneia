@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ContextItem } from '../domain/types.js';
+import { PLACEHOLDER_SHORT_ITEM_ID, renderItemBlock } from './render.js';
 import {
   countItemTokens,
   defaultTokenCounter,
   heuristicTokenCounter,
-  ITEM_MARKUP_TOKENS,
   type TokenCounter,
   TRUNCATION_MARKER,
   truncateToTokens,
@@ -152,13 +152,36 @@ describe('heuristicTokenCounter', () => {
 });
 
 describe('countItemTokens', () => {
-  it('accounts for the title, the body, and the markup the renderer adds', () => {
+  it('charges exactly what the renderer will emit for the item', () => {
     const withBody = item({ body: 'Rationale: we already page on Postgres.' });
     const bare = item({ body: null });
 
-    expect(countItemTokens(bare)).toBe(ITEM_MARKUP_TOKENS + defaultCount(bare.title));
+    for (const subject of [withBody, bare]) {
+      expect(countItemTokens(subject)).toBe(
+        defaultCount(renderItemBlock(subject, PLACEHOLDER_SHORT_ITEM_ID)),
+      );
+    }
     expect(countItemTokens(withBody)).toBeGreaterThan(countItemTokens(bare));
     expect(countItemTokens(withBody)).toBeGreaterThan(defaultCount(withBody.body ?? ''));
+  });
+
+  it('charges the whole meta line, not a token or two of slack', () => {
+    const bare = item({ body: null });
+    const markup = countItemTokens(bare) - defaultCount(bare.title);
+
+    expect(markup).toBeGreaterThanOrEqual(20);
+  });
+
+  it('charges the markers and attribution that widen the meta line', () => {
+    const plain = item({ body: null });
+    const marked = item({
+      body: null,
+      loadBearing: true,
+      status: 'disputed',
+      provenance: { actorKind: 'agent', actorDisplayName: 'Claude Code 2.1.0' },
+    });
+
+    expect(countItemTokens(marked)).toBeGreaterThan(countItemTokens(plain));
   });
 
   it('grows with the body it will have to render', () => {
@@ -171,7 +194,9 @@ describe('countItemTokens', () => {
   it('uses an injected counter so a real tokenizer can replace the heuristic', () => {
     const injected = item({ title: 'one two three', body: 'four five' });
 
-    expect(countItemTokens(injected, wordCounter)).toBe(ITEM_MARKUP_TOKENS + 5);
+    expect(countItemTokens(injected, wordCounter)).toBe(
+      wordCounter.count(renderItemBlock(injected, PLACEHOLDER_SHORT_ITEM_ID)),
+    );
   });
 });
 

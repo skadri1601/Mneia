@@ -1,5 +1,6 @@
 import { encode } from 'gpt-tokenizer';
 import type { ContextItem } from '../domain/types.js';
+import { PLACEHOLDER_SHORT_ITEM_ID, renderItemBlock } from './render.js';
 
 export interface TokenCounter {
   readonly name: string;
@@ -15,8 +16,6 @@ export const LONG_WORD_LENGTH = 12;
 export const ALPHANUMERIC_CHARS_PER_TOKEN = 2;
 
 export const SPACE_RUN_CHARS_PER_TOKEN = 4;
-
-export const ITEM_MARKUP_TOKENS = 6;
 
 export const TRUNCATION_MARKER = ' [truncated]';
 
@@ -137,8 +136,7 @@ export function countItemTokens(
   item: ContextItem,
   counter: TokenCounter = defaultTokenCounter,
 ): number {
-  const body = item.body === null ? 0 : counter.count(item.body);
-  return ITEM_MARKUP_TOKENS + counter.count(item.title) + body;
+  return counter.count(renderItemBlock(item, PLACEHOLDER_SHORT_ITEM_ID));
 }
 
 const boundaryOffsets = (text: string): number[] => {

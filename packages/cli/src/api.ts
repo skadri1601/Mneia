@@ -70,6 +70,27 @@ function apiFailure(error: ApiError, command: string): CliError {
       'a human has to confirm that replacement; nothing was written',
     );
   }
+  if (error.code === 'payload_too_large') {
+    return new CliError(
+      'failed',
+      error.message,
+      `retrying sends the same bytes and fails the same way; split the work into smaller mneia ${command} calls, or narrow what you are sending`,
+    );
+  }
+  if (error.code === 'rate_limited') {
+    return new CliError(
+      'failed',
+      error.message,
+      `this is a limit you reached, not a fault; wait for the window named above to pass, then run mneia ${command} again`,
+    );
+  }
+  if (error.code === 'unsupported') {
+    return new CliError(
+      'failed',
+      error.message,
+      'this client is asking for something the server does not offer; upgrade @mneia/cli',
+    );
+  }
   return new CliError(
     'failed',
     `the Mneia API call failed: ${error.message}`,

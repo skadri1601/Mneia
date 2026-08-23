@@ -1,7 +1,13 @@
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_MAX_CHARS, readTrajectoryFile, reduceTrajectory } from '@mneia/core';
+import {
+  CheckpointProposeWireSchema,
+  DEFAULT_MAX_CHARS,
+  MAX_TRAJECTORY_TURNS,
+  readTrajectoryFile,
+  reduceTrajectory,
+} from '@mneia/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectConfig } from './config.js';
 import { MAX_UPLOAD_BYTES, httpCheckpointApi, httpInitApi, uploadableFrom } from './http-api.js';
@@ -37,19 +43,19 @@ async function trajectoryFile(count: number, chars: number): Promise<string> {
   return path;
 }
 
-interface WireTurn {
-  readonly ref: string;
-}
-
 interface FakeServer {
   readonly seen: Set<string>;
   readonly uploads: number[];
   readonly requests: () => number;
+  readonly rejections: string[];
+  readonly turns: { readonly ref: string; readonly text: string }[];
 }
 
 function fakeServer(): FakeServer {
   const seen = new Set<string>();
   const uploads: number[] = [];
+  const rejections: string[] = [];
+  const turns: { ref: string; text: string }[] = [];
   let watermark: string | null = null;
   let requests = 0;
 
@@ -70,7 +76,19 @@ function fakeServer(): FakeServer {
     requests += 1;
     const raw = init?.body ?? '{}';
     uploads.push(Buffer.byteLength(raw, 'utf8'));
-    const body = JSON.parse(raw) as { turns: readonly WireTurn[] };
+    // Validate with the schema the real route validates with. A fake that accepts an
+    // upload the API would refuse hides exactly the class of defect MNE-100 was.
+    const parsed = CheckpointProposeWireSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) {
+      rejections.push(parsed.error.message);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({ error: { code: 'invalid_request', message: parsed.error.message } }),
+          { status: 400, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    }
+    const body = parsed.data;
 
     const at = watermark;
     const index = at === null ? -1 : body.turns.findIndex((turn) => turn.ref === at);
@@ -79,6 +97,7 @@ function fakeServer(): FakeServer {
 
     for (const turn of pending) {
       seen.add(turn.ref);
+      turns.push({ ref: turn.ref, text: turn.text });
     }
     const last = pending.at(-1);
     if (last !== undefined) {
@@ -106,7 +125,7 @@ function fakeServer(): FakeServer {
     );
   });
 
-  return { seen, uploads, requests: () => requests };
+  return { seen, uploads, requests: () => requests, rejections, turns };
 }
 
 afterEach(() => {
@@ -130,7 +149,7 @@ describe('uploadableFrom', () => {
   it('always takes at least one turn, so an oversized turn cannot stall the loop', async () => {
     const trajectory = await readTrajectoryFile(await trajectoryFile(3, 2_000_000));
 
-    const taken = uploadableFrom(trajectory.turns, 0);
+    const taken = uploadableFrom(trajectory.turns, 0, 1_000);
 
     expect(taken).toHaveLength(1);
   });
@@ -139,6 +158,72 @@ describe('uploadableFrom', () => {
     const trajectory = await readTrajectoryFile(await trajectoryFile(TURN_COUNT, TURN_CHARS));
 
     expect(uploadableFrom(trajectory.turns, 30)[0]?.ref).toBe('t30');
+  });
+
+  it('stops at the turn-count cap, which a chatty session reaches before the byte budget', async () => {
+    // 6000 short turns are well under 900KB, so only the byte budget was consulted and the
+    // upload went out over the schema's 5000-turn limit - refused in full, every run, for
+    // the life of the session.
+    const trajectory = await readTrajectoryFile(await trajectoryFile(6_000, 10));
+
+    const taken = uploadableFrom(trajectory.turns, 0);
+
+    expect(trajectory.turns).toHaveLength(6_000);
+    expect(taken).toHaveLength(MAX_TRAJECTORY_TURNS);
+  });
+});
+
+describe('the upload the API will actually accept', () => {
+  const turnFile = async (text: string): Promise<string> => {
+    const dir = await mkdtemp(join(tmpdir(), 'mne100-'));
+    const path = join(dir, 'session.jsonl');
+    await writeFile(
+      path,
+      `${JSON.stringify({
+        ref: 'huge',
+        role: 'user',
+        kind: 'text',
+        text,
+        at: '2026-08-16T00:00:00.000Z',
+      })}\n`,
+      'utf8',
+    );
+    return path;
+  };
+
+  it('trims a turn past the wire limit instead of shipping one the server must refuse', async () => {
+    // A pasted file or a long generated block puts a single text turn over
+    // MAX_TURN_TEXT_LENGTH. Nothing reduces a text turn - reduceTrajectory caps tool
+    // output only - so the whole request failed validation, and it failed again on every
+    // later run because the same turn is still there.
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const server = fakeServer();
+
+    const proposal = await httpCheckpointApi.propose({
+      config,
+      trigger: 'manual',
+      fromFile: await turnFile('z'.repeat(400_000)),
+    });
+
+    expect(server.rejections).toEqual([]);
+    expect(server.seen.has('huge')).toBe(true);
+    expect(proposal.pendingTurns).toBe(0);
+  });
+
+  it('says how much of the turn it left behind rather than trimming silently', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const server = fakeServer();
+
+    await httpCheckpointApi.propose({
+      config,
+      trigger: 'manual',
+      fromFile: await turnFile('z'.repeat(400_000)),
+    });
+
+    const uploaded = server.turns.find((turn) => turn.ref === 'huge');
+
+    expect(uploaded?.text.length).toBeLessThanOrEqual(200_000);
+    expect(uploaded?.text).toMatch(/truncated by mneia, \d+ more characters$/);
   });
 });
 

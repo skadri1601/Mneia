@@ -349,7 +349,7 @@ describe('constraint import', () => {
     expect(body).toContain('- `mneia brief');
   });
 
-  it('folds an indented continuation into the body and keeps the first line as the title', () => {
+  it('reads a soft-wrapped bullet as one constraint, rather than cutting the title at the wrap', () => {
     const text = [
       '- Do not clobber user files',
       '  because it is an unrecoverable trust failure',
@@ -357,10 +357,24 @@ describe('constraint import', () => {
 
     const constraints = extractConstraints({ path: 'AGENTS.md', text });
 
-    expect(constraints[0]?.title).toBe('Do not clobber user files');
-    expect(constraints[0]?.body).toBe(
-      'Do not clobber user files\nbecause it is an unrecoverable trust failure',
+    expect(constraints[0]?.title).toBe(
+      'Do not clobber user files because it is an unrecoverable trust failure',
     );
+    expect(constraints[0]?.body).toBeNull();
+  });
+
+  it('never repeats the title in the body, so the rendered artifact does not print it twice', () => {
+    const text = [
+      '1. **Never auto-supersede a human-confirmed item with an agent assertion.** §10.1 — the word *ever*',
+      '   is in the original. Needs a test, not a comment.',
+    ].join('\n');
+
+    const constraint = extractConstraints({ path: 'AGENTS.md', text })[0];
+
+    expect(constraint?.title).toBe(
+      '**Never auto-supersede a human-confirmed item with an agent assertion.** §10.1 — the word *ever* is in the original. Needs a test, not a comment.',
+    );
+    expect(constraint?.body).toBeNull();
   });
 
   it('truncates an overlong title but keeps the whole text in the body', () => {

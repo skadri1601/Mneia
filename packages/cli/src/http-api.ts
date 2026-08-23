@@ -22,6 +22,8 @@ import {
   decodePendingReviewItem,
   discoverTrajectories,
   fetchIdentity,
+  MAX_TRAJECTORY_TURNS,
+  MAX_TURN_TEXT_LENGTH,
   PendingReviewItemWireSchema,
   REVIEW_PATH,
   REVIEW_PENDING_PATH,
@@ -578,11 +580,31 @@ const actionFor = (entry: CommitEntry) =>
 
 export const MAX_UPLOAD_BYTES = 900_000;
 
+/**
+ * A turn longer than MAX_TURN_TEXT_LENGTH fails schema validation for the whole request,
+ * and because the offending turn is in every later upload of that session too, the failure
+ * is permanent: the session can never be checkpointed again. Trimming the tail of one turn
+ * loses less than refusing the session, and the note makes the loss visible in the prompt.
+ */
+
+const truncationNote = (dropped: number): string =>
+  `\n… truncated by mneia, ${dropped} more characters`;
+
+const wireText = (text: string): string => {
+  if (text.length <= MAX_TURN_TEXT_LENGTH) {
+    return text;
+  }
+  // truncationNote(text.length) is the widest the note can get, so budgeting for it keeps
+  // the result at or under the cap however many digits the real count needs.
+  const kept = MAX_TURN_TEXT_LENGTH - truncationNote(text.length).length;
+  return `${text.slice(0, kept)}${truncationNote(text.length - kept)}`;
+};
+
 const wireTurn = (turn: TrajectoryTurn) => ({
   ref: turn.ref,
   role: turn.role,
   kind: turn.kind,
-  text: turn.text,
+  text: wireText(turn.text),
   toolName: turn.toolName,
   at: turn.at === null ? null : turn.at.toISOString(),
 });
@@ -598,6 +620,12 @@ export function uploadableFrom(
   for (let index = start; index < turns.length; index += 1) {
     const turn = turns[index];
     if (turn === undefined) {
+      break;
+    }
+    // The array cap is as absolute as the byte budget: a chatty session reaches 5000 short
+    // turns long before it reaches 900KB, and the API refuses the request rather than
+    // taking the first 5000.
+    if (taken.length >= MAX_TRAJECTORY_TURNS) {
       break;
     }
     const cost = Buffer.byteLength(JSON.stringify(wireTurn(turn)), 'utf8') + 1;

@@ -7,6 +7,7 @@ import {
   UNATTRIBUTED_ACTOR,
 } from '@mneia/core';
 import { z } from 'zod';
+import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const KIND_ERROR = `kinds must contain only: ${ITEM_KINDS.join(', ')}`;
@@ -77,10 +78,9 @@ const SearchInputSchema = z.object({
 
 export type SearchInput = z.infer<typeof SearchInputSchema>;
 
-const INPUT_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(SearchInputSchema, {
-  target: 'draft-7',
-  io: 'input',
-});
+const INPUT_JSON_SCHEMA: Record<string, unknown> = closedInputSchema(
+  z.toJSONSchema(SearchInputSchema, { target: 'draft-7', io: 'input' }),
+);
 
 function describeIssues(error: z.ZodError): string {
   return error.issues

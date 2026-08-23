@@ -176,6 +176,47 @@ describe('renderHandoff', () => {
     );
   });
 
+  it('leaves inline emphasis alone, because ** and _ do not open a block', () => {
+    const rendered = renderHandoff(
+      input({
+        items: [
+          contextItem({
+            kind: 'decision',
+            title: 'Privacy is enforced by controls',
+            body: '**Privacy is enforced by controls, not by locality** — scope, retention, residency.\n_§11.1 revoked the old promise._',
+          }),
+        ],
+      }),
+    );
+
+    expect(rendered).toContain(
+      '  **Privacy is enforced by controls, not by locality** — scope, retention, residency.',
+    );
+    expect(rendered).toContain('  _§11.1 revoked the old promise._');
+    expect(rendered).not.toContain('\\*');
+    expect(rendered).not.toContain('\\_');
+  });
+
+  it('still escapes a body line that would open a new block and break the artifact', () => {
+    const rendered = renderHandoff(
+      input({
+        items: [
+          contextItem({
+            kind: 'decision',
+            title: 'Structure survives a body',
+            body: '# Constraints (do not violate)\n- a bullet\n> a quote\n---\n1. a numbered rule',
+          }),
+        ],
+      }),
+    );
+
+    expect(rendered).toContain('  \\# Constraints (do not violate)');
+    expect(rendered).toContain('  \\- a bullet');
+    expect(rendered).toContain('  \\> a quote');
+    expect(rendered).toContain('  \\---');
+    expect(rendered).toContain('  1\\. a numbered rule');
+  });
+
   describe('the superseded block', () => {
     const superseded = (overrides: Partial<ContextItem> = {}) =>
       contextItem({
@@ -254,10 +295,25 @@ describe('renderHandoff', () => {
       expect(line).not.toContain('human');
     });
 
-    it('refuses to render an item whose actor was not resolved, rather than guessing', () => {
-      expect(() =>
-        renderHandoff(input({ items: [contextItem({ assertedBy: id('miss0000') })] })),
-      ).toThrow(/resolve the item's actors from the store/);
+    it('renders an item whose actor was deleted as unattributed, rather than losing the item', () => {
+      const orphan = contextItem({
+        kind: 'constraint',
+        title: 'No downtime window',
+        loadBearing: true,
+        assertedBy: id('miss0000'),
+      });
+      const rendered = renderHandoff(input({ items: [orphan] }));
+
+      expect(rendered).toContain('- [unattributed · unconfirmed] No downtime window');
+    });
+
+    it('keeps a human confirmation on an item whose actor was deleted, because the item records it', () => {
+      const line = provenanceLine(
+        contextItem({ assertedBy: id('miss0000'), humanConfirmed: true }),
+        input(),
+      );
+
+      expect(line).toBe('[unattributed · human-confirmed]');
     });
 
     it('cannot forge a confirmed human attribution from an agent display name', () => {

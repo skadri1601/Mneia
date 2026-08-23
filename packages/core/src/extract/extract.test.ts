@@ -13,6 +13,7 @@ import {
 } from './prompt.js';
 import type { ExtractionCandidate } from './schema.js';
 import { ExtractionError, parseExtractionOutput } from './schema.js';
+import { normalizeText } from './similarity.js';
 
 const candidate = (
   overrides: Partial<ExtractionCandidate> & Pick<ExtractionCandidate, 'title'>,
@@ -298,6 +299,42 @@ describe('applyPrecisionFilter', () => {
 
     expect(result.kept).toHaveLength(2);
     expect(result.rejected).toHaveLength(0);
+  });
+
+  it.each([
+    ['Chinese', '数据库只保留一种存储，不再引入缓存服务'],
+    ['Japanese', 'ストアは一つに保ち、キャッシュ層は追加しない'],
+    ['Cyrillic', 'Использовать только одно хранилище, кэш не добавлять'],
+    ['Greek', 'Διατηρούμε μία μόνο αποθήκη δεδομένων'],
+  ])('keeps a substantive %s title instead of calling it empty', (_label, title) => {
+    // normalizeText used to strip everything outside a-z0-9, so a title in any other
+    // script normalised to the empty string and was rejected as carrying nothing a reader
+    // could act on. Every candidate a non-English team produced was discarded on that path.
+    const result = applyPrecisionFilter([candidate({ title })]);
+
+    expect(result.kept).toHaveLength(1);
+    expect(result.rejected).toHaveLength(0);
+  });
+
+  it('does not merge two unrelated non-Latin titles into one duplicate', () => {
+    const result = applyPrecisionFilter([
+      candidate({ title: 'Использовать Postgres как единственное хранилище' }),
+      candidate({ title: 'Отчёты по выручке считаются на стороне сервера' }),
+    ]);
+
+    expect(result.kept).toHaveLength(2);
+  });
+
+  it('keeps an accented word whole rather than splitting it at the accent', () => {
+    // "déploiement" used to normalise to "d ploiement" - two tokens, neither of which is
+    // the word - so unrelated French titles matched on the stray "d".
+    const result = applyPrecisionFilter([
+      candidate({ title: "Déploiement limité à la région européenne, jamais d'autre" }),
+      candidate({ title: "Décision prise à propos du fournisseur d'identité" }),
+    ]);
+
+    expect(result.kept).toHaveLength(2);
+    expect(normalizeText('Déploiement limité')).toBe('déploiement limité');
   });
 
   it('refuses nonsensical options rather than silently correcting them', () => {

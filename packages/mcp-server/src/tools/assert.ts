@@ -10,6 +10,7 @@ import {
 } from '@mneia/core';
 import { z } from 'zod';
 import { SourceSessionSchema } from '../source-session.js';
+import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const KIND_ERROR = `kind must be one of: ${ITEM_KINDS.join(', ')}`;
@@ -77,10 +78,9 @@ const AssertInputSchema = z.object({
 
 export type AssertInput = z.infer<typeof AssertInputSchema>;
 
-const INPUT_JSON_SCHEMA: Record<string, unknown> = {
-  ...z.toJSONSchema(AssertInputSchema, { target: 'draft-7', io: 'input' }),
-  additionalProperties: false,
-};
+const INPUT_JSON_SCHEMA: Record<string, unknown> = closedInputSchema(
+  z.toJSONSchema(AssertInputSchema, { target: 'draft-7', io: 'input' }),
+);
 
 function describeIssues(error: z.ZodError): string {
   return error.issues
