@@ -23,6 +23,7 @@ import {
   discoverTrajectories,
   fetchIdentity,
   MAX_TRAJECTORY_TURNS,
+  MAX_TURN_TEXT_LENGTH,
   PendingReviewItemWireSchema,
   REVIEW_PATH,
   REVIEW_PENDING_PATH,
@@ -580,26 +581,22 @@ const actionFor = (entry: CommitEntry) =>
 export const MAX_UPLOAD_BYTES = 900_000;
 
 /**
- * Mirrors MAX_TURN_TEXT_LENGTH in CheckpointProposeWireSchema, which the package root does
- * not re-export.
- *
- * A turn longer than this fails schema validation for the whole request, and because the
- * offending turn is in every later upload of that session too, the failure is permanent:
- * the session can never be checkpointed again. Trimming the tail of one turn loses less
- * than refusing the session, and the note makes the loss visible in the prompt.
+ * A turn longer than MAX_TURN_TEXT_LENGTH fails schema validation for the whole request,
+ * and because the offending turn is in every later upload of that session too, the failure
+ * is permanent: the session can never be checkpointed again. Trimming the tail of one turn
+ * loses less than refusing the session, and the note makes the loss visible in the prompt.
  */
-const MAX_TURN_TEXT_CHARS = 200_000;
 
 const truncationNote = (dropped: number): string =>
   `\n… truncated by mneia, ${dropped} more characters`;
 
 const wireText = (text: string): string => {
-  if (text.length <= MAX_TURN_TEXT_CHARS) {
+  if (text.length <= MAX_TURN_TEXT_LENGTH) {
     return text;
   }
   // truncationNote(text.length) is the widest the note can get, so budgeting for it keeps
   // the result at or under the cap however many digits the real count needs.
-  const kept = MAX_TURN_TEXT_CHARS - truncationNote(text.length).length;
+  const kept = MAX_TURN_TEXT_LENGTH - truncationNote(text.length).length;
   return `${text.slice(0, kept)}${truncationNote(text.length - kept)}`;
 };
 

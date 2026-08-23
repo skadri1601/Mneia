@@ -1,6 +1,5 @@
 import { handleGetHandoff } from '../../../../../server/api/handoff.js';
-import { serve } from '../../../../../server/api/serve.js';
-import { parseHandoffId } from './handoff-id.js';
+import { parseResourceId, serve } from '../../../../../server/api/serve.js';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -13,6 +12,6 @@ export const GET = async (
   return serve({
     request,
     input: id,
-    run: (store, handoffId) => handleGetHandoff(store, parseHandoffId(handoffId)),
+    run: (store, handoffId) => handleGetHandoff(store, parseResourceId(handoffId, 'handoff id')),
   });
 };

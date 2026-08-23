@@ -3,6 +3,7 @@ import type { ContextItem, Uuid } from '../domain/types.js';
 import type { ItemKind, ItemStatus } from '../store/schema.js';
 import { ITEM_KINDS, ITEM_STATUSES } from '../store/schema.js';
 import { DEFAULT_KIND_QUOTAS, isMandatoryItem, packSlice, sliceOverflow } from './pack.js';
+import { renderSlice } from './render.js';
 import { countItemTokens, type TokenCounter } from './tokens.js';
 import type { KindQuotas, ScoreComponents, ScoredItem } from './types.js';
 
@@ -344,6 +345,81 @@ describe('GUARD §10.2: load-bearing active constraints always appear in a slice
         expect(included).toContain(id);
         expect(slice.droppedItemIds).not.toContain(id);
       }
+    }
+  });
+});
+
+describe('GUARD §10.2: an unresolvable author never costs an item its place', () => {
+  const UNATTRIBUTED = 'unattributed';
+
+  const withProvenance = (entry: ScoredItem, displayName: string): ScoredItem => ({
+    ...entry,
+    item: {
+      ...entry.item,
+      provenance: {
+        actorId: '55555555-5555-4555-8555-555555555555',
+        actorKind: 'human',
+        actorDisplayName: displayName,
+        sourceSessionId: null,
+        sessionTool: null,
+        clientName: null,
+        clientVersion: null,
+        clientSessionRef: null,
+        clientSessionName: null,
+        clientSessionUrl: null,
+        status: 'complete',
+        missingFields: [],
+      },
+    },
+  });
+
+  it('prices an item whose author cannot be resolved instead of throwing', () => {
+    const orphaned = loadBearingConstraint('constraint-orphaned', 0.5);
+
+    expect(orphaned.item.provenance).toBeUndefined();
+    expect(() => countItemTokens(orphaned.item, counter)).not.toThrow();
+    expect(countItemTokens(orphaned.item, counter)).toBeGreaterThan(0);
+  });
+
+  it('forces an unattributed load-bearing constraint into the slice and renders it', () => {
+    const orphaned = loadBearingConstraint('constraint-orphaned', -99);
+    const corpus = [...facts(20), orphaned];
+
+    const slice = packSlice({ scored: corpus, tokenBudget: totalCost(facts(20)) }, { counter });
+
+    expect(slice.mandatoryItemIds).toEqual(['constraint-orphaned']);
+    expect(idsOf(slice.items)).toContain('constraint-orphaned');
+    expect(slice.droppedItemIds).not.toContain('constraint-orphaned');
+
+    const markdown = renderSlice({ task: 'ship it', packed: slice, generatedAt: NOW });
+
+    expect(markdown).toContain('constraint-orphaned');
+    expect(markdown).toContain(UNATTRIBUTED);
+  });
+
+  it('costs an unattributed item no more than an attributed one, so it is not priced out', () => {
+    const orphaned = loadBearingConstraint('constraint-0', 0.5);
+    const attributed = withProvenance(orphaned, 'Saad Kadri');
+
+    expect(countItemTokens(orphaned.item, counter)).toBeLessThanOrEqual(
+      countItemTokens(attributed.item, counter),
+    );
+  });
+
+  it('renders every packed item with an attribution field, resolvable or not', () => {
+    const corpus = [
+      loadBearingConstraint('constraint-orphaned', 0.9),
+      withProvenance(loadBearingConstraint('constraint-named', 0.8), 'Saad Kadri'),
+      ...facts(3),
+    ];
+
+    const slice = packSlice({ scored: corpus, tokenBudget: totalCost(corpus) }, { counter });
+    const markdown = renderSlice({ task: 'ship it', packed: slice, generatedAt: NOW });
+
+    const itemLines = markdown.split('\n').filter((line) => line.startsWith('- '));
+    expect(itemLines).toHaveLength(slice.items.length);
+    for (const line of itemLines) {
+      expect(line).toMatch(/· (human|agent|unattributed) ·/);
     }
   });
 });

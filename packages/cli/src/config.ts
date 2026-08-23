@@ -32,6 +32,39 @@ export function resolveAuthUrl(
   return raw.trim().replace(/\/+$/, '');
 }
 
+export function resolveEndpoint(
+  env: Readonly<Record<string, string | undefined>>,
+  configured: string | undefined,
+): string {
+  const fromEnv = env[ENDPOINT_ENV_VAR];
+  const raw =
+    fromEnv !== undefined && fromEnv.trim().length > 0
+      ? { value: fromEnv.trim(), source: `${ENDPOINT_ENV_VAR}` }
+      : configured !== undefined && configured.trim().length > 0
+        ? { value: configured.trim(), source: 'the endpoint in .mneia/config.json' }
+        : { value: DEFAULT_ENDPOINT, source: 'the default' };
+
+  let parsed: URL;
+  try {
+    parsed = new URL(raw.value);
+  } catch {
+    throw new CliError(
+      'not_configured',
+      `${raw.source} is "${raw.value}", which is not an absolute URL`,
+      `set ${ENDPOINT_ENV_VAR} to an absolute http or https URL such as ${DEFAULT_ENDPOINT}, or unset it to use the default`,
+    );
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new CliError(
+      'not_configured',
+      `${raw.source} is "${raw.value}", whose scheme is ${parsed.protocol.replace(':', '')} rather than http or https`,
+      `set ${ENDPOINT_ENV_VAR} to an http or https URL such as ${DEFAULT_ENDPOINT}, or unset it to use the default`,
+    );
+  }
+
+  return raw.value;
+}
+
 const projectConfigSchema = z.object({
   workspace: z.string().min(1),
   project: z.string().min(1),
@@ -111,12 +144,10 @@ export async function loadProjectConfig(
     throw malformedConfigError(path, describeIssues(result.error));
   }
 
-  const endpoint = env[ENDPOINT_ENV_VAR] ?? result.data.endpoint ?? DEFAULT_ENDPOINT;
-
   return {
     workspace: result.data.workspace,
     project: result.data.project,
-    endpoint,
+    endpoint: resolveEndpoint(env, result.data.endpoint),
     configPath: path,
     repoRoot: resolve(cwd),
   };
@@ -140,7 +171,7 @@ export async function requireProjectConfig(
   return {
     workspace: binding.workspaceId,
     project: binding.projectSlug ?? binding.projectId ?? '',
-    endpoint: env[ENDPOINT_ENV_VAR] ?? DEFAULT_ENDPOINT,
+    endpoint: resolveEndpoint(env, undefined),
     configPath: localConfigPath(env),
     repoRoot: resolve(cwd),
   };

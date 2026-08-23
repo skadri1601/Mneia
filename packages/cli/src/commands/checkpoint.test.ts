@@ -126,6 +126,13 @@ function proposalOf(candidates: readonly CheckpointCandidate[]): CheckpointPropo
   };
 }
 
+function sessionProposal(
+  sessionRef: string,
+  candidates: readonly CheckpointCandidate[],
+): CheckpointProposal {
+  return { ...proposalOf(candidates), sourceSessionRef: sessionRef };
+}
+
 function receiptFor(candidates: readonly CheckpointCandidate[]): CheckpointReceipt {
   return {
     checkpointId: CHECKPOINT_ID,
@@ -577,7 +584,7 @@ describe('mneia checkpoint', () => {
 
     const code = await command.run({ args: [], flags: {}, json: false, io: sink.io });
 
-    expect(code).toBe(1);
+    expect(code).toBe(0);
     expect(prompter.asked).toEqual([]);
     expect(api.commits).toHaveLength(1);
     expect(api.commits[0]?.reviewed).toHaveLength(0);
@@ -586,6 +593,24 @@ describe('mneia checkpoint', () => {
     const text = sink.out.join('');
     expect(text).toContain('PENDING HUMAN CONFIRMATION');
     expect(text).toContain('not an interactive terminal');
+    expect(text).toContain('mneia review --drain');
+  });
+
+  it('says needs, not need, when exactly one candidate is waiting on a human', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0, loadBearing: true })]));
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([], [], false),
+    });
+
+    await command.run({ args: [], flags: {}, json: false, io: sink.io });
+
+    const text = sink.out.join('');
+    expect(text).toContain('1 candidate needs a human');
+    expect(text).not.toContain('1 candidate need a human');
   });
 
   it('never prompts under --json, and reports what is pending instead', async () => {
@@ -602,7 +627,7 @@ describe('mneia checkpoint', () => {
 
     const code = await command.run({ args: [], flags: {}, json: true, io: sink.io });
 
-    expect(code).toBe(1);
+    expect(code).toBe(0);
     expect(prompter.asked).toEqual([]);
 
     const payload = JSON.parse(sink.out.join('')) as {
@@ -613,6 +638,33 @@ describe('mneia checkpoint', () => {
     expect(payload.pendingCount).toBe(1);
     expect(payload.checkpointId).toBeNull();
     expect(payload.pending[0]?.reason).toContain('§10.1 step 5');
+  });
+
+  it('reports the checkpoint the automatic items went into even while others stay pending', async () => {
+    const api = new FakeApi(
+      proposalOf([candidate({ index: 0 }), candidate({ index: 1, loadBearing: true })]),
+    );
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([], [], false),
+    });
+
+    const code = await command.run({ args: [], flags: {}, json: true, io: sink.io });
+
+    expect(code).toBe(0);
+    expect(api.commits).toHaveLength(1);
+
+    const payload = JSON.parse(sink.out.join('')) as {
+      checkpointId: string | null;
+      automaticCount: number;
+      pendingCount: number;
+    };
+    expect(payload.automaticCount).toBe(1);
+    expect(payload.pendingCount).toBe(1);
+    expect(payload.checkpointId).toBe(CHECKPOINT_ID);
   });
 
   it('commits the reviewed decisions and reports the split', async () => {
@@ -894,6 +946,80 @@ describe('mneia checkpoint across sessions', () => {
         { sessionRef: 'session-older', checkpointId: null },
       ],
     });
+  });
+
+  it('exits 0 when every session either recorded or is waiting on a human', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    api.perSession = {
+      'session-older': sessionProposal('session-older', [
+        candidate({ index: 0 }),
+        candidate({ index: 1, loadBearing: true }),
+      ]),
+    };
+    const sink = capture();
+
+    const code = await commandFor(api, new ScriptedPrompter([], [], false)).run({
+      args: [],
+      flags: { 'all-sessions': true },
+      json: false,
+      io: sink.io,
+    });
+
+    expect(code).toBe(0);
+
+    const printed = sink.out.join('');
+    expect(printed).toContain('2 of 2 sessions recorded a checkpoint');
+    expect(printed).toContain('1 left waiting on a human');
+    expect(printed).toContain('0 failed');
+    expect(printed).toContain('not a failure');
+  });
+
+  it('counts a session that recorded its automatic items even though others stay pending', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    api.perSession = {
+      'session-newest': sessionProposal('session-newest', [
+        candidate({ index: 0 }),
+        candidate({ index: 1, loadBearing: true }),
+      ]),
+      'session-older': sessionProposal('session-older', [
+        candidate({ index: 0 }),
+        candidate({ index: 1, loadBearing: true }),
+      ]),
+    };
+    const sink = capture();
+
+    await commandFor(api, new ScriptedPrompter([], [], false)).run({
+      args: [],
+      flags: { 'all-sessions': true },
+      json: true,
+      io: sink.io,
+    });
+
+    expect(JSON.parse(sink.out.join(''))).toMatchObject({
+      sessions: [
+        { sessionRef: 'session-newest', checkpointId: CHECKPOINT_ID, pendingCount: 1, error: null },
+        { sessionRef: 'session-older', checkpointId: CHECKPOINT_ID, pendingCount: 1, error: null },
+      ],
+    });
+  });
+
+  it('still exits 1 when a session genuinely failed', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    api.failOn = 'session-older';
+    const sink = capture();
+
+    const code = await commandFor(api).run({
+      args: [],
+      flags: { 'all-sessions': true },
+      json: false,
+      io: sink.io,
+    });
+
+    expect(code).toBe(1);
+    expect(sink.out.join('')).toContain('1 failed');
   });
 
   it('names the directory when no agent session was found at all', async () => {

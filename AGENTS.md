@@ -120,11 +120,13 @@ not a convenience.**
 nothing new sends no transcript. `--session <ref>` still names one; `--all-sessions` is now just an
 explicit spelling of the default.
 
-One thing in that path is genuinely still open: `turnsSince` returns `resolved: false` when the
-watermark is absent from the uploaded turns, and `propose.ts` ignores `resolved` — so **any partial
-upload is treated as entirely new**, moving the watermark backwards and re-running extraction we pay
-for. The CLI now always asks for the watermark first, on every session rather than only oversized
-ones, but nothing in the server prevents it.
+**The watermark is monotonic (MNE-100), and this paragraph described the wrong failure.** It said
+`propose.ts` ignored `turnsSince().resolved`; the code in fact *refused* an upload that did not
+reach back to the stored watermark, losing those turns for good once the transcript moved on — the
+opposite defect, and the one the founder ruled against on 2026-08-19. The upload is now always
+extracted, and the watermark advances only when `turnsSince` finds it inside that upload; otherwise
+the stored position is held, the turns are reported still pending, and `incompleteReason` says why.
+`fromStart` remains the escape hatch for a rotated transcript. `propose.test.ts` covers it.
 
 ## Repo map
 
