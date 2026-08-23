@@ -203,6 +203,8 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 
 const asNumber = (value: unknown): number => (typeof value === 'number' ? value : 0);
 
+const asString = (value: unknown): string | null => (typeof value === 'string' ? value : null);
+
 /**
  * OpenAI rejects a `prompt_cache_key` longer than 64 characters with a 400, which takes the
  * whole extraction down rather than degrading to an uncached call. `workspaceId:projectId`
@@ -287,6 +289,20 @@ export function createOpenAiExtractionProvider(options: HttpExtractionOptions): 
       const record = asRecord(payload);
       const usage = asRecord(record?.usage);
       const text = collectOpenAiText(record);
+
+      // A reasoning model bills its thinking against max_output_tokens, so it can spend the
+      // whole ceiling before emitting one message token. The Responses API reports that as
+      // status "incomplete" and returns an empty output_text. Left unread, the empty string
+      // reaches parseExtractionOutput and surfaces as "not valid JSON" — which is thrown
+      // outside the run-level catch, so the fallback vendor is never tried and the log blames
+      // the model for malformed output it never had the budget to write.
+      if (text === '' && asString(record?.status) === 'incomplete') {
+        const reason = asString(asRecord(record?.incomplete_details)?.reason) ?? 'reason not given';
+        throw new ExtractionProviderError(
+          `openai returned no output: the response stopped at status "incomplete" (${reason}) after ${asNumber(usage?.output_tokens)} output tokens against a ${request.maxOutputTokens} token ceiling, so nothing was written to parse`,
+          { retryable: true, code: reason },
+        );
+      }
 
       return {
         text,

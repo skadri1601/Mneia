@@ -57,6 +57,7 @@ export interface InitDeps {
   readonly api: InitApi;
   readonly loadConfig: ExistingConfigLoader;
   readonly resolveToken: TokenResolver;
+  readonly now?: (() => Date) | undefined;
 }
 
 const USAGE =
@@ -352,8 +353,16 @@ function renderJson(outcome: InitOutcome): string {
   return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
-function configFileFor(attach: AttachResult, endpoint: string | null): ProjectConfigFile {
-  const base = { workspace: attach.workspace, project: attach.project };
+function configFileFor(
+  attach: AttachResult,
+  endpoint: string | null,
+  boundAt: Date,
+): ProjectConfigFile {
+  const base = {
+    workspace: attach.workspace,
+    project: attach.project,
+    boundAt: boundAt.toISOString(),
+  };
   return endpoint === null ? base : { ...base, endpoint };
 }
 
@@ -410,7 +419,17 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
         }),
       );
 
-      await writeProjectConfig(invocation.io.cwd, configFileFor(attach, persistedEndpoint));
+      // Keep the original binding date across a re-init. Restamping it would move the
+      // eligibility line forward and silently exclude every session run since the repo was
+      // first bound — including, on a --force rebind, the ones the user is trying to keep.
+      await writeProjectConfig(
+        invocation.io.cwd,
+        configFileFor(
+          attach,
+          persistedEndpoint,
+          existing?.boundAt ?? (deps.now ?? (() => new Date()))(),
+        ),
+      );
 
       const writeBack = await writeGeneratedSection(
         agentsPath,

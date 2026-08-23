@@ -64,6 +64,8 @@ function envWithoutCredentials(): Record<string, string | undefined> {
   return { MNEIA_CREDENTIALS_PATH: join(root, 'nowhere', 'credentials') };
 }
 
+const BOUND_AT = new Date('2026-08-23T12:00:00.000Z');
+
 async function runInit(
   api: InitApi,
   argv: readonly string[] = [],
@@ -80,7 +82,14 @@ async function runInit(
 
   const code = await route({
     argv: ['init', ...argv],
-    commands: [createInitCommand({ api, loadConfig: loadProjectConfig, resolveToken })],
+    commands: [
+      createInitCommand({
+        api,
+        loadConfig: loadProjectConfig,
+        resolveToken,
+        now: () => BOUND_AT,
+      }),
+    ],
     io,
     version: '0.0.0-test',
   });
@@ -361,7 +370,11 @@ describe('mneia init output', () => {
       await readFile(join(root, '.mneia', 'config.json'), 'utf8'),
     );
 
-    expect(withDefault).toEqual({ workspace: 'acme', project: 'checkout' });
+    expect(withDefault).toEqual({
+      workspace: 'acme',
+      project: 'checkout',
+      boundAt: BOUND_AT.toISOString(),
+    });
 
     await runInit(fakeApi(), ['--endpoint', 'https://staging.mneia.dev']);
     const withOverride: unknown = JSON.parse(
@@ -371,6 +384,7 @@ describe('mneia init output', () => {
     expect(withOverride).toEqual({
       workspace: 'acme',
       project: 'checkout',
+      boundAt: BOUND_AT.toISOString(),
       endpoint: 'https://staging.mneia.dev',
     });
     await expect(loadProjectConfig(root, {})).resolves.toMatchObject({

@@ -12,6 +12,8 @@ import {
   type CommitRequest,
   createCheckpointCommand,
   type DiscoveredSession,
+  selectSessions,
+  startedBeforeBinding,
   emitReviewEvents,
   needsHuman,
   type ProposeRequest,
@@ -148,12 +150,14 @@ const NEWEST_SESSION: DiscoveredSession = {
   source: 'claude-code',
   sessionRef: 'session-newest',
   lastActivityAt: new Date('2026-08-20T16:41:00.000Z'),
+  startedAt: new Date('2026-08-20T16:00:00.000Z'),
 };
 
 const OLDER_SESSION: DiscoveredSession = {
   source: 'cursor',
   sessionRef: 'session-older',
   lastActivityAt: new Date('2026-08-19T09:10:00.000Z'),
+  startedAt: new Date('2026-08-19T09:00:00.000Z'),
 };
 
 class FakeApi implements CheckpointApi {
@@ -1030,5 +1034,51 @@ describe('mneia checkpoint across sessions', () => {
     await expect(
       commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io }),
     ).rejects.toThrow(/found no agent session for \/repo/);
+  });
+});
+
+describe('sessions that predate the binding', () => {
+  const BOUND_AT = new Date('2026-08-20T12:00:00.000Z');
+  const discovery = (sessions: readonly DiscoveredSession[]): SessionDiscovery => ({
+    sessions,
+    blocked: [],
+  });
+
+  it('keeps a session that started after the repo was bound', () => {
+    expect(startedBeforeBinding(NEWEST_SESSION, BOUND_AT)).toBe(false);
+    expect(selectSessions(discovery([NEWEST_SESSION]), null, '/repo', BOUND_AT)).toEqual([
+      NEWEST_SESSION,
+    ]);
+  });
+
+  it('drops a session that started before it, so no model call is bought for it', () => {
+    expect(startedBeforeBinding(OLDER_SESSION, BOUND_AT)).toBe(true);
+    expect(
+      selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', BOUND_AT),
+    ).toEqual([NEWEST_SESSION]);
+  });
+
+  it('falls back to last activity when the harness recorded no start time', () => {
+    const noStart: DiscoveredSession = { ...OLDER_SESSION, startedAt: null };
+    expect(startedBeforeBinding(noStart, BOUND_AT)).toBe(true);
+  });
+
+  it('sweeps everything when the binding predates boundAt being recorded', () => {
+    expect(startedBeforeBinding(OLDER_SESSION, null)).toBe(false);
+    expect(selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', null)).toEqual(
+      [NEWEST_SESSION, OLDER_SESSION],
+    );
+  });
+
+  it('explains itself when every discovered session predates the binding', () => {
+    expect(() => selectSessions(discovery([OLDER_SESSION]), null, '/repo', BOUND_AT)).toThrow(
+      /started before this repo was bound to Mneia on 2026-08-20 12:00 UTC/,
+    );
+  });
+
+  it('refuses an explicitly named session from before the binding', () => {
+    expect(() =>
+      selectSessions(discovery([OLDER_SESSION]), 'session-older', '/repo', BOUND_AT),
+    ).toThrow(/--session session-older names cursor session-older, which started before/);
   });
 });

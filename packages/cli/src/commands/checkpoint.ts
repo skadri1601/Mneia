@@ -73,6 +73,7 @@ export interface DiscoveredSession {
   readonly source: TrajectorySource;
   readonly sessionRef: string;
   readonly lastActivityAt: Date | null;
+  readonly startedAt: Date | null;
 }
 
 export interface SessionDiscovery {
@@ -254,10 +255,31 @@ export function matchSessions(
   return sessions.filter((session) => session.sessionRef.toLowerCase().includes(wanted));
 }
 
+/**
+ * A session is eligible only if it started at or after the repo was bound.
+ *
+ * Founder ruling 2026-08-23: context from before Mneia was installed is lost, and that
+ * loss is accepted. Sweeping it back in extracts decisions nobody has believed for weeks
+ * and pays a model to read transcripts that predate the product — a fresh install against
+ * one repo swept 20 sessions reaching back three months, 18 of which held no conversation
+ * at all. `boundAt` is absent on bindings written before it existed; those keep the old
+ * behaviour rather than silently skipping every session a long-standing user has.
+ */
+export function startedBeforeBinding(session: DiscoveredSession, boundAt: Date | null): boolean {
+  if (boundAt === null) {
+    return false;
+  }
+  // Fall back to last activity when a harness records no start: a session whose every
+  // trace predates the binding is out of scope however that date is spelled.
+  const began = session.startedAt ?? session.lastActivityAt;
+  return began !== null && began.getTime() < boundAt.getTime();
+}
+
 export function selectSessions(
   discovery: SessionDiscovery,
   reference: string | null,
   cwd: string,
+  boundAt: Date | null = null,
 ): readonly DiscoveredSession[] {
   if (discovery.sessions.length === 0) {
     throw noSessionsError(cwd, discovery);
@@ -280,10 +302,30 @@ export function selectSessions(
         'pass more of the ref so it names one session, or run mneia checkpoint --all-sessions',
       );
     }
+    if (startedBeforeBinding(matched, boundAt)) {
+      throw new CliError(
+        'usage',
+        `--session ${reference} names ${sessionLabel(matched)}, which started before this repo was bound to Mneia on ${boundAt?.toISOString().replace('T', ' ').slice(0, 16)} UTC`,
+        'sessions from before the binding are out of scope — checkpoint a session you have run since installing Mneia',
+      );
+    }
     return [matched];
   }
 
-  return discovery.sessions.slice(0, MAX_CHECKPOINT_SESSIONS);
+  const eligible = discovery.sessions.filter((session) => !startedBeforeBinding(session, boundAt));
+
+  // Every session predates the binding. That is the ordinary state of a repo that has been
+  // worked in for months and bound to Mneia today, so it is not a failure to configure
+  // anything — say what was skipped and why rather than reporting no sessions at all.
+  if (eligible.length === 0) {
+    throw new CliError(
+      'not_configured',
+      `all ${discovery.sessions.length} agent sessions discovered for ${cwd} started before this repo was bound to Mneia on ${boundAt?.toISOString().replace('T', ' ').slice(0, 16)} UTC`,
+      'context from before the binding is out of scope — run an agent session in this repo, then checkpoint that',
+    );
+  }
+
+  return eligible.slice(0, MAX_CHECKPOINT_SESSIONS);
 }
 
 export function needsHuman(candidate: CheckpointCandidate): boolean {
@@ -1006,7 +1048,12 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
 
       const named =
         source !== null && sessionRef !== null
-          ? ({ source, sessionRef, lastActivityAt: null } satisfies DiscoveredSession)
+          ? ({
+              source,
+              sessionRef,
+              lastActivityAt: null,
+              startedAt: null,
+            } satisfies DiscoveredSession)
           : null;
 
       const discovery: SessionDiscovery =
@@ -1017,7 +1064,9 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
           : { sessions: [named], blocked: [] };
 
       const chosen =
-        named === null ? selectSessions(discovery, sessionRef, invocation.io.cwd) : [named];
+        named === null
+          ? selectSessions(discovery, sessionRef, invocation.io.cwd, config.boundAt)
+          : [named];
       const context = { config, trigger, summary };
       const canPrompt = deps.prompter.interactive && !invocation.json;
 

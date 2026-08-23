@@ -653,6 +653,7 @@ export const httpCheckpointApi: CheckpointApi = {
           source: entry.source,
           sessionRef: entry.sessionRef,
           lastActivityAt: entry.lastActivityAt,
+          startedAt: entry.startedAt,
         })),
       blocked: blockedReasons(discovered),
     };
