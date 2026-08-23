@@ -6,6 +6,8 @@ const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   createCheckoutSession: vi.fn(),
   createPortalSession: vi.fn(),
+  purchaseSeats: vi.fn(),
+  seatPosition: vi.fn(),
   redirect: vi.fn(),
 }));
 
@@ -19,11 +21,15 @@ vi.mock('../../server/billing/runtime.js', () => ({
       createPortalSession: mocks.createPortalSession,
     },
     origin: 'https://app.mneia.dev',
+    seatSync: { purchaseSeats: mocks.purchaseSeats },
   }),
+}));
+vi.mock('../../server/membership-runtime.js', () => ({
+  seats: () => ({ seatPosition: mocks.seatPosition }),
 }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 
-import { checkoutAction, portalAction } from './actions.js';
+import { checkoutAction, portalAction, purchaseSeatsAction } from './actions.js';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const ATTEMPT = '22222222-2222-4222-8222-222222222222';
@@ -126,5 +132,117 @@ describe('billing actions', () => {
       expect.objectContaining({ customerId: 'cus_cancelled', idempotencyKey: ATTEMPT }),
     );
     expect(mocks.redirect).toHaveBeenCalledWith('https://billing.stripe.com/p/session/bps_1');
+  });
+});
+
+describe('purchaseSeatsAction', () => {
+  const teamSnapshot = (overrides: Record<string, unknown> = {}) => ({
+    workspaceId: WORKSPACE_ID,
+    plan: 'team',
+    billingStatus: 'active',
+    seatsPurchased: 3,
+    billingCustomerRef: 'cus_1',
+    memberCount: 3,
+    ...overrides,
+  });
+
+  const form = (seats: unknown): FormData => {
+    const data = new FormData();
+    if (seats !== undefined) {
+      data.set('seats', String(seats));
+    }
+    return data;
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.getCurrentAccount.mockResolvedValue({
+      ...ACCOUNT,
+      membership: { ...ACCOUNT.membership, role: 'lead' },
+    });
+    mocks.snapshot.mockResolvedValue(teamSnapshot());
+    mocks.seatPosition.mockResolvedValue({
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 3,
+      memberCount: 3,
+      pendingInvitations: 0,
+    });
+    mocks.purchaseSeats.mockResolvedValue({ synced: true, reason: 'set to 5', seats: 5 });
+  });
+
+  it('buys seats through the purchase intent, which is the only one allowed to raise a bill', async () => {
+    // syncSeats carries intent `membership` and may never increase the quantity. A lead
+    // clicking this button is the explicit act that is allowed to, so it must land on
+    // purchaseSeats or the control silently does nothing.
+    await purchaseSeatsAction(form(5));
+
+    expect(mocks.purchaseSeats).toHaveBeenCalledWith({ workspaceId: WORKSPACE_ID, seats: 5 });
+    expect(mocks.redirect).toHaveBeenCalledWith('/billing?seats=updated');
+  });
+
+  it('reports a no-op honestly rather than claiming a change', async () => {
+    mocks.purchaseSeats.mockResolvedValue({
+      synced: false,
+      reason: 'already has 3 seats purchased',
+      seats: null,
+    });
+
+    await purchaseSeatsAction(form(3));
+
+    expect(mocks.redirect).toHaveBeenCalledWith('/billing?seats=unchanged');
+  });
+
+  it('refuses a member, because only a lead may change what a workspace is billed', async () => {
+    mocks.getCurrentAccount.mockResolvedValue({
+      ...ACCOUNT,
+      membership: { ...ACCOUNT.membership, role: 'member' },
+    });
+
+    await expect(purchaseSeatsAction(form(9))).rejects.toThrow(/only a lead/);
+    expect(mocks.purchaseSeats).not.toHaveBeenCalled();
+  });
+
+  it('refuses fewer seats than accepted members, which would refuse every checkpoint', async () => {
+    // quota.ts returns seats_exceeded when seats < memberCount, so allowing this would
+    // silently stop the whole workspace checkpointing.
+    await expect(purchaseSeatsAction(form(2))).rejects.toThrow(/at least 3 seats/);
+    expect(mocks.purchaseSeats).not.toHaveBeenCalled();
+  });
+
+  it('counts live invitations as seats already spent, so shrinking cannot strand an acceptance', async () => {
+    // A seat promised to a named person is spent before they accept. Guarding on accepted
+    // members alone let three members with two invitations outstanding shrink to three
+    // seats; the next acceptance then pushed memberCount past seatsPurchased and quota.ts
+    // refused every member's checkpoint until somebody worked out why.
+    mocks.seatPosition.mockResolvedValue({
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 5,
+      memberCount: 3,
+      pendingInvitations: 2,
+    });
+
+    await expect(purchaseSeatsAction(form(3))).rejects.toThrow(/at least 5 seats/);
+    await expect(purchaseSeatsAction(form(3))).rejects.toThrow(/2 invitations still waiting/);
+    expect(mocks.purchaseSeats).not.toHaveBeenCalled();
+  });
+
+  it.each([['0'], ['-4'], ['2.5'], ['many'], [undefined]])(
+    'refuses %s rather than sending a nonsense quantity to Stripe',
+    async (seats) => {
+      await expect(purchaseSeatsAction(form(seats))).rejects.toThrow(/whole number of at least 1/);
+      expect(mocks.purchaseSeats).not.toHaveBeenCalled();
+    },
+  );
+
+  it('sends no idempotency key, because an absolute quantity is already idempotent', async () => {
+    // updateSeats sets the quantity rather than incrementing it, so a double-submitted form
+    // converges. A token here would imply a retry story that does not exist.
+    await purchaseSeatsAction(form(5));
+
+    expect(mocks.purchaseSeats).toHaveBeenCalledWith(
+      expect.not.objectContaining({ attemptToken: expect.anything() }),
+    );
   });
 });

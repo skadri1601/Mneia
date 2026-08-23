@@ -1,5 +1,7 @@
 import { Fragment } from 'react';
+import { CLIENT_SETUPS } from '@/content/client-setup';
 import type { DocBlock, DocPage, DocSection } from '@/content/docs';
+import { ClientSetup } from './ClientSetup';
 import styles from './DocBody.module.css';
 
 type InlineToken = { text: string; strong?: boolean; code?: boolean };
@@ -43,6 +45,10 @@ export function DocInline({ text }: { text: string }) {
 }
 
 function Block({ block }: { block: DocBlock }) {
+  if (block.kind === 'client-setup') {
+    return <ClientSetup clients={CLIENT_SETUPS} />;
+  }
+
   if (block.kind === 'text') {
     return (
       <>

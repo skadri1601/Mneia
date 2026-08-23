@@ -204,6 +204,18 @@ async function withWorkspace<T>(
   }
 }
 
+/**
+ * Stand in for the read-back the webhook now does against Stripe, by echoing the event's
+ * own subscription object.
+ *
+ * The real handler re-reads the subscription so that redelivered and out-of-order events
+ * converge on current truth rather than replaying whatever the event body happened to
+ * carry. This journey drives one subscription through an ordered sequence, so "what Stripe
+ * holds now" and "what this event says" are the same thing, and echoing keeps the journey
+ * asserting the transitions it was written to assert. A test that needs them to disagree —
+ * a stale event arriving after a newer one — belongs in the unit suite, where the read-back
+ * can be made to return something the payload does not.
+ */
 const applyWebhook = async (store: PostgresBillingStore, payload: string) =>
   handleStripeWebhook({
     payload,
@@ -211,6 +223,18 @@ const applyWebhook = async (store: PostgresBillingStore, payload: string) =>
     configuration: CONFIG,
     store,
     now: NOW,
+    readSubscription: async () => {
+      const object = JSON.parse(payload).data.object;
+      const item = object.items?.data?.[0];
+      return {
+        id: object.id,
+        status: object.status,
+        quantity: item?.quantity ?? null,
+        customerId: object.customer ?? null,
+        priceId: item?.price?.id ?? null,
+        itemId: item?.id ?? null,
+      };
+    },
   });
 
 const attempt = (snapshot: Awaited<ReturnType<PostgresBillingStore['snapshot']>>) => ({

@@ -18,7 +18,7 @@ export const HANDOFF_DOC: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Every context product gives you somewhere to put things and a way to look them up. That puts the entire burden on whoever picks the work up: they have to know what to ask, and they cannot know what they do not know. The questions that matter most on receiving work — *what was already tried and rejected?* — are the ones nobody thinks to type.',
+            'Every context product gives you somewhere to put things and a way to look them up. That puts the entire burden on whoever picks the work up: they have to know what to ask, and they cannot know what they do not know. The questions that matter most on receiving work - *what was already tried and rejected?* - are the ones nobody thinks to type.',
             'A handoff inverts it. The person or agent stopping is the one who knows what mattered, and they are the one who produces the object. The receiver reads rather than searches.',
           ],
         },
@@ -35,7 +35,7 @@ export const HANDOFF_DOC: DocPage = {
             ['**Header**', 'Who from, who to, when. Open handoffs say `to: open`.'],
             [
               '**Next action**',
-              'The single thing to do next, concretely enough to start. Not a summary — an instruction.',
+              'The single thing to do next, concretely enough to start. Not a summary - an instruction.',
             ],
             ['**State**', 'Where the work actually is right now, including what is half-done.'],
             [
@@ -51,7 +51,7 @@ export const HANDOFF_DOC: DocPage = {
               '**Superseded recently**',
               'What was tried and rejected, so it is not proposed again.',
             ],
-            ['**Artifacts**', 'The real work — PRs, ADRs, tickets, files.'],
+            ['**Artifacts**', 'The real work - PRs, ADRs, tickets, files.'],
           ],
         },
         {
@@ -84,13 +84,13 @@ export const HANDOFF_DOC: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'This is the highest-value section in the artifact and the one no other product produces. It is what stops a fresh agent — or a colleague who was not in the room — from confidently proposing the thing the team already rejected.',
+            'This is the highest-value section in the artifact and the one no other product produces. It is what stops a fresh agent - or a colleague who was not in the room - from confidently proposing the thing the team already rejected.',
             'It works because nothing is ever deleted. A superseded item keeps its text, its reasoning, and its provenance, and it points at what replaced it. A store that overwrites cannot render this block at all, because the information required to write it was thrown away at the moment it was replaced.',
           ],
         },
         {
           kind: 'note',
-          text: 'Recency here is measured against the handoff, not against the whole project history. What matters is what was rejected during the work being handed over — an approach discarded eighteen months ago is history, not a warning.',
+          text: 'Recency here is measured against the handoff, not against the whole project history. What matters is what was rejected during the work being handed over - an approach discarded eighteen months ago is history, not a warning.',
         },
       ],
     },
@@ -114,7 +114,7 @@ export const HANDOFF_DOC: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'The rendered markdown is frozen at creation. What the sender wrote is what the receiver reads, whatever happens to the project afterwards — an artifact that rewrites itself is not receivable, because the two people can no longer be sure they read the same thing.',
+            'The rendered markdown is frozen at creation. What the sender wrote is what the receiver reads, whatever happens to the project afterwards - an artifact that rewrites itself is not receivable, because the two people can no longer be sure they read the same thing.',
             'Alongside it, the items the artifact was built from are stored as data rather than only as prose. The frozen render is the record of what was communicated; the item set is what lets the current state of any line in it be established separately.',
           ],
         },
@@ -135,7 +135,7 @@ export const HANDOFF_DOC: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'A handoff can name a recipient or leave it open. A directed handoff goes to one person, and only that person can receive it. An open handoff names nobody and may be picked up by whoever takes the work — which is the shape that fits the end of a day, a rotation, or work being put down without a decision about who resumes it.',
+            'A handoff can name a recipient or leave it open. A directed handoff goes to one person, and only that person can receive it. An open handoff names nobody and may be picked up by whoever takes the work - which is the shape that fits the end of a day, a rotation, or work being put down without a decision about who resumes it.',
             'Both are received the same way, and receiving records who took it. Open handoffs on a project can be listed, so the receiver can find what is waiting rather than needing to be told an identifier.',
           ],
         },

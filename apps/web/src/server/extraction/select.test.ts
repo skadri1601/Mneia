@@ -322,6 +322,26 @@ describe('cost controls on the OpenAI request body', () => {
     expect(bodies[1]).not.toHaveProperty('service_tier');
   });
 
+  it('reports the tier that actually served a flex retry, so the ledger is not half the real cost', async () => {
+    // The retry above bills at standard rates — twice flex. Only the provider sees the
+    // transition, so an attempt stamped with the *configured* tier prices a standard
+    // request at the flex rate and understates checkpoint_usage.cost_micros.
+    const { fetchImpl } = capture([flexUnavailable(), ok(OPENAI_BODY)]);
+
+    const result = await runnerWith(fetchImpl).run(request);
+
+    expect(result.attempts).toHaveLength(1);
+    expect(result.attempts[0]?.serviceTier).toBe('auto');
+  });
+
+  it('reports flex when flex served it, so an ordinary call is not billed at standard rates', async () => {
+    const { fetchImpl } = capture([ok(OPENAI_BODY)]);
+
+    const result = await runnerWith(fetchImpl).run(request);
+
+    expect(result.attempts[0]?.serviceTier).toBe('flex');
+  });
+
   it('does not retry a plain 429, which is an account rate limit flex cannot fix', async () => {
     // Retrying here would spend a second request that is certain to fail. The vendor
     // fallback is the right escape hatch, so the primary must fail through to it.

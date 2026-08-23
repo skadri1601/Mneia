@@ -64,6 +64,8 @@ function envWithoutCredentials(): Record<string, string | undefined> {
   return { MNEIA_CREDENTIALS_PATH: join(root, 'nowhere', 'credentials') };
 }
 
+const BOUND_AT = new Date('2026-08-23T12:00:00.000Z');
+
 async function runInit(
   api: InitApi,
   argv: readonly string[] = [],
@@ -80,7 +82,14 @@ async function runInit(
 
   const code = await route({
     argv: ['init', ...argv],
-    commands: [createInitCommand({ api, loadConfig: loadProjectConfig, resolveToken })],
+    commands: [
+      createInitCommand({
+        api,
+        loadConfig: loadProjectConfig,
+        resolveToken,
+        now: () => BOUND_AT,
+      }),
+    ],
     io,
     version: '0.0.0-test',
   });
@@ -361,7 +370,11 @@ describe('mneia init output', () => {
       await readFile(join(root, '.mneia', 'config.json'), 'utf8'),
     );
 
-    expect(withDefault).toEqual({ workspace: 'acme', project: 'checkout' });
+    expect(withDefault).toEqual({
+      workspace: 'acme',
+      project: 'checkout',
+      boundAt: BOUND_AT.toISOString(),
+    });
 
     await runInit(fakeApi(), ['--endpoint', 'https://staging.mneia.dev']);
     const withOverride: unknown = JSON.parse(
@@ -371,6 +384,7 @@ describe('mneia init output', () => {
     expect(withOverride).toEqual({
       workspace: 'acme',
       project: 'checkout',
+      boundAt: BOUND_AT.toISOString(),
       endpoint: 'https://staging.mneia.dev',
     });
     await expect(loadProjectConfig(root, {})).resolves.toMatchObject({
@@ -383,5 +397,34 @@ describe('mneia init output', () => {
     );
 
     expect(preserved).toMatchObject({ endpoint: 'https://staging.mneia.dev' });
+  });
+});
+
+describe('the binding date across re-initialisation', () => {
+  const configFile = async (): Promise<Record<string, unknown>> =>
+    JSON.parse(await readFile(join(root, '.mneia', 'config.json'), 'utf8'));
+
+  it('stamps a new binding with the time it was made', async () => {
+    await runInit(fakeApi(), ['--project', 'checkout']);
+
+    expect((await configFile()).boundAt).toBe(BOUND_AT.toISOString());
+  });
+
+  it('keeps the original date on a re-init, so sessions since then stay eligible', async () => {
+    await runInit(fakeApi(), ['--project', 'checkout']);
+    await runInit(fakeApi(), ['--project', 'checkout', '--force']);
+
+    expect((await configFile()).boundAt).toBe(BOUND_AT.toISOString());
+  });
+
+  // A config written before boundAt existed must not acquire one here: stamping today would
+  // tell the gate that every session this user has ever run predates the binding, and
+  // silently exclude all of them. Absent means "sweep as before".
+  it('leaves a legacy binding without one, rather than backdating every session out of scope', async () => {
+    await write('.mneia/config.json', JSON.stringify({ workspace: 'acme', project: 'checkout' }));
+
+    await runInit(fakeApi(), []);
+
+    expect(await configFile()).not.toHaveProperty('boundAt');
   });
 });

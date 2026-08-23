@@ -16,8 +16,22 @@ import {
   isVendorFatal,
   type ReasoningEffort,
   resolveExtractionModel,
+  SERVICE_TIERS,
   type ServiceTier,
 } from './providers.js';
+
+/**
+ * What a failed call was billed, when the vendor answered before failing.
+ *
+ * Most failures cost nothing — a timeout, a refused connection, a 4xx. A truncated response
+ * is the exception and the expensive one, so the tokens ride on the error rather than being
+ * assumed away.
+ */
+const billedInputTokens = (error: unknown): number =>
+  error instanceof ExtractionProviderError ? error.inputTokens : 0;
+
+const billedOutputTokens = (error: unknown): number =>
+  error instanceof ExtractionProviderError ? error.outputTokens : 0;
 
 export interface ExtractionAttempt {
   readonly model: string;
@@ -25,7 +39,26 @@ export interface ExtractionAttempt {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly durationMs: number;
+  /**
+   * The tier that served this attempt, when the provider reported one.
+   *
+   * Absent for a vendor without tiers, and for a failed attempt that never got a response.
+   * The caller falls back to the configured tier — reported beats configured, because a
+   * flex request with no capacity is re-sent at standard rates and costs twice what the
+   * configuration implies.
+   */
+  readonly serviceTier?: ServiceTier | undefined;
 }
+
+/**
+ * Narrow what a provider reported to a tier we can price.
+ *
+ * A provider is free to report anything; only the tiers in the pricing table may reach the
+ * ledger, and an unrecognised one falls back to the configured tier rather than being
+ * carried through as a value `costMicrosFor` would refuse.
+ */
+const reportedTier = (value: string | undefined): ServiceTier | undefined =>
+  SERVICE_TIERS.find((tier) => tier === value);
 
 export interface ExtractionRunResult {
   readonly text: string;
@@ -137,6 +170,7 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
           inputTokens: response.inputTokens,
           outputTokens: response.outputTokens,
           durationMs: now() - startedAt,
+          serviceTier: reportedTier(response.serviceTier),
         });
         return { text: response.text, model: primary.id, attempts };
       } catch (error) {
@@ -145,11 +179,14 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
         // on a second attempt, or this vendor is refusing everything we send it.
         const worthFallingBack = retryable || isVendorFatal(error);
         const fits = fallback === null ? false : fitsWindow(request, fallback);
+        // Not always zero: a truncated response is billed in full, and those are the calls
+        // that spent the whole output ceiling. Zeroing them here hid the most expensive
+        // requests we make from checkpoint_usage whenever the fallback then succeeded.
         attempts.push({
           model: primary.id,
           outcome: worthFallingBack && fallback !== null && fits ? 'fell_back' : 'failed',
-          inputTokens: 0,
-          outputTokens: 0,
+          inputTokens: billedInputTokens(error),
+          outputTokens: billedOutputTokens(error),
           durationMs: now() - startedAt,
         });
 
@@ -176,14 +213,15 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
             inputTokens: response.inputTokens,
             outputTokens: response.outputTokens,
             durationMs: now() - fallbackStartedAt,
+            serviceTier: reportedTier(response.serviceTier),
           });
           return { text: response.text, model: fallback.id, attempts };
         } catch (fallbackError) {
           attempts.push({
             model: fallback.id,
             outcome: 'failed',
-            inputTokens: 0,
-            outputTokens: 0,
+            inputTokens: billedInputTokens(fallbackError),
+            outputTokens: billedOutputTokens(fallbackError),
             durationMs: now() - fallbackStartedAt,
           });
           throw new ExtractionRunError(fallbackError, attempts);

@@ -15,6 +15,7 @@ export const SHIPPED_COMMAND_NAMES = [
   'pickup',
   'team',
   'sessions',
+  'mcp',
 ] as const;
 
 export type ShippedCommandName = (typeof SHIPPED_COMMAND_NAMES)[number];
@@ -83,6 +84,19 @@ const assertFlagName = (name: string, token: string): void => {
   }
 };
 
+const setFlagValue = (
+  flags: Record<string, string | boolean>,
+  name: string,
+  value: string | boolean,
+): void => {
+  const current = flags[name];
+  if (name === 'client' && typeof current === 'string' && typeof value === 'string') {
+    flags[name] = `${current},${value}`;
+    return;
+  }
+  flags[name] = value;
+};
+
 const readFlag = (
   body: string,
   next: string | undefined,
@@ -94,7 +108,7 @@ const readFlag = (
   if (separator >= 0) {
     const name = canonicalFlagName(body.slice(0, separator));
     assertFlagName(name, token);
-    flags[name] = body.slice(separator + 1);
+    setFlagValue(flags, name, body.slice(separator + 1));
     return 0;
   }
 
@@ -102,11 +116,11 @@ const readFlag = (
   assertFlagName(name, token);
 
   if (usesNextToken(name, next)) {
-    flags[name] = next;
+    setFlagValue(flags, name, next);
     return 1;
   }
 
-  flags[name] = true;
+  setFlagValue(flags, name, true);
   return 0;
 };
 

@@ -82,7 +82,7 @@ export default function DocsPage() {
         <Link className={styles.inlineLink} href="/docs/conflicts">
           conflict resolution
         </Link>{' '}
-        decides what happens — and only one of its three rules is automatic. Every surface is a
+        decides what happens - and only one of its three rules is automatic. Every surface is a
         translation of the same verbs, so the CLI, an MCP client, the web app, and a CI runner
         return the same answer for the same input.
       </p>

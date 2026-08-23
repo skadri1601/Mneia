@@ -1,4 +1,4 @@
-export const VERSION = '0.14.1';
+export const VERSION = '0.15.0';
 
 export * from './api/index.js';
 export { sanitizeActorName, UNATTRIBUTED_ACTOR } from './domain/attribution.js';

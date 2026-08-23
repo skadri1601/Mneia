@@ -3,6 +3,7 @@ import 'server-only';
 import type { PostgresConnectionSource } from '@mneia/core';
 import { database } from '../database.js';
 import { type BillingStore, PostgresBillingStore } from './billing-store.js';
+import { StripeSeatSync } from './checkout.js';
 import { checkpointQuota, type QuotaDecision, type QuotaRequest } from './quota.js';
 import { PostgresQuotaStore, type QuotaStore } from './quota-store.js';
 import { requireStripeConfiguration, StripeClient } from './stripe.js';
@@ -37,16 +38,31 @@ export interface BillingRuntime {
   readonly store: BillingStore;
   readonly stripe: StripeClient;
   readonly origin: string;
+  /**
+   * Pushes a workspace's seat count to its Stripe subscription.
+   *
+   * Built from the same store and client as the rest of the runtime rather than
+   * constructing its own, so a request holds one StripeClient and one connection source.
+   * Exposed here because StripeSeatSync was reachable from nowhere: `updateSeats` has
+   * existed since MNE-141 and nothing could call it, which is the seat-sync revenue leak.
+   */
+  readonly seatSync: StripeSeatSync;
 }
 
 export const createBillingRuntime = (
   source: PostgresConnectionSource,
   env: Readonly<Record<string, string | undefined>> = process.env,
-): BillingRuntime => ({
-  store: createBillingStore(source),
-  stripe: new StripeClient({ configuration: requireStripeConfiguration(env) }),
-  origin: billingOrigin(env),
-});
+): BillingRuntime => {
+  const store = createBillingStore(source);
+  const stripe = new StripeClient({ configuration: requireStripeConfiguration(env) });
+
+  return {
+    store,
+    stripe,
+    origin: billingOrigin(env),
+    seatSync: new StripeSeatSync(store, stripe),
+  };
+};
 
 export const createBillingStore = (source: PostgresConnectionSource): BillingStore =>
   new PostgresBillingStore(source);

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ApiError, createHttpTransport } from './http.js';
 import { createRemoteStore } from './remote-store.js';
+import { CheckpointWriteWireSchema } from './wire.js';
 
 const SCOPE = {
   workspaceId: '22222222-2222-4222-8222-222222222222',
@@ -134,6 +135,98 @@ describe('remote store transport', () => {
     expect(body).not.toContain('a-caller-supplied-actor');
     expect(body).not.toContain('humanConfirmed');
     expect(body).not.toContain('assertedBy');
+  });
+
+  it('sends the source watermark, which is the only record of how far extraction got', async () => {
+    const projectId = '33333333-3333-4333-8333-333333333333';
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        result: {
+          checkpoint: {
+            id: '77777777-7777-4777-8777-777777777777',
+            workspaceId: SCOPE.workspaceId,
+            projectId,
+            sessionId: null,
+            actorId: SCOPE.actorId,
+            trigger: 'manual',
+            createdAt: '2026-08-07T10:00:00.000Z',
+            summary: null,
+          },
+          items: [],
+          written: [],
+        },
+      },
+    }));
+
+    await store.writeCheckpoint({
+      checkpoint: {
+        projectId,
+        actorId: SCOPE.actorId,
+        trigger: 'manual',
+        source: 'claude-code',
+        sourceSessionRef: 'session-1',
+        sourceWatermark: 't41',
+      },
+      items: [],
+    });
+
+    // Dropping these three left checkpoint.source_watermark NULL on every hosted write, so
+    // watermarkFor always answered null and every run re-extracted the whole session and
+    // paid for it again (MNE-100). The server still resolves the actor from the token.
+    const body = calls.at(0)?.body as { checkpoint: Record<string, unknown> } | undefined;
+    expect(body?.checkpoint.sourceWatermark).toBe('t41');
+    expect(body?.checkpoint.sourceSessionRef).toBe('session-1');
+    expect(body?.checkpoint.source).toBe('claude-code');
+    expect(JSON.stringify(body)).not.toContain(SCOPE.actorId);
+  });
+
+  it('sends conflictsWith, and the body it sends parses as the API schema', async () => {
+    const projectId = '33333333-3333-4333-8333-333333333333';
+    const contradicted = '99999999-9999-4999-8999-999999999999';
+    const { calls, store } = stub(() => ({
+      status: 200,
+      body: {
+        result: {
+          checkpoint: {
+            id: '77777777-7777-4777-8777-777777777777',
+            workspaceId: SCOPE.workspaceId,
+            projectId,
+            sessionId: null,
+            actorId: SCOPE.actorId,
+            trigger: 'manual',
+            createdAt: '2026-08-07T10:00:00.000Z',
+            summary: null,
+          },
+          items: [],
+          written: [],
+        },
+      },
+    }));
+
+    await store.writeCheckpoint({
+      checkpoint: { projectId, actorId: SCOPE.actorId, trigger: 'manual' },
+      items: [
+        {
+          action: 'superseded',
+          item: {
+            projectId,
+            kind: 'decision',
+            title: 'use Stripe after all',
+            supersedesId: contradicted,
+          },
+          conflictsWith: contradicted,
+        },
+      ],
+    });
+
+    // Asserting what the body MUST CONTAIN, not only what it must not. This file checked
+    // absence only, which is how both this and the source watermark shipped: a field the
+    // encoder forgot is invisible to a negative assertion (MNE-100).
+    const parsed = CheckpointWriteWireSchema.safeParse(calls.at(0)?.body);
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.items[0]?.conflictsWith).toBe(contradicted);
+    expect(parsed.success && parsed.data.items[0]?.item.supersedesId).toBe(contradicted);
   });
 
   it('surfaces a refused supersede as a typed error the caller can branch on', async () => {

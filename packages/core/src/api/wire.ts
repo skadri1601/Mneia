@@ -780,33 +780,44 @@ export const ExtractionCoverageWireSchema = z.strictObject({
 
 export type ExtractionCoverageWire = z.infer<typeof ExtractionCoverageWireSchema>;
 
-export const CheckpointWriteWireSchema = z.object({
-  checkpoint: z.object({
-    projectId: uuid,
-    sessionId: uuid.nullable().optional(),
-    trigger: z.enum(CHECKPOINT_TRIGGERS),
-    summary: z
-      .string()
-      .max(MAX_BODY_LENGTH)
-      .refine(isStorableText, NO_NULL_BYTE)
-      .nullable()
-      .optional(),
-    source: z.enum(TRAJECTORY_SOURCES).nullable().optional(),
-    sourceSessionRef: z.string().max(300).nullable().optional(),
-    sourceWatermark: z.string().max(300).nullable().optional(),
-    coverage: ExtractionCoverageWireSchema.optional(),
-  }),
-  items: z
-    .array(
-      z.object({
-        action: z.enum(CHECKPOINT_ACTIONS),
-        item: NewContextItemWireSchema,
-        conflictsWith: uuid.nullable().optional(),
-      }),
-    )
-    .min(1)
-    .max(MAX_CHECKPOINT_ITEMS),
-});
+export const CheckpointWriteWireSchema = z
+  .object({
+    checkpoint: z.object({
+      projectId: uuid,
+      sessionId: uuid.nullable().optional(),
+      trigger: z.enum(CHECKPOINT_TRIGGERS),
+      summary: z
+        .string()
+        .max(MAX_BODY_LENGTH)
+        .refine(isStorableText, NO_NULL_BYTE)
+        .nullable()
+        .optional(),
+      source: z.enum(TRAJECTORY_SOURCES).nullable().optional(),
+      sourceSessionRef: z.string().max(300).nullable().optional(),
+      sourceWatermark: z.string().max(300).nullable().optional(),
+      coverage: ExtractionCoverageWireSchema.optional(),
+    }),
+    // No .min(1). Extraction that consumed turns and found nothing worth keeping still has
+    // something to record: how far it got. Refusing that checkpoint left the watermark
+    // where it was, so the same turns were extracted and billed again on every later run,
+    // and an oversized session never advanced past its first upload (MNE-100).
+    items: z
+      .array(
+        z.object({
+          action: z.enum(CHECKPOINT_ACTIONS),
+          item: NewContextItemWireSchema,
+          conflictsWith: uuid.nullable().optional(),
+        }),
+      )
+      .max(MAX_CHECKPOINT_ITEMS),
+  })
+  // An empty checkpoint is only meaningful as a watermark. Without one it records
+  // nothing at all, so it stays an error rather than becoming a way to write blank rows.
+  .refine((write) => write.items.length > 0 || (write.checkpoint.sourceWatermark ?? '') !== '', {
+    message:
+      'expected a checkpoint to carry at least one item, or a sourceWatermark when it carries none; received neither — send the items to record, or the watermark the extraction reached',
+    path: ['items'],
+  });
 
 export type CheckpointWriteWire = z.infer<typeof CheckpointWriteWireSchema>;
 
@@ -840,6 +851,15 @@ export const CheckpointProposeWireSchema = z.object({
   // No .min(1): the client probes for the server's watermark by uploading no turns at
   // all, and requiring one made an oversized session impossible to checkpoint (MNE-100).
   turns: z.array(TrajectoryTurnWireSchema).max(MAX_TRAJECTORY_TURNS),
+  /**
+   * What the person said this session was about, from `mneia checkpoint -m`.
+   *
+   * Optional because not every caller states one, and because an older client does not
+   * send the field at all. When present it is shown to the extraction model: a long
+   * session is split across many requests, and this is the only thing that tells each of
+   * them what the session as a whole was for.
+   */
+  summary: z.string().max(MAX_REVIEW_SUMMARY_LENGTH).optional(),
   /**
    * The client is knowingly re-sending from the start of the transcript.
    *

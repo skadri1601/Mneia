@@ -45,7 +45,7 @@ export const CONCEPTS: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'The third is the one that decides the shape of the other two. Most context products are a place to *store* things and a way to *query* them, which is a database posture. The actual job is a transfer: work stops with one actor and resumes with another — the same person tomorrow, a colleague next week, a different agent on the next task. Mneia is built around the artifact produced at the moment of stopping and consumed at the moment of resuming.',
+            'The third is the one that decides the shape of the other two. Most context products are a place to *store* things and a way to *query* them, which is a database posture. The actual job is a transfer: work stops with one actor and resumes with another - the same person tomorrow, a colleague next week, a different agent on the next task. Mneia is built around the artifact produced at the moment of stopping and consumed at the moment of resuming.',
             'Conflict arbitration is not a fourth operation. It is what happens when two of these three collide, and it has its own page.',
           ],
         },
@@ -58,7 +58,7 @@ export const CONCEPTS: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'A context item is the unit of project memory. It has a kind, and the kind decides how it is treated during rehydration — a constraint is not scored against a fact and cannot be crowded out by one.',
+            'A context item is the unit of project memory. It has a kind, and the kind decides how it is treated during rehydration - a constraint is not scored against a fact and cannot be crowded out by one.',
           ],
         },
         {
@@ -72,7 +72,7 @@ export const CONCEPTS: DocPage = {
             ],
             ['`open_question`', 'Something unresolved, with an owner and an age'],
             ['`fact`', 'Something true about the project that is neither a ruling nor a rule'],
-            ['`artifact_ref`', 'A pointer to the real work — a PR, an ADR, a ticket, a file'],
+            ['`artifact_ref`', 'A pointer to the real work - a PR, an ADR, a ticket, a file'],
           ],
         },
         {
@@ -91,22 +91,22 @@ export const CONCEPTS: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Every item records who asserted it — a human or an agent, which one, when, and on what basis. That distinction is rendered everywhere the item appears, because it is the distinction that decides what to trust.',
+            'Every item records who asserted it - a human or an agent, which one, when, and on what basis. That distinction is rendered everywhere the item appears, because it is the distinction that decides what to trust.',
             'A human-confirmed constraint and an unconfirmed agent assertion are not the same object and must not look the same. Most memory products flatten them into one list of facts, which is how a guess acquires the authority of a ruling.',
           ],
         },
         {
           kind: 'bullets',
           items: [
-            '**Human-confirmed** — a person read it and said yes. It carries authority.',
-            '**Agent-asserted** — extracted from a session and not yet confirmed. Useful, and visibly provisional.',
-            '**Disputed** — an assertion that contradicts a human-confirmed item. Stored, flagged, and never silently applied.',
+            '**Human-confirmed** - a person read it and said yes. It carries authority.',
+            '**Agent-asserted** - extracted from a session and not yet confirmed. Useful, and visibly provisional.',
+            '**Disputed** - an assertion that contradicts a human-confirmed item. Stored, flagged, and never silently applied.',
           ],
         },
         {
           kind: 'text',
           paragraphs: [
-            'Provenance also reaches back to where the claim came from. An item names the session it was extracted from, and a session names the client that produced it — the tool, its version, and a deep link back to the original conversation where the client exposes one. When a client exposes only part of that, the missing part is reported as partial provenance rather than guessed at.',
+            'Provenance also reaches back to where the claim came from. An item names the session it was extracted from, and a session names the client that produced it - the tool, its version, and a deep link back to the original conversation where the client exposes one. When a client exposes only part of that, the missing part is reported as partial provenance rather than guessed at.',
           ],
         },
         {
@@ -140,13 +140,13 @@ export const CONCEPTS: DocPage = {
           kind: 'text',
           paragraphs: [
             'Items are bi-temporal. `assertedAt` records when somebody said it; `validFrom` and `validTo` record the window in which it was true of the project. The two are not the same, and collapsing them loses the question worth asking.',
-            'Keeping both is what makes it possible to answer *what did we believe on the third of March* — separately from *what do we believe now*. That is the question a postmortem asks, and the question an audit asks, and neither can be reconstructed from a store that overwrites.',
+            'Keeping both is what makes it possible to answer *what did we believe on the third of March* - separately from *what do we believe now*. That is the question a postmortem asks, and the question an audit asks, and neither can be reconstructed from a store that overwrites.',
           ],
         },
         {
           kind: 'bullets',
           items: [
-            '`decayAfter` marks an item that goes stale on its own — a fact about a dependency version, say, rather than a standing rule. A null value means it does not go stale.',
+            '`decayAfter` marks an item that goes stale on its own - a fact about a dependency version, say, rather than a standing rule. A null value means it does not go stale.',
             '`lastVerifiedAt` records the last time somebody checked. Freshness lowers an item’s score before it is ever dropped.',
             'A supersede chain is walkable in both directions, so the history of one decision reads as a sequence rather than a pile.',
           ],
@@ -175,7 +175,7 @@ export const CONCEPTS: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'The scoring function and the packer have their own page. The short version: relevance to the stated task, weighted by how much authority the item carries and how fresh it is, penalised if it is disputed — and then a guaranteed pass that puts the constraints back regardless.',
+            'The scoring function and the packer have their own page. The short version: relevance to the stated task, weighted by how much authority the item carries and how fresh it is, penalised if it is disputed - and then a guaranteed pass that puts the constraints back regardless.',
           ],
         },
       ],
@@ -217,9 +217,9 @@ export const CONCEPTS: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'A **workspace** is the tenant — one company. A **team** sits inside it and carries a function, which is what makes a support engineer’s default view different from a backend team’s. A **project** is a body of work, usually but not necessarily one repository. A **session** is one run of an agent against a project, and it is what a checkpoint summarises. An **actor** is a person or an agent inside one workspace; the same person in two workspaces is two actors and one identity.',
+            'A **workspace** is the tenant - one company. A **team** sits inside it and carries a function, which is what makes a support engineer’s default view different from a backend team’s. A **project** is a body of work, usually but not necessarily one repository. A **session** is one run of an agent against a project, and it is what a checkpoint summarises. An **actor** is a person or an agent inside one workspace; the same person in two workspaces is two actors and one identity.',
             'Every item carries an access scope, ordered from the individual outward: private, project, team, workspace, and an explicit grant list. Every row carries the workspace it belongs to, and the database enforces isolation with Postgres row-level security rather than relying on the application to remember.',
-            'Privacy is enforced by controls — scope, retention, residency — not by keeping data on your laptop, because a hosted service cannot honestly promise the latter.',
+            'Privacy is enforced by controls - scope, retention, residency - not by keeping data on your laptop, because a hosted service cannot honestly promise the latter.',
           ],
         },
       ],

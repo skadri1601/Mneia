@@ -63,7 +63,7 @@ export function ConsentBanner() {
               type="checkbox"
             />
             <span>
-              <strong>Analytics</strong> — which pages are read, and where visitors arrive from.
+              <strong>Analytics</strong> - which pages are read, and where visitors arrive from.
             </span>
           </label>
           <label className={styles.choice}>
@@ -73,7 +73,7 @@ export function ConsentBanner() {
               type="checkbox"
             />
             <span>
-              <strong>Advertising</strong> — measuring ad campaigns, and showing them to you
+              <strong>Advertising</strong> - measuring ad campaigns, and showing them to you
               elsewhere.
             </span>
           </label>

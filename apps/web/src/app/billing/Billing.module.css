@@ -101,6 +101,29 @@
   transform: scale(var(--press-scale));
 }
 
+/* The seat form is the only control on this page that takes a value rather than just a
+   click, so it needs a label and a field the other two forms do not. */
+.form label {
+  font-size: var(--size-fine-print);
+  color: var(--tile-muted);
+}
+
+.form input {
+  min-height: var(--target-min);
+  width: 8ch;
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-sm);
+  background: var(--canvas);
+  color: var(--ink);
+  padding-inline: var(--space-sm);
+  font: inherit;
+}
+
+.form input:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
+}
+
 @media (max-width: 480px) {
   .facts {
     grid-template-columns: 1fr;

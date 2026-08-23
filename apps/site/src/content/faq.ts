@@ -18,22 +18,22 @@ export const FAQ_GETTING_STARTED: readonly Faq[] = [
   {
     question: 'Is Mneia available yet?',
     answer:
-      'Yes. Sign up at app.mneia.dev and install the clients from npm, then read the quickstart — it takes you from nothing to a rehydrated session in six steps. If a command is not in the build you have, the CLI names it rather than failing as an unknown command, so you can always tell that apart from a typo.',
+      'Yes. Sign up at app.mneia.dev and install the clients from npm, then read the quickstart - it takes you from nothing to a rehydrated session in six steps. If a command is not in the build you have, the CLI names it rather than failing as an unknown command, so you can always tell that apart from a typo.',
   },
   {
     question: 'How do I get access?',
     answer:
-      'Sign up at app.mneia.dev with a work email, or accept an invitation from a colleague. Accepting an invitation puts you in their workspace rather than a new one of your own, which matters — two people at the same company who each sign up cold land in separate workspaces and cannot see each other’s work.',
+      'Sign up at app.mneia.dev with a work email, or accept an invitation from a colleague. Accepting an invitation puts you in their workspace rather than a new one of your own, which matters - two people at the same company who each sign up cold land in separate workspaces and cannot see each other’s work.',
   },
   {
     question: 'What do I install?',
     answer:
-      'Two packages, and most people want both. The CLI — npm install -g @mneia/cli — gives you mneia init, brief, checkpoint, log, and status in the terminal. The MCP server exposes mneia_rehydrate, mneia_assert, mneia_checkpoint, and mneia_search to Claude Code, Cursor, Codex, or any other MCP client, so the agent reads and writes project memory without you relaying it; add it with claude mcp add mneia -- npx -y @mneia/mcp-server. Node 20.11 or newer for both.',
+      'Install both clients with npm install -g @mneia/cli @mneia/mcp-server. Run mneia login, mneia init, then mneia mcp install to detect and configure Codex, Claude Code, Claude Desktop, Cursor, Gemini CLI, VS Code, Windsurf, or another supported MCP client. The CLI drives the terminal surface; the MCP server exposes all eleven shipped tools so the agent can rehydrate, checkpoint, and hand work off without you relaying it. Node 20.11 or newer for both.',
   },
   {
     question: 'How do I get my team into the same workspace?',
     answer:
-      'Invite them by email from the team page, and they land in your workspace when they accept. This is worth doing early rather than at the end. Mneia only does its actual job — carrying what one person decided to the next person who picks the work up — once there is more than one writer in a project. A workspace of one is a memory tool; a workspace of several is the product.',
+      'Invite them by email from the team page, and they land in your workspace when they accept. This is worth doing early rather than at the end. Mneia only does its actual job - carrying what one person decided to the next person who picks the work up - once there is more than one writer in a project. A workspace of one is a memory tool; a workspace of several is the product.',
   },
   {
     question: 'What does mneia init actually do to my repository?',
@@ -76,7 +76,7 @@ export const FAQ_DATA: readonly Faq[] = [
   {
     question: 'What telemetry does Mneia collect, and can I turn it off?',
     answer:
-      'Mneia records structured product events — that a checkpoint ran, how large a rehydration slice was, whether an item was confirmed — because the quality of the extraction cannot be improved without measuring it. Your content is not in those events by default, and you can opt out entirely by setting MNEIA_TELEMETRY=off in the environment of the CLI or the MCP server.',
+      'Mneia records structured product events - that a checkpoint ran, how large a rehydration slice was, whether an item was confirmed - because the quality of the extraction cannot be improved without measuring it. Your content is not in those events by default, and you can opt out entirely by setting MNEIA_TELEMETRY=off in the environment of the CLI or the MCP server.',
   },
   {
     question: 'What happens to my project memory if I stop paying or leave?',
@@ -92,7 +92,7 @@ export const FAQ_SUPPORT: readonly Faq[] = [
       'Email security@mneia.dev with enough detail to reproduce it. Please do not include anyone else’s data in the report. Mneia is a small team, so that address reaches a person directly rather than a queue.',
   },
   {
-    question: 'How do I exercise a privacy right — access, correction, or deletion?',
+    question: 'How do I exercise a privacy right - access, correction, or deletion?',
     answer:
       'Email privacy@mneia.dev. Requests under the GDPR, the CCPA and other US state laws, and India’s DPDP Act are answered within the statutory window set out in the Privacy Policy. If you are on the waitlist and want off it, the unsubscribe link hard-deletes your address rather than flagging it.',
   },

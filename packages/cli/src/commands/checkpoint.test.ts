@@ -12,6 +12,8 @@ import {
   type CommitRequest,
   createCheckpointCommand,
   type DiscoveredSession,
+  selectSessions,
+  startedBeforeBinding,
   emitReviewEvents,
   needsHuman,
   type ProposeRequest,
@@ -120,6 +122,7 @@ function proposalOf(candidates: readonly CheckpointCandidate[]): CheckpointPropo
     sourceSessionRef: 'session-newest',
     watermark: null,
     candidates,
+    consumedTurns: candidates.length === 0 ? 0 : 12,
     pendingTurns: 0,
     incompleteReason: null,
     droppedBeforeUpload: 0,
@@ -148,12 +151,14 @@ const NEWEST_SESSION: DiscoveredSession = {
   source: 'claude-code',
   sessionRef: 'session-newest',
   lastActivityAt: new Date('2026-08-20T16:41:00.000Z'),
+  startedAt: new Date('2026-08-20T16:00:00.000Z'),
 };
 
 const OLDER_SESSION: DiscoveredSession = {
   source: 'cursor',
   sessionRef: 'session-older',
   lastActivityAt: new Date('2026-08-19T09:10:00.000Z'),
+  startedAt: new Date('2026-08-19T09:00:00.000Z'),
 };
 
 class FakeApi implements CheckpointApi {
@@ -743,6 +748,45 @@ describe('mneia checkpoint', () => {
     expect(api.commits).toHaveLength(0);
     expect(sink.out.join('')).toContain('Nothing to checkpoint');
   });
+
+  it('banks the watermark when extraction read turns and kept nothing', async () => {
+    const api = new FakeApi({ ...proposalOf([]), watermark: 't41', consumedTurns: 42 });
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    const code = await command.run({ args: [], flags: {}, json: false, io: sink.io });
+
+    // Without this commit the watermark stays where it was, so the next run re-uploads
+    // and re-extracts the same 42 turns and is billed for them again (MNE-100).
+    expect(code).toBe(0);
+    expect(api.commits).toHaveLength(1);
+    expect(api.commits[0]?.watermark).toBe('t41');
+    expect(api.commits[0]?.automatic).toHaveLength(0);
+    expect(api.commits[0]?.reviewed).toHaveLength(0);
+  });
+
+  it('writes nothing when the session had nothing new to read', async () => {
+    const api = new FakeApi({ ...proposalOf([]), watermark: 't41', consumedTurns: 0 });
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    const code = await command.run({ args: [], flags: {}, json: false, io: sink.io });
+
+    // The watermark is already at the end, so no model was called and there is nothing to
+    // bank. Committing here would append an empty checkpoint on every single invocation.
+    expect(code).toBe(0);
+    expect(api.commits).toHaveLength(0);
+  });
 });
 
 describe('mneia checkpoint across sessions', () => {
@@ -1030,5 +1074,102 @@ describe('mneia checkpoint across sessions', () => {
     await expect(
       commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io }),
     ).rejects.toThrow(/found no agent session for \/repo/);
+  });
+});
+
+describe('sessions that predate the binding', () => {
+  const BOUND_AT = new Date('2026-08-20T12:00:00.000Z');
+  const discovery = (sessions: readonly DiscoveredSession[]): SessionDiscovery => ({
+    sessions,
+    blocked: [],
+  });
+
+  it('keeps a session that started after the repo was bound', () => {
+    expect(startedBeforeBinding(NEWEST_SESSION, BOUND_AT)).toBe(false);
+    expect(selectSessions(discovery([NEWEST_SESSION]), null, '/repo', BOUND_AT)).toEqual([
+      NEWEST_SESSION,
+    ]);
+  });
+
+  it('drops a session that started before it, so no model call is bought for it', () => {
+    expect(startedBeforeBinding(OLDER_SESSION, BOUND_AT)).toBe(true);
+    expect(
+      selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', BOUND_AT),
+    ).toEqual([NEWEST_SESSION]);
+  });
+
+  it('falls back to last activity when the harness recorded no start time', () => {
+    const noStart: DiscoveredSession = { ...OLDER_SESSION, startedAt: null };
+    expect(startedBeforeBinding(noStart, BOUND_AT)).toBe(true);
+  });
+
+  it('sweeps everything when the binding predates boundAt being recorded', () => {
+    expect(startedBeforeBinding(OLDER_SESSION, null)).toBe(false);
+    expect(selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', null)).toEqual(
+      [NEWEST_SESSION, OLDER_SESSION],
+    );
+  });
+
+  it('explains itself when every discovered session predates the binding', () => {
+    expect(() => selectSessions(discovery([OLDER_SESSION]), null, '/repo', BOUND_AT)).toThrow(
+      /started before this repo was bound to Mneia on 2026-08-20 12:00 UTC/,
+    );
+  });
+
+  it('refuses an explicitly named session from before the binding', () => {
+    expect(() =>
+      selectSessions(discovery([OLDER_SESSION]), 'session-older', '/repo', BOUND_AT),
+    ).toThrow(/--session session-older names cursor session-older, which started before/);
+  });
+});
+
+describe('naming a session with --source does not skip the binding gate', () => {
+  const BOUND = new Date('2026-08-20T12:00:00.000Z');
+  const gatedConfig = { ...CONFIG, boundAt: BOUND } as ProjectConfig;
+
+  // --source with --session skips discovery on purpose. The synthetic entry it builds has no
+  // timestamps, so before this it walked past the gate and uploaded a pre-binding transcript
+  // that the same session named without --source would have been refused.
+  it('refuses a pre-binding session even on the discovery-skipping fast path', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [OLDER_SESSION];
+    const sink = capture();
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => gatedConfig,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    await expect(
+      command.run({
+        args: [],
+        flags: { session: OLDER_SESSION.sessionRef, source: OLDER_SESSION.source },
+        json: false,
+        io: sink.io,
+      }),
+    ).rejects.toThrow(/started before this repo was bound/);
+
+    expect(api.proposals).toHaveLength(0);
+  });
+
+  it('still checkpoints a session that started after the binding', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION];
+    const sink = capture();
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => gatedConfig,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    const code = await command.run({
+      args: [],
+      flags: { session: NEWEST_SESSION.sessionRef, source: NEWEST_SESSION.source },
+      json: false,
+      io: sink.io,
+    });
+
+    expect(code).toBe(0);
+    expect(api.proposals).toHaveLength(1);
   });
 });

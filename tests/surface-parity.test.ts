@@ -415,6 +415,10 @@ const COMMAND_PARITY: Readonly<Record<ShippedCommandName, CommandParity>> = {
     kind: 'command-only',
     why: 'runs the device authorisation flow that puts a token on this machine; an MCP server is handed its token by the host that launches it, so there is nothing for a tool to do',
   },
+  mcp: {
+    kind: 'command-only',
+    why: 'configures third-party MCP client files on the user machine; the MCP tool surface is the server being configured and cannot edit the configuration of its host client',
+  },
   whoami: {
     kind: 'command-only',
     why: 'prints which actor, workspace, and team this machine is signed in as; the MCP host already knows the identity it configured, so no tool reports it back',

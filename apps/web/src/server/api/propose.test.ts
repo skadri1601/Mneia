@@ -117,9 +117,19 @@ const depsWith = (overrides: Partial<Parameters<typeof handleProposeCheckpoint>[
     }),
     servableContextTokens: 200_000,
     primaryModel: 'gpt-5.6-luna',
+    serviceTier: 'flex' as const,
     ...overrides,
   };
   return { deps, seen };
+};
+
+/** What the store is handed, once the record has survived the deps boundary. */
+const usageRecord = (seen: { usage: unknown[] }): Record<string, unknown> => {
+  const record = seen.usage[0];
+  if (record === null || typeof record !== 'object') {
+    throw new Error(`expected recordUsage to have been called with an object; got ${record}`);
+  }
+  return record as Record<string, unknown>;
 };
 
 describe('handleProposeCheckpoint', () => {
@@ -343,12 +353,132 @@ describe('handleProposeCheckpoint', () => {
 
     await expect(handleProposeCheckpoint(storeStub(), input(['a']), deps)).rejects.toThrow();
     expect(seen.usage).toHaveLength(1);
-    // toMatchObject, not toHaveBeenCalledWith: the record now also carries the turn count,
-    // the priced cost and any wallet debit, and this test is about the attempts surviving
-    // a rejected or failed extraction, not about the shape of the whole record.
+    // objectContaining, not toHaveBeenCalledWith: the record also carries the turn count,
+    // the chargeable prefix and any wallet authorization, and this test is about the
+    // attempts surviving a rejected extraction, not about the shape of the whole record.
     expect(deps.recordUsage).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: PROJECT.id, attempts }),
+      expect.objectContaining({
+        projectId: PROJECT.id,
+        attempts: attempts.map((attempt) => ({ ...attempt, serviceTier: 'flex' })),
+      }),
     );
+
+    // The model produced output we could not parse, so no chunk was committed and the
+    // customer receives nothing. We still paid the provider, which is why the attempt is
+    // recorded — but it is not chargeable.
+    expect(usageRecord(seen).chargeableAttempts).toBe(0);
+  });
+
+  describe('what reaches the wallet', () => {
+    it('passes the authorization as a ceiling, not as the charge', async () => {
+      // quota returns the pre-flight estimate, which pricing.ts deliberately sizes high.
+      // Handing it on as the amount to take is what over-charged every wallet-funded
+      // checkpoint; it travels as walletAuthorizationMicros so the store can reconcile
+      // downwards to the real cost.
+      const { deps, seen } = depsWith({
+        quota: vi.fn(
+          async () => ({ allowed: true, source: 'wallet', debitMicros: 9_999 }) as const,
+        ),
+      });
+
+      await handleProposeCheckpoint(storeStub(), input(['a', 'b']), deps);
+
+      const record = usageRecord(seen);
+      expect(record.walletAuthorizationMicros).toBe(9_999);
+      expect(record).not.toHaveProperty('walletDebitMicros');
+      expect(record).not.toHaveProperty('costMicros');
+    });
+
+    it('authorizes nothing when the checkpoint ran on allowance', async () => {
+      // Standing rule 7: solo is free, and a free workspace runs on allowance. A zero
+      // authorization is what makes a debit impossible rather than merely unlikely.
+      const { deps, seen } = depsWith();
+
+      await handleProposeCheckpoint(storeStub(), input(['a', 'b']), deps);
+
+      expect(usageRecord(seen).walletAuthorizationMicros).toBe(0);
+    });
+
+    it('charges only the chunks it committed when a later chunk fails', async () => {
+      // Two chunks: the first parses, the second throws. The customer received one chunk
+      // and the watermark stops there, so exactly one attempt is chargeable while both are
+      // still recorded as our cost.
+      const succeeded = {
+        model: 'gpt-5.6-luna',
+        outcome: 'succeeded' as const,
+        inputTokens: 900,
+        outputTokens: 40,
+        durationMs: 12,
+      };
+      const failed = { ...succeeded, outcome: 'failed' as const, outputTokens: 0 };
+
+      let call = 0;
+      const { deps, seen } = depsWith({
+        servableContextTokens: 20_000,
+        quota: vi.fn(
+          async () => ({ allowed: true, source: 'wallet', debitMicros: 50_000 }) as const,
+        ),
+        run: vi.fn(async () => {
+          call += 1;
+          if (call === 1) {
+            return { text: CANDIDATES, model: 'gpt-5.6-luna', attempts: [succeeded] };
+          }
+          throw new ExtractionRunError(new Error('the provider reset the connection'), [failed]);
+        }),
+      });
+
+      await handleProposeCheckpoint(
+        storeStub(),
+        input(
+          Array.from({ length: 40 }, (_, index) => `t${index}`),
+          bulky,
+        ),
+        deps,
+      );
+
+      const record = usageRecord(seen);
+      expect(call).toBeGreaterThan(1);
+      expect(record.attempts).toHaveLength(2);
+      expect(record.chargeableAttempts).toBe(1);
+    });
+
+    it('stamps the configured tier on an attempt that does not report one', async () => {
+      // Standard bills at twice flex. An unstamped attempt would default to the cheaper
+      // rate in pricing.ts and halve both the ledger figure and the customer's debit.
+      const { deps, seen } = depsWith({ serviceTier: 'auto' as const });
+
+      await handleProposeCheckpoint(storeStub(), input(['a', 'b']), deps);
+
+      expect(usageRecord(seen).attempts).toEqual([
+        expect.objectContaining({ model: 'gpt-5.6-luna', serviceTier: 'auto' }),
+      ]);
+    });
+
+    it('lets an attempt that reports its own tier keep it', async () => {
+      // select.ts does not report the tier yet. When it does — including the internal
+      // flex-to-standard retry the runner cannot currently see — the reported value has to
+      // win over the configured one, or the fix lands and changes nothing.
+      const attempts = [
+        {
+          model: 'gpt-5.6-luna',
+          outcome: 'succeeded' as const,
+          inputTokens: 900,
+          outputTokens: 40,
+          durationMs: 12,
+          serviceTier: 'auto' as const,
+        },
+      ];
+      const { deps, seen } = depsWith({
+        serviceTier: 'flex' as const,
+        run: vi.fn(async () => ({ text: CANDIDATES, model: 'gpt-5.6-luna', attempts })),
+      });
+
+      await handleProposeCheckpoint(storeStub(), input(['a', 'b']), deps);
+
+      expect(usageRecord(seen).attempts).toEqual([
+        expect.objectContaining({ serviceTier: 'auto' }),
+      ]);
+    });
   });
 
   it('records billable attempts when extraction fails', async () => {
@@ -371,12 +501,16 @@ describe('handleProposeCheckpoint', () => {
       /re-read on the next checkpoint/,
     );
     expect(seen.usage).toHaveLength(1);
-    // toMatchObject, not toHaveBeenCalledWith: the record now also carries the turn count,
-    // the priced cost and any wallet debit, and this test is about the attempts surviving
-    // a rejected or failed extraction, not about the shape of the whole record.
+    // objectContaining, not toHaveBeenCalledWith: the record also carries the turn count,
+    // the chargeable prefix and any wallet authorization, and this test is about the
+    // attempts surviving a failed extraction, not about the shape of the whole record.
     expect(deps.recordUsage).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: PROJECT.id, attempts }),
+      expect.objectContaining({
+        projectId: PROJECT.id,
+        attempts: attempts.map((attempt) => ({ ...attempt, serviceTier: 'flex' })),
+      }),
     );
+    expect(usageRecord(seen).chargeableAttempts).toBe(0);
   });
 
   describe('the coverage carried to §17', () => {
@@ -498,7 +632,7 @@ describe('handleProposeCheckpoint', () => {
       let call = 0;
       const { deps, seen } = depsWith({
         servableContextTokens: 20_000,
-        run: vi.fn(async (request: { system: string; user: string; maxOutputTokens: number }) => {
+        run: vi.fn(async () => {
           call += 1;
           if (call === 2) {
             throw new Error('the provider reset the connection');
@@ -586,5 +720,45 @@ describe('handleProposeCheckpoint', () => {
         /below the 1024 minimum/,
       );
     });
+  });
+});
+
+describe('what each extraction request is told about the session', () => {
+  it('shows the model the summary the person wrote, instead of only storing it', async () => {
+    const { deps, seen } = depsWith();
+
+    await handleProposeCheckpoint(
+      storeStub(),
+      { ...input(['a', 'b']), summary: 'migrating the ledger writes to the v2 schema' },
+      deps,
+    );
+
+    expect(seen.prompts).toHaveLength(1);
+    expect(seen.prompts[0]).toContain('migrating the ledger writes to the v2 schema');
+  });
+
+  it('sends no summary section when the caller stated none', async () => {
+    const { deps, seen } = depsWith();
+
+    await handleProposeCheckpoint(storeStub(), input(['a']), deps);
+
+    expect(seen.prompts[0]).not.toContain('## What this session was about');
+  });
+
+  // A session too large for one request is split, and before this each chunk was judged as
+  // a stranger: a decision opened in chunk 1 and settled in chunk 3 was invisible to both.
+  it('carries earlier chunks findings into later chunks of the same session', async () => {
+    const { deps, seen } = depsWith({ servableContextTokens: 20_000 });
+
+    const fat = (ref: string) =>
+      `Turn ${ref}: ${Array.from({ length: 6_000 }, () => 'settled').join(' ')}`;
+
+    await handleProposeCheckpoint(storeStub(), input(['a', 'b', 'c', 'd'], fat), deps);
+
+    expect(seen.prompts.length).toBeGreaterThan(1);
+    expect(seen.prompts[0]).not.toContain('## Already proposed from earlier in this session');
+
+    const later = seen.prompts.slice(1);
+    expect(later.every((prompt) => prompt.includes('## Already proposed from earlier'))).toBe(true);
   });
 });

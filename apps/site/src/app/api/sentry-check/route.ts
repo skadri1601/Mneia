@@ -69,7 +69,7 @@ export async function POST(request: Request): Promise<Response> {
       environment: RUNTIME_ENVIRONMENT,
       marker,
       detail: delivered
-        ? 'flush() completed. This reports that the transport drained, not that Sentry accepted the event — confirm the event id appears in the project.'
+        ? 'flush() completed. This reports that the transport drained, not that Sentry accepted the event - confirm the event id appears in the project.'
         : 'flush() timed out, so the event may not have left the Worker.',
     },
     delivered ? 200 : 503,
