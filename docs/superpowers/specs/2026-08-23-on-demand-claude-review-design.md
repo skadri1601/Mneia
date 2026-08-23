@@ -22,11 +22,11 @@ The review path listens only to `issue_comment.created` and runs only when all o
 
 - the comment belongs to a pull request;
 - the pull request is open;
-- after collapsing surrounding/repeated whitespace, the comment body is exactly `@claude review`.
+- the raw comment body is exactly `@claude review`.
 
 The existing generic workflow keeps its current issue-comment, review-comment, and submitted-review events, but its top-level issue-comment condition excludes that exact reserved command. This guarantees one comment starts at most one Claude job while preserving other uses such as `@claude explain this failure`.
 
-No `pull_request`, `pull_request_target`, `push`, `schedule`, or persistent-label trigger is added. The workflow cheaply filters comments containing the reserved phrase, then the action runs only after a shell guard normalizes whitespace and matches exactly. Extra words do not match the reserved command, so `@claude review always` cannot create an automatic mode.
+No `pull_request`, `pull_request_target`, `push`, `schedule`, or persistent-label trigger is added. The job condition requires the raw comment body to equal the reserved command. The generic workflow excludes the reserved prefix, so `@claude review always` starts no Claude action and cannot create an automatic mode.
 
 ## Anthropic plugin invocation
 

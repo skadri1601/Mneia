@@ -18,7 +18,7 @@
 
 - [ ] **Step 1: Write the contract checker**
 
-Read both workflow files as UTF-8 and assert the review workflow has only `issue_comment.created`, checks `github.event.issue.pull_request`, checks `github.event.issue.state == 'open'`, filters comments containing the reserved phrase, normalizes the body before exact matching to `@claude review`, installs `code-review@claude-code-plugins`, allows the plugin's inline-comment, `gh`, and `git` tools, and invokes the command with `--comment`. Assert it has no `pull_request`, `push`, or `schedule` trigger and that the generic workflow excludes comments containing the reserved phrase.
+Read both workflow files as UTF-8 and assert the review workflow has only `issue_comment.created`, checks `github.event.issue.pull_request`, checks `github.event.issue.state == 'open'`, matches the raw body exactly to `@claude review`, installs `code-review@claude-code-plugins`, allows the plugin's inline-comment and read-only `gh`/`git` tools, and invokes the command with `--comment`. Assert it has no `pull_request`, `push`, or `schedule` trigger and that the generic workflow excludes the reserved review prefix.
 
 - [ ] **Step 2: Add the package command**
 
