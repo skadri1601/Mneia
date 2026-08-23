@@ -26,6 +26,7 @@ import { ExtractionRunError } from '../extraction/select.js';
 import { ApiRequestError } from './handlers.js';
 
 const EXISTING_ITEM_LIMIT = 200;
+const FOUND_SO_FAR_LIMIT = 40;
 const MAX_OUTPUT_TOKENS = 8192;
 const CONTEXT_SAFETY_MARGIN = 4096;
 const MIN_CHUNK_TOKENS = 1024;
@@ -223,7 +224,17 @@ export const handleProposeCheckpoint = async (
   let incompleteCode: ExtractionIncompleteReason | null = null;
 
   for (const [index, chunk] of chunks.entries()) {
-    const prompt = buildExtractionPrompt({ turns: chunk.turns, existingItems });
+    // Titles from earlier chunks of this same session, so a decision opened in one window
+    // and settled in a later one is recognised as the same decision rather than missed by
+    // both. Capped because this grows with every chunk and the transcript is what the
+    // window is for.
+    const foundSoFar = candidates.slice(-FOUND_SO_FAR_LIMIT).map((candidate) => candidate.title);
+    const prompt = buildExtractionPrompt({
+      turns: chunk.turns,
+      existingItems,
+      summary: input.summary ?? null,
+      foundSoFar,
+    });
 
     let run: Awaited<ReturnType<ProposeDependencies['run']>>;
     try {

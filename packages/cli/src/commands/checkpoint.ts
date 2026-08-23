@@ -57,6 +57,12 @@ export interface CheckpointProposal {
 export interface ProposeRequest {
   readonly config: ProjectConfig;
   readonly trigger: CheckpointTrigger;
+  /**
+   * The -m summary, forwarded so the extraction model sees what the person said this
+   * session was about. It is also stored on the checkpoint at commit time; that copy is
+   * the record, this one is what makes each chunk of a long session aware of the whole.
+   */
+  readonly summary?: string | null | undefined;
   readonly cwd?: string | undefined;
   readonly fromFile?: string | undefined;
   readonly sessionRef?: string | undefined;
@@ -753,6 +759,7 @@ async function runSession(
     deps.api.propose({
       config,
       trigger,
+      summary,
       cwd: invocation.io.cwd,
       sessionRef: session.sessionRef,
       source: session.source,

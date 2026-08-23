@@ -680,6 +680,13 @@ export const httpCheckpointApi: CheckpointApi = {
           sessionRef: reduced.trajectory.sessionRef,
           trigger: request.trigger,
           turns: turns.map(wireTurn),
+          // Omitted rather than sent empty: the schema treats an absent summary as "the
+          // caller stated none", and a blank string would render an empty heading.
+          ...(request.summary === undefined ||
+          request.summary === null ||
+          request.summary.trim() === ''
+            ? {}
+            : { summary: request.summary.trim() }),
           fromStart,
         },
       );
