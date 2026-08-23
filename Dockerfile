@@ -17,6 +17,10 @@ FROM base AS build
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/packages/core/node_modules ./packages/core/node_modules
+# mcp-server's own node_modules carries its workspace symlink to @mneia/core. Without it `tsc
+# --build` in that package cannot resolve the module at all, which is a different failure from
+# forgetting to build it and produces a wall of TS2307 rather than one missing-module line.
+COPY --from=deps /repo/packages/mcp-server/node_modules ./packages/mcp-server/node_modules
 COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
 COPY . .
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
