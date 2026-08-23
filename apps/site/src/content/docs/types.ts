@@ -4,7 +4,8 @@ export type DocBlock =
   | { kind: 'steps'; items: readonly { title: string; body: string }[] }
   | { kind: 'code'; label: string; lines: readonly string[] }
   | { kind: 'table'; head: readonly string[]; rows: readonly (readonly string[])[] }
-  | { kind: 'note'; text: string };
+  | { kind: 'note'; text: string }
+  | { kind: 'client-setup' };
 
 export type DocSection = {
   id: string;

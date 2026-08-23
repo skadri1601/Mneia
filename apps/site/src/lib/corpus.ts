@@ -1,5 +1,6 @@
 import type { BlogPost } from '@/content/blog';
 import { BLOG_INTRO, BLOG_POSTS, BLOG_STATUS } from '@/content/blog';
+import { CLIENT_SETUPS, setupPrompt } from '@/content/client-setup';
 import type { DocBlock, DocPage } from '@/content/docs';
 import { DOC_PAGES, DOCS_INTRO, DOCS_STATUS, GLOSSARY } from '@/content/docs';
 import { FAQ_GROUPS, FAQ_INTRO } from '@/content/faq';
@@ -94,6 +95,12 @@ function docBlock(block: DocBlock): string {
   }
   if (block.kind === 'note') {
     return `Note: ${block.text}`;
+  }
+  if (block.kind === 'client-setup') {
+    return CLIENT_SETUPS.map(
+      (client) =>
+        `### ${client.title}\n\nAutomatic setup: \`${client.automaticCommand}\`\n\nComplete agent prompt:\n\n\`\`\`text\n${setupPrompt(client)}\n\`\`\``,
+    ).join('\n\n');
   }
   return [
     `| ${block.head.join(' | ')} |`,

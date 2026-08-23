@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CLIENT_SETUPS, setupPrompt } from './client-setup.js';
+import { INTEGRATIONS } from './docs/integrations.js';
 
 const FIRST_CLASS_CLIENTS = [
   'codex',
@@ -52,5 +53,10 @@ describe('client setup content', () => {
       expect(client.manualConfig.length).toBeGreaterThan(0);
       expect(client.verification).toContain('mneia_rehydrate');
     }
+  });
+
+  it('embeds the selector in the published MCP clients section', () => {
+    const section = INTEGRATIONS.sections.find((entry) => entry.id === 'mcp-clients');
+    expect(section?.blocks).toContainEqual({ kind: 'client-setup' });
   });
 });

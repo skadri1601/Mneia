@@ -35,14 +35,7 @@ export const INTEGRATIONS: DocPage = {
           ],
         },
         {
-          kind: 'table',
-          head: ['Client', 'How it connects'],
-          rows: [
-            ['**Claude Code**', 'MCP server entry, stdio. The CLI and the agent share credentials'],
-            ['**Cursor**', 'MCP server entry, stdio'],
-            ['**Codex**', 'MCP server entry, stdio'],
-            ['**Anything else that speaks MCP**', 'The same `mneia-mcp` command over stdio'],
-          ],
+          kind: 'client-setup',
         },
         {
           kind: 'text',
