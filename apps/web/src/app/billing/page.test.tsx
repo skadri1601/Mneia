@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { UsageReport } from '../../server/billing/usage.js';
 import type { AccountContext } from '../../server/store/account-store.js';
 
 const mocks = vi.hoisted(() => ({
@@ -7,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   subscriptionRef: vi.fn(),
   quotaFor: vi.fn(),
+  loadUsageReport: vi.fn(),
 }));
 
 vi.mock('server-only', () => ({}));
@@ -22,6 +24,9 @@ vi.mock('./actions.js', () => ({
   checkoutAction: vi.fn(),
   portalAction: vi.fn(),
   purchaseSeatsAction: vi.fn(),
+}));
+vi.mock('../../server/billing/usage-store.js', () => ({
+  loadUsageReport: mocks.loadUsageReport,
 }));
 
 import BillingPage from './page.js';
@@ -67,6 +72,18 @@ const ACCOUNT = {
   workspaces: [],
 } satisfies AccountContext;
 
+const USAGE: UsageReport = {
+  plan: 'pro',
+  periodStart: '2026-08-01T00:00:00.000Z',
+  periodEnd: '2026-09-01T00:00:00.000Z',
+  turns: { used: 223_040, allowance: 272_000, fraction: 0.82 },
+  extractions: { used: 255, allowance: 1_700, fraction: 0.15 },
+  embeddingTokens: { used: 1_234_567, allowance: 2_720_000, fraction: 0.45 },
+  checkpoints: 300,
+  percentUsed: 82,
+  warn: true,
+};
+
 describe('BillingPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -79,6 +96,7 @@ describe('BillingPage', () => {
       billingCustomerRef: null,
       memberCount: 2,
     });
+    mocks.loadUsageReport.mockResolvedValue(USAGE);
     mocks.subscriptionRef.mockResolvedValue({ subscriptionRef: null, itemRef: null });
     mocks.quotaFor.mockResolvedValue({
       plan: 'solo',
@@ -111,15 +129,13 @@ describe('BillingPage', () => {
     expect(html).not.toContain('$24');
   });
 
-  it('meters every dial against the allowance the API will actually enforce', async () => {
+  it('carries the prepaid balance, which is a billing fact and not a usage dial', async () => {
     const html = renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve({}) }));
 
     expect(mocks.quotaFor).toHaveBeenCalledWith(WORKSPACE_ID, expect.any(Date));
-    expect(html).toContain('80 of 400');
-    expect(html).toContain('12,800 of 64,000');
     expect(html).toContain('Prepaid balance');
     expect(html).toContain('$0.00');
-    expect(html).toContain('September 1, 2026');
+    expect(html).toContain('no self-serve top-up');
   });
 
   it('does not report seats a workspace never purchased', async () => {
@@ -130,7 +146,7 @@ describe('BillingPage', () => {
     expect(html).toContain('None purchased');
   });
 
-  it('pools a team allowance across purchased seats rather than showing the per-seat figure', async () => {
+  it('reports purchased seats and the balance for a subscribed team', async () => {
     mocks.snapshot.mockResolvedValue({
       workspaceId: WORKSPACE_ID,
       plan: 'team',
@@ -159,33 +175,8 @@ describe('BillingPage', () => {
 
     const html = renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve({}) }));
 
-    expect(html).toContain('100 of 8,400');
     expect(html).toContain('2 of 3 purchased');
     expect(html).toContain('$0.25');
-  });
-
-  it('says unmetered rather than zero for a plan with no ceiling', async () => {
-    mocks.quotaFor.mockResolvedValue({
-      plan: 'enterprise',
-      billingStatus: 'active',
-      seatsPurchased: null,
-      memberCount: 2,
-      turnAllowance: null,
-      extractionAllowance: null,
-      embeddingTokenAllowance: null,
-      turnsUsed: 5,
-      extractionsUsed: 5,
-      embeddingTokensUsed: 0,
-      walletBalanceMicros: 0,
-      period: {
-        start: new Date('2026-08-01T00:00:00.000Z'),
-        end: new Date('2026-09-01T00:00:00.000Z'),
-      },
-    });
-
-    const html = renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve({}) }));
-
-    expect(html).toContain('5 used — unmetered');
   });
 
   it('gives members the facts but no billing controls', async () => {
@@ -198,6 +189,28 @@ describe('BillingPage', () => {
 
     expect(html).toContain('Only a workspace lead can manage billing.');
     expect(html).not.toContain('Start Team checkout');
+  });
+
+  it('meters the workspace with one percentage, the checkpoints, and the reset date', async () => {
+    const html = renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve({}) }));
+
+    expect(mocks.loadUsageReport).toHaveBeenCalledWith(WORKSPACE_ID);
+    expect(html).toContain('Usage this period');
+    expect(html).toContain('82%');
+    expect(html).toContain('300');
+    expect(html).toContain('2026-09-01');
+    expect(html).toContain('Approaching the included allowance for this period.');
+    expect(html).not.toMatch(/embedding/i);
+  });
+
+  it('still renders the usage section when the workspace cannot be metered', async () => {
+    mocks.loadUsageReport.mockResolvedValue(null);
+
+    const html = renderToStaticMarkup(await BillingPage({ searchParams: Promise.resolve({}) }));
+
+    expect(html).toContain('Usage this period');
+    expect(html).toContain('Usage for this period is unavailable.');
+    expect(html).toContain('Current plan');
   });
 
   it('renders a terse accessible return notice', async () => {

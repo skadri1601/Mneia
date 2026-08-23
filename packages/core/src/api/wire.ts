@@ -35,6 +35,7 @@ import {
   CONFLICT_RESOLUTIONS,
   ITEM_KINDS,
   ITEM_STATUSES,
+  WORKSPACE_PLANS,
 } from '../store/schema.js';
 import { TRAJECTORY_SOURCES, TURN_KINDS, TURN_ROLES } from '../trajectory/types.js';
 
@@ -1028,3 +1029,41 @@ export const decodeProjectSessionSummary = (
   checkpointCount: wire.checkpointCount,
   itemCount: wire.itemCount,
 });
+
+/**
+ * One dial of the usage meter as it crosses the wire.
+ *
+ * `allowance` is null when the plan does not cap this dial, and `fraction` is null with it —
+ * an uncapped dial cannot be a percentage of anything, and sending 0 there would read as
+ * "nothing used" rather than "no limit". Mirrors UsageDial in the hosted billing layer.
+ */
+export const UsageDialWireSchema = z.object({
+  used: z.number(),
+  allowance: z.number().nullable(),
+  fraction: z.number().nullable(),
+});
+
+export type UsageDialWire = z.infer<typeof UsageDialWireSchema>;
+
+/**
+ * The usage meter a surface may show a customer.
+ *
+ * Deliberately does NOT carry the embedding dial. That one is recorded so cost is computable
+ * and is never rendered to a customer, so it must not leave the hosted layer at all — a field
+ * that reaches a client is a field a client will eventually display.
+ *
+ * `percentUsed` is null when neither bound dial is capped. Null there means "no limit", never
+ * "nothing used"; a fresh workspace reports 0.
+ */
+export const UsageWireSchema = z.object({
+  plan: z.enum(WORKSPACE_PLANS),
+  periodStart: isoDate,
+  periodEnd: isoDate,
+  turns: UsageDialWireSchema,
+  extractions: UsageDialWireSchema,
+  checkpoints: z.number(),
+  percentUsed: z.number().nullable(),
+  warn: z.boolean(),
+});
+
+export type UsageWire = z.infer<typeof UsageWireSchema>;

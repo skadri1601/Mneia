@@ -8,6 +8,7 @@ import type {
   ScopedStore,
   TelemetryEmitter,
   TelemetryEvent,
+  UsageWire,
   Uuid,
 } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
@@ -21,6 +22,7 @@ import {
   rehydrateTool,
 } from './rehydrate.js';
 import type { ToolContext, ToolResult } from './types.js';
+import type { UsageProbe } from './usage.js';
 
 const WORKSPACE_ID = '11111111-1111-4111-8111-111111111111';
 const ACTOR_ID = '22222222-2222-4222-8222-222222222222';
@@ -302,8 +304,33 @@ function createTelemetry(options: { readonly throwOnEmit?: boolean } = {}): Fake
   return { emitter, events };
 }
 
-function createContext(store: ScopedStore, telemetry: TelemetryEmitter): ToolContext {
-  return createToolContextFixture(store, telemetry, { now: NOW });
+const USAGE_CAPPED: UsageWire = {
+  plan: 'solo',
+  periodStart: '2026-08-01T00:00:00.000Z',
+  periodEnd: '2026-09-01T00:00:00.000Z',
+  turns: { used: 1600, allowance: 5000, fraction: 0.32 },
+  extractions: { used: 12, allowance: 50, fraction: 0.24 },
+  checkpoints: 7,
+  percentUsed: 32,
+  warn: false,
+};
+
+const USAGE_WARNING: UsageWire = { ...USAGE_CAPPED, percentUsed: 91, warn: true };
+
+const USAGE_UNCAPPED: UsageWire = {
+  ...USAGE_CAPPED,
+  plan: 'enterprise',
+  turns: { used: 1600, allowance: null, fraction: null },
+  extractions: { used: 12, allowance: null, fraction: null },
+  percentUsed: null,
+};
+
+function createContext(
+  store: ScopedStore,
+  telemetry: TelemetryEmitter,
+  usage?: UsageProbe | undefined,
+): ToolContext {
+  return createToolContextFixture(store, telemetry, { now: NOW, usage });
 }
 
 function textOf(result: ToolResult): string {
@@ -373,8 +400,12 @@ async function runTool(
   raw: unknown,
   fake: FakeStore,
   telemetry: FakeTelemetry,
+  usage?: UsageProbe | undefined,
 ): Promise<ToolResult> {
-  return rehydrateTool.run(rehydrateTool.parse(raw), createContext(fake.store, telemetry.emitter));
+  return rehydrateTool.run(
+    rehydrateTool.parse(raw),
+    createContext(fake.store, telemetry.emitter, usage),
+  );
 }
 
 describe('mneia_rehydrate surface', () => {
@@ -871,5 +902,91 @@ describe('mneia_rehydrate errors', () => {
 
     expect(errorCodeOf(result)).toBe('store_unavailable');
     expect(textOf(result)).toContain('getProjectBySlug');
+  });
+});
+
+describe('mneia_rehydrate reports usage to the agent, not just to the terminal', () => {
+  const raw = { task: ORDINARY_TASK, project: 'payments-migration' };
+
+  it('carries the meter on structuredContent so the agent sees it without another call', async () => {
+    const result = await runTool(raw, createStore(), createTelemetry(), () =>
+      Promise.resolve(USAGE_CAPPED),
+    );
+
+    expect(structuredOf(result).usage).toMatchObject({ plan: 'solo', percentUsed: 32 });
+  });
+
+  it('reports usage null rather than omitting the key when no meter is behind it', async () => {
+    const result = await runTool(raw, createStore(), createTelemetry());
+
+    expect(structuredOf(result)).toHaveProperty('usage', null);
+  });
+
+  it('leaves the rendered slice markdown untouched', async () => {
+    const withMeter = await runTool(raw, createStore(), createTelemetry(), () =>
+      Promise.resolve(USAGE_WARNING),
+    );
+    const without = await runTool(raw, createStore(), createTelemetry());
+
+    expect(textOf(withMeter)).toBe(textOf(without));
+    expect(withMeter.content).toHaveLength(2);
+    expect(withMeter.content[1]?.text).toContain('91%');
+  });
+
+  it('races the meter against the slice rather than spending the 300ms budget on it', async () => {
+    const fake = createStore();
+    let callsWhenTheProbeStarted: readonly string[] = [];
+    const probe: UsageProbe = () => {
+      callsWhenTheProbeStarted = fake.calls.map((call) => call.method);
+      return Promise.resolve(USAGE_CAPPED);
+    };
+
+    const result = await runTool(raw, fake, createTelemetry(), probe);
+
+    // A probe awaited after the slice would see all four store calls. §12.1 holds this path
+    // to a 300ms p95, and rehydrate moves no dial, so the meter is read alongside the slice.
+    expect(callsWhenTheProbeStarted).toEqual(['getProjectBySlug']);
+    expect(fake.calls).toHaveLength(4);
+    expect(structuredOf(result).usage).toMatchObject({ percentUsed: 32 });
+  });
+
+  it('still returns the slice when the meter cannot be read', async () => {
+    const result = await runTool(raw, createStore(), createTelemetry(), () =>
+      Promise.reject(new Error('billing store unreachable')),
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(textOf(result).length).toBeGreaterThan(0);
+    expect(structuredOf(result)).toHaveProperty('usage', null);
+  });
+
+  it('keeps the key present on the error envelope this tool uses', async () => {
+    const result = await runTool(
+      { task: ORDINARY_TASK, project: 'no-such-project' },
+      createStore({ project: null }),
+      createTelemetry(),
+      () => Promise.resolve(USAGE_CAPPED),
+    );
+
+    expect(result.isError).toBe(true);
+    expect(structuredOf(result)).toHaveProperty('usage', null);
+  });
+
+  it('never leaks the embedding dial, which is recorded and never shown', async () => {
+    const result = await runTool(raw, createStore(), createTelemetry(), () =>
+      Promise.resolve(USAGE_CAPPED),
+    );
+
+    expect(JSON.stringify(structuredOf(result))).not.toContain('embedding');
+  });
+
+  it('reports an uncapped plan as uncapped rather than as zero used', async () => {
+    const result = await runTool(raw, createStore(), createTelemetry(), () =>
+      Promise.resolve(USAGE_UNCAPPED),
+    );
+
+    const { usage } = structuredOf(result);
+    expect(usage).toMatchObject({ percentUsed: null });
+    expect(JSON.stringify(usage)).toContain('no capped allowance');
   });
 });

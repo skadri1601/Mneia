@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { SourceSessionSchema } from '../source-session.js';
 import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
+import { readUsage, usageWarningBlock } from './usage.js';
 
 const KIND_ERROR = `kind must be one of: ${ITEM_KINDS.join(', ')}`;
 const SCOPE_ERROR = `accessScope must be one of: ${ACCESS_SCOPES.join(', ')}`;
@@ -114,7 +115,7 @@ function failure(code: string, message: string, details: Record<string, unknown>
   return {
     content: [{ type: 'text', text: `mneia_assert failed [${code}]. ${message}` }],
     isError: true,
-    structuredContent: { status: 'error', error: { code, message, ...details } },
+    structuredContent: { status: 'error', error: { code, message, ...details }, usage: null },
   };
 }
 
@@ -193,6 +194,7 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
             pendingCount: 1,
             pending: [blocked],
             written: null,
+            usage: null,
           },
         };
       }
@@ -265,6 +267,10 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
       });
     }
 
+    // Read after the write, so the meter reflects this call rather than the state before it.
+    const usage = await readUsage(context);
+    const warning = usageWarningBlock(usage);
+
     return {
       content: [
         {
@@ -275,6 +281,7 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
             `${written.humanConfirmed ? 'human-confirmed' : 'unconfirmed'}${written.loadBearing ? ' - load-bearing' : ''}${supersedesId === undefined ? '' : ` - supersedes ${supersedesId}`}`,
           ].join('\n'),
         },
+        ...(warning === null ? [] : [warning]),
       ],
       structuredContent: {
         status: 'written',
@@ -290,6 +297,7 @@ async function run(input: AssertInput, context: ToolContext): Promise<ToolResult
           loadBearing: written.loadBearing,
           supersededItemId: supersedesId ?? null,
         },
+        usage,
       },
     };
   } catch (cause) {

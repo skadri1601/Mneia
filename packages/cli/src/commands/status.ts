@@ -4,6 +4,16 @@ import { callApi } from '../api.js';
 import { confirmationMark, describeAsserter } from '../attribution.js';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import { httpStatusApi } from '../http-api.js';
+import {
+  type BindingDial,
+  bindingDial,
+  isOverAllowance,
+  USAGE_WARN_PERCENT,
+  type UsageDial,
+  type UsageDialName,
+  type UsageSnapshot,
+  usageWarns,
+} from '../usage.js';
 import type { ProjectConfig, ProjectConfigLoader } from './brief.js';
 
 export interface StatusRequest {
@@ -17,6 +27,12 @@ export interface StatusReport {
 
 export interface StatusApi {
   readonly status: (request: StatusRequest) => Promise<StatusReport>;
+  /**
+   * Optional because a surface can know how to list context items without knowing how to meter
+   * a workspace. Resolving to null means the server serves no usage route - a deployment older
+   * than the meter, which is not worth reporting as a failure.
+   */
+  readonly usage?: (request: StatusRequest) => Promise<UsageSnapshot | null>;
 }
 
 export interface StatusDeps {
@@ -46,6 +62,16 @@ export interface UnansweredItem {
   readonly item: ContextItem;
   readonly ageMs: number;
 }
+
+/**
+ * The meter is decoration on a report that stands without it, so every way of not having it is
+ * a value rather than a thrown error. `unsupported` renders nothing at all; `unavailable` says
+ * what failed, because a customer who cannot see their usage should know why.
+ */
+export type UsageOutcome =
+  | { readonly kind: 'ready'; readonly usage: UsageSnapshot }
+  | { readonly kind: 'unsupported' }
+  | { readonly kind: 'unavailable'; readonly reason: string; readonly fix: string };
 
 export interface StatusSections {
   readonly stale: readonly StaleItem[];
@@ -179,6 +205,60 @@ function describeDuration(ms: number): string {
   return 'less than a minute';
 }
 
+// The label column matches `mneia whoami` - two spaces, a nine-wide label, two spaces - so a
+// labelled row looks the same wherever this CLI prints one.
+const USAGE_LABEL_WIDTH = 9;
+
+const usageMeterRow = (value: string): string => `  ${'Usage'.padEnd(USAGE_LABEL_WIDTH)}  ${value}`;
+
+const usageMeterNote = (text: string): string => `  ${' '.repeat(USAGE_LABEL_WIDTH)}  ${text}`;
+
+const dialCount = (binding: BindingDial): string =>
+  binding.dial.allowance === null
+    ? `${binding.dial.used} ${binding.name}`
+    : `${binding.dial.used} of ${binding.dial.allowance} ${binding.name}`;
+
+function allowanceSegment(usage: UsageSnapshot): string {
+  const binding = bindingDial(usage);
+
+  // percentUsed is clamped to 100 by the server, so being genuinely over has to be said in
+  // words - "100% of this month's allowance" reads as sitting exactly on it.
+  if (isOverAllowance(usage)) {
+    return binding === null
+      ? "over this month's allowance"
+      : `over this month's allowance (${dialCount(binding)})`;
+  }
+  if (usage.percentUsed === null) {
+    return `no allowance cap on the ${usage.plan} plan`;
+  }
+
+  const which = usageWarns(usage) && binding !== null ? ` (${binding.name})` : '';
+  return `${usage.percentUsed}% of this month's allowance${which}`;
+}
+
+const checkpointSegment = (usage: UsageSnapshot): string =>
+  usage.checkpoints === 0 ? 'no checkpoints yet' : countOf(usage.checkpoints, 'checkpoint');
+
+function usageMeterLines(outcome: UsageOutcome): readonly string[] {
+  if (outcome.kind === 'unsupported') {
+    return [];
+  }
+  if (outcome.kind === 'unavailable') {
+    return [usageMeterRow(`unavailable - ${outcome.reason}`), usageMeterNote(outcome.fix)];
+  }
+
+  const usage = outcome.usage;
+  const detail = [
+    allowanceSegment(usage),
+    checkpointSegment(usage),
+    `resets ${utcDate(new Date(usage.periodEnd))}`,
+  ].join(' · ');
+
+  // The warning is a word, not a colour: this output is read through pipes, CI logs, and
+  // terminals that render no colour at all, and every other explanation here is already text.
+  return [usageMeterRow(usageWarns(usage) ? `warning: ${detail}` : detail)];
+}
+
 function titleLine(item: ContextItem, shortIds: ReadonlyMap<Uuid, string>): string {
   const marks: string[] = [item.kind];
   if (item.loadBearing) {
@@ -229,27 +309,42 @@ function headline(config: ProjectConfig, sections: StatusSections): string {
   return `${projectLabel(config)} — ${counts} (${countOf(sections.reviewed, 'item')} reviewed)`;
 }
 
-function renderClean(config: ProjectConfig, sections: StatusSections): string {
+function renderClean(
+  config: ProjectConfig,
+  sections: StatusSections,
+  meter: readonly string[],
+): string {
   if (sections.reviewed === 0) {
     return [
       `No context recorded for ${projectLabel(config)} yet, so there is nothing to review.`,
+      ...meter,
       '',
       'Run mneia checkpoint after your next task to start the record.',
       '',
     ].join('\n');
   }
-  return `${projectLabel(config)} is clean — nothing stale, disputed, or unanswered across ${countOf(sections.reviewed, 'item')}.\n`;
+  return [
+    `${projectLabel(config)} is clean — nothing stale, disputed, or unanswered across ${countOf(sections.reviewed, 'item')}.`,
+    ...meter,
+    '',
+  ].join('\n');
 }
 
-function renderHuman(report: StatusReport, config: ProjectConfig, now: Date): string {
+function renderHuman(
+  report: StatusReport,
+  config: ProjectConfig,
+  now: Date,
+  usage: UsageOutcome,
+): string {
   const sections = classifyStatus(report.items, now);
+  const meter = usageMeterLines(usage);
   if (isClean(sections)) {
-    return renderClean(config, sections);
+    return renderClean(config, sections, meter);
   }
 
   const shortIds = shortenItemIds(report.items.map((item) => item.id));
   const blocks = [
-    headline(config, sections),
+    [headline(config, sections), ...meter].join('\n'),
     ...section(
       `stale (${sections.stale.length}) — past their decay window; re-verify or supersede`,
       sections.stale.map((stale) => staleBlock(stale, shortIds)),
@@ -327,7 +422,65 @@ function toJsonAged(entry: DisputedItem | UnansweredItem): StatusJsonAged {
   return { ...toJsonItem(entry.item), ageMs: entry.ageMs };
 }
 
-function renderJson(report: StatusReport, config: ProjectConfig, now: Date): string {
+interface StatusJsonUsageReady {
+  readonly state: 'ready';
+  readonly plan: string;
+  readonly periodStart: string;
+  readonly periodEnd: string;
+  readonly percentUsed: number | null;
+  readonly warn: boolean;
+  readonly warnAtPercent: number;
+  readonly overAllowance: boolean;
+  readonly binding: UsageDialName | null;
+  readonly checkpoints: number;
+  readonly dials: {
+    readonly turns: UsageDial;
+    readonly extractions: UsageDial;
+  };
+}
+
+type StatusJsonUsage =
+  | StatusJsonUsageReady
+  | { readonly state: 'unsupported' }
+  | { readonly state: 'unavailable'; readonly reason: string; readonly fix: string };
+
+/**
+ * Carries the dials as the server sent them alongside the percentage, and names the dial the
+ * percentage came from, so a script can act on which limit is binding without recomputing the
+ * arithmetic - or disagree with this client's rounding if it wants to.
+ */
+function toJsonUsage(outcome: UsageOutcome): StatusJsonUsage {
+  if (outcome.kind === 'unsupported') {
+    return { state: 'unsupported' };
+  }
+  if (outcome.kind === 'unavailable') {
+    return { state: 'unavailable', reason: outcome.reason, fix: outcome.fix };
+  }
+
+  const usage = outcome.usage;
+  const binding = bindingDial(usage);
+
+  return {
+    state: 'ready',
+    plan: usage.plan,
+    periodStart: usage.periodStart,
+    periodEnd: usage.periodEnd,
+    percentUsed: usage.percentUsed,
+    warn: usageWarns(usage),
+    warnAtPercent: USAGE_WARN_PERCENT,
+    overAllowance: isOverAllowance(usage),
+    binding: binding === null ? null : binding.name,
+    checkpoints: usage.checkpoints,
+    dials: { turns: usage.turns, extractions: usage.extractions },
+  };
+}
+
+function renderJson(
+  report: StatusReport,
+  config: ProjectConfig,
+  now: Date,
+  usage: UsageOutcome,
+): string {
   const sections = classifyStatus(report.items, now);
   const payload = {
     project: projectLabel(config),
@@ -340,11 +493,38 @@ function renderJson(report: StatusReport, config: ProjectConfig, now: Date): str
       unanswered: sections.unanswered.length,
       reviewed: sections.reviewed,
     },
+    usage: toJsonUsage(usage),
     stale: sections.stale.map(toJsonStale),
     disputed: sections.disputed.map(toJsonAged),
     unanswered: sections.unanswered.map(toJsonAged),
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
+}
+
+/**
+ * Never throws. The usage line is the least important thing on this screen, and a status report
+ * that dies because the meter could not be read is worse than one with no meter - including in
+ * --json, where an exception would replace a parseable payload with an error envelope.
+ */
+async function readUsage(api: StatusApi, config: ProjectConfig): Promise<UsageOutcome> {
+  const read = api.usage;
+  if (read === undefined) {
+    return { kind: 'unsupported' };
+  }
+
+  try {
+    const usage = await callApi(config.endpoint, 'status', () => read({ config }));
+    return usage === null ? { kind: 'unsupported' } : { kind: 'ready', usage };
+  } catch (error) {
+    if (error instanceof CliError) {
+      return { kind: 'unavailable', reason: error.message, fix: error.fix };
+    }
+    return {
+      kind: 'unavailable',
+      reason: error instanceof Error ? error.message : String(error),
+      fix: 'run mneia status again; everything else in this report is unaffected',
+    };
+  }
 }
 
 const systemClock = (): Date => new Date();
@@ -359,8 +539,11 @@ export function createStatusCommand(deps: StatusDeps): CommandDefinition {
       const now = (deps.now ?? systemClock)();
       const config = await deps.loadConfig(invocation.io.cwd, invocation.io.env);
       const report = await callApi(config.endpoint, 'status', () => deps.api.status({ config }));
+      const usage = await readUsage(deps.api, config);
       invocation.io.stdout(
-        invocation.json ? renderJson(report, config, now) : renderHuman(report, config, now),
+        invocation.json
+          ? renderJson(report, config, now, usage)
+          : renderHuman(report, config, now, usage),
       );
       return EXIT_OK;
     },

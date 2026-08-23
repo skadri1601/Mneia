@@ -15,6 +15,7 @@ import {
   EXIT_USAGE,
 } from '../command.js';
 import { requireProjectConfig } from '../config.js';
+import type { UsageSnapshot } from '../usage.js';
 import type { ProjectConfig } from './brief.js';
 import {
   classifyStatus,
@@ -211,12 +212,45 @@ function recordingApi(result: StatusReport): RecordingApi {
       requests.push(request);
       return Promise.resolve(result);
     },
+    // Null is what an older deployment produces: no meter, and no complaint about it either.
+    usage: () => Promise.resolve(null),
   };
 }
 
 const rejectingApi = (error: unknown): StatusApi => ({
   status: () => Promise.reject(error),
+  usage: () => Promise.resolve(null),
 });
+
+const usageSnapshot = (overrides: Partial<UsageSnapshot> = {}): UsageSnapshot => ({
+  plan: 'team',
+  periodStart: '2026-08-01T00:00:00.000Z',
+  periodEnd: '2026-09-01T00:00:00.000Z',
+  turns: { used: 380, allowance: 1000, fraction: 0.38 },
+  extractions: { used: 12, allowance: 100, fraction: 0.12 },
+  checkpoints: 142,
+  percentUsed: 38,
+  warn: false,
+  ...overrides,
+});
+
+const meteredApi = (usage: UsageSnapshot | null): StatusApi => ({
+  status: () => Promise.resolve(report(PROJECT_ITEMS)),
+  usage: () => Promise.resolve(usage),
+});
+
+const meterFailingApi = (error: unknown): StatusApi => ({
+  status: () => Promise.resolve(report(PROJECT_ITEMS)),
+  usage: () => Promise.reject(error),
+});
+
+const unreachable = (): TypeError =>
+  new TypeError('fetch failed', {
+    cause: Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }),
+  });
+
+const usageLine = (out: string): string =>
+  out.split('\n').find((line) => line.trimStart().startsWith('Usage')) ?? '';
 
 const loadConfig = (): ProjectConfig => CONFIG;
 
@@ -653,5 +687,286 @@ describe('mneia status', () => {
       humanConfirmed: true,
       ageMs: 92 * DAY_MS,
     });
+  });
+});
+
+describe('the mneia status usage meter', () => {
+  it('renders the allowance, the checkpoint count, and the reset date on one labelled row', async () => {
+    const result = await run(commandWith(meteredApi(usageSnapshot())));
+
+    expect(result.code).toBe(EXIT_OK);
+    expect(result.out).toContain(
+      "  Usage      38% of this month's allowance · 142 checkpoints · resets 2026-09-01",
+    );
+    // Directly under the headline, in the same block as the counts it qualifies.
+    expect(result.out.split('\n')[1]).toBe(usageLine(result.out));
+  });
+
+  it('says there is no cap rather than printing null% on an uncapped plan', async () => {
+    const uncapped = usageSnapshot({
+      plan: 'enterprise',
+      turns: { used: 91_000, allowance: null, fraction: null },
+      extractions: { used: 640, allowance: null, fraction: null },
+      percentUsed: null,
+    });
+
+    const result = await run(commandWith(meteredApi(uncapped)));
+
+    expect(usageLine(result.out)).toBe(
+      '  Usage      no allowance cap on the enterprise plan · 142 checkpoints · resets 2026-09-01',
+    );
+    expect(result.out).not.toContain('null');
+    expect(result.out).not.toContain('NaN');
+  });
+
+  it('reads sensibly for a workspace that has never checkpointed', async () => {
+    const fresh = usageSnapshot({
+      plan: 'solo',
+      turns: { used: 0, allowance: 1000, fraction: 0 },
+      extractions: { used: 0, allowance: 100, fraction: 0 },
+      checkpoints: 0,
+      percentUsed: 0,
+    });
+
+    const result = await run(commandWith(meteredApi(fresh)));
+
+    expect(usageLine(result.out)).toBe(
+      "  Usage      0% of this month's allowance · no checkpoints yet · resets 2026-09-01",
+    );
+  });
+
+  it('warns in words at the threshold, and names the dial that is binding', async () => {
+    const warning = usageSnapshot({
+      turns: { used: 800, allowance: 1000, fraction: 0.8 },
+      percentUsed: 80,
+      warn: true,
+    });
+
+    const result = await run(commandWith(meteredApi(warning)));
+
+    expect(usageLine(result.out)).toBe(
+      "  Usage      warning: 80% of this month's allowance (turns) · 142 checkpoints · resets 2026-09-01",
+    );
+    // Carried by the text, not by colour: nothing here needs a terminal that renders escapes.
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting the absence of ANSI escapes
+    expect(result.out).not.toMatch(/\u001b\[/);
+  });
+
+  it('does not warn below the threshold, and warns anyway if the server forgets to', async () => {
+    const under = await run(
+      commandWith(
+        meteredApi(
+          usageSnapshot({
+            turns: { used: 790, allowance: 1000, fraction: 0.79 },
+            percentUsed: 79,
+            warn: false,
+          }),
+        ),
+      ),
+    );
+    const forgotten = await run(
+      commandWith(
+        meteredApi(
+          usageSnapshot({
+            turns: { used: 850, allowance: 1000, fraction: 0.85 },
+            percentUsed: 85,
+            warn: false,
+          }),
+        ),
+      ),
+    );
+
+    expect(usageLine(under.out)).not.toContain('warning:');
+    expect(usageLine(forgotten.out)).toContain('warning:');
+  });
+
+  it('says a workspace is over its allowance rather than parking it on 100%', async () => {
+    const over = usageSnapshot({
+      turns: { used: 1240, allowance: 1000, fraction: 1.24 },
+      percentUsed: 100,
+      warn: true,
+    });
+
+    const result = await run(commandWith(meteredApi(over)));
+
+    expect(usageLine(result.out)).toBe(
+      "  Usage      warning: over this month's allowance (1240 of 1000 turns) · 142 checkpoints · resets 2026-09-01",
+    );
+    expect(result.out).not.toContain("100% of this month's allowance");
+  });
+
+  it('prints no meter at all when the server is older than the usage route', async () => {
+    const result = await run(commandWith(meteredApi(null)));
+
+    expect(result.code).toBe(EXIT_OK);
+    expect(usageLine(result.out)).toBe('');
+    expect(result.out).toContain('acme/checkout — 2 stale · 1 disputed · 2 unanswered');
+    expect(result.out).toContain('stale (2) — past their decay window');
+  });
+
+  it('still reports everything else when the usage route cannot be reached', async () => {
+    const result = await run(commandWith(meterFailingApi(unreachable())));
+
+    expect(result.code).toBe(EXIT_OK);
+    expect(usageLine(result.out)).toContain('unavailable - the Mneia API at https://api.mneia.dev');
+    expect(usageLine(result.out)).toContain('ECONNREFUSED');
+    expect(result.out).toContain('your token is fine');
+    expect(result.out).toContain('stale (2) — past their decay window');
+    expect(result.out).toContain('The p95 rehydrate budget is 300ms');
+  });
+
+  it('does not fail the command when the usage route rejects the token', async () => {
+    const result = await run(
+      commandWith(
+        meterFailingApi(
+          new CliError('auth', 'the Mneia API rejected these credentials', 'run mneia login again'),
+        ),
+      ),
+    );
+
+    expect(result.code).toBe(EXIT_OK);
+    expect(usageLine(result.out)).toContain(
+      'unavailable - the Mneia API rejected these credentials',
+    );
+    expect(result.out).toContain('run mneia login again');
+  });
+
+  it('carries the raw dials, the percentage, and the binding dial in --json', async () => {
+    const result = await run(commandWith(meteredApi(usageSnapshot())), { json: true });
+    const payload = JSON.parse(result.out) as { usage: Record<string, unknown> };
+
+    expect(payload.usage).toMatchObject({
+      state: 'ready',
+      plan: 'team',
+      periodStart: '2026-08-01T00:00:00.000Z',
+      periodEnd: '2026-09-01T00:00:00.000Z',
+      percentUsed: 38,
+      warn: false,
+      warnAtPercent: 80,
+      overAllowance: false,
+      binding: 'turns',
+      checkpoints: 142,
+      dials: {
+        turns: { used: 380, allowance: 1000, fraction: 0.38 },
+        extractions: { used: 12, allowance: 100, fraction: 0.12 },
+      },
+    });
+    // Recorded so cost is computable, never rendered to a customer - and --json is a customer
+    // surface.
+    expect(Object.keys(payload.usage.dials as object)).toEqual(['turns', 'extractions']);
+  });
+
+  it('names extractions as the binding dial when extractions are the fuller one', async () => {
+    const result = await run(
+      commandWith(
+        meteredApi(
+          usageSnapshot({
+            turns: { used: 100, allowance: 1000, fraction: 0.1 },
+            extractions: { used: 91, allowance: 100, fraction: 0.91 },
+            percentUsed: 91,
+            warn: true,
+          }),
+        ),
+      ),
+      { json: true },
+    );
+
+    expect((JSON.parse(result.out) as { usage: Record<string, unknown> }).usage).toMatchObject({
+      binding: 'extractions',
+      warn: true,
+    });
+  });
+
+  it('stays parseable in --json when the meter is unavailable or unsupported', async () => {
+    const failed = await run(commandWith(meterFailingApi(unreachable())), { json: true });
+    const older = await run(commandWith(meteredApi(null)), { json: true });
+
+    expect(failed.code).toBe(EXIT_OK);
+    expect(failed.err).toBe('');
+    const failedPayload = JSON.parse(failed.out) as {
+      usage: Record<string, unknown>;
+      counts: Record<string, number>;
+    };
+    expect(failedPayload.usage.state).toBe('unavailable');
+    expect(failedPayload.usage.reason).toContain('could not be reached (ECONNREFUSED)');
+    expect(failedPayload.usage.fix).toContain('mneia status');
+    expect(failedPayload.counts).toMatchObject({ stale: 2, disputed: 1, unanswered: 2 });
+
+    expect(JSON.parse(older.out)).toMatchObject({ usage: { state: 'unsupported' } });
+  });
+
+  it('reports over-allowance in --json without waiting for a human to read the sentence', async () => {
+    const result = await run(
+      commandWith(
+        meteredApi(
+          usageSnapshot({
+            turns: { used: 1240, allowance: 1000, fraction: 1.24 },
+            percentUsed: 100,
+            warn: true,
+          }),
+        ),
+      ),
+      { json: true },
+    );
+
+    expect((JSON.parse(result.out) as { usage: Record<string, unknown> }).usage).toMatchObject({
+      overAllowance: true,
+      percentUsed: 100,
+      binding: 'turns',
+    });
+  });
+
+  it('reports usage as null-shaped on an uncapped plan rather than inventing a percentage', async () => {
+    const result = await run(
+      commandWith(
+        meteredApi(
+          usageSnapshot({
+            plan: 'enterprise',
+            turns: { used: 91_000, allowance: null, fraction: null },
+            extractions: { used: 640, allowance: null, fraction: null },
+            percentUsed: null,
+          }),
+        ),
+      ),
+      { json: true },
+    );
+
+    expect((JSON.parse(result.out) as { usage: Record<string, unknown> }).usage).toMatchObject({
+      percentUsed: null,
+      binding: null,
+      warn: false,
+      overAllowance: false,
+    });
+  });
+
+  it('shows the meter on a clean project and on an empty one', async () => {
+    const clean: StatusApi = {
+      status: () => Promise.resolve(report([evergreenRuling])),
+      usage: () => Promise.resolve(usageSnapshot()),
+    };
+    const empty: StatusApi = {
+      status: () => Promise.resolve(report([])),
+      usage: () => Promise.resolve(usageSnapshot({ checkpoints: 0, percentUsed: 0 })),
+    };
+
+    const cleanResult = await run(commandWith(clean));
+    const emptyResult = await run(commandWith(empty));
+
+    expect(cleanResult.out).toBe(
+      [
+        'acme/checkout is clean — nothing stale, disputed, or unanswered across 1 item.',
+        "  Usage      38% of this month's allowance · 142 checkpoints · resets 2026-09-01",
+        '',
+      ].join('\n'),
+    );
+    expect(emptyResult.out).toBe(
+      [
+        'No context recorded for acme/checkout yet, so there is nothing to review.',
+        "  Usage      0% of this month's allowance · no checkpoints yet · resets 2026-09-01",
+        '',
+        'Run mneia checkpoint after your next task to start the record.',
+        '',
+      ].join('\n'),
+    );
   });
 });

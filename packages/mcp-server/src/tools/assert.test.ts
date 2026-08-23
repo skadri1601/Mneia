@@ -13,6 +13,7 @@ import type {
   ScopedStore,
   TelemetryEmitter,
   TelemetryEvent,
+  UsageWire,
   Uuid,
 } from '@mneia/core';
 import { createMemorySink, createTelemetryEmitter, ITEM_STATUSES } from '@mneia/core';
@@ -21,6 +22,7 @@ import type { AssertInput } from './assert.js';
 import { assertTool } from './assert.js';
 import { createToolContextFixture } from './context-fixture.js';
 import type { ToolContext, ToolResult } from './types.js';
+import type { UsageProbe } from './usage.js';
 
 const WORKSPACE_ID: Uuid = '11111111-1111-4111-8111-111111111111';
 const AGENT_ACTOR_ID: Uuid = '22222222-2222-4222-8222-222222222222';
@@ -272,16 +274,42 @@ function createTelemetry(options: TelemetryOptions = {}): FakeTelemetry {
   return { emitter, sink, raw };
 }
 
-function createContext(store: ScopedStore, telemetry: TelemetryEmitter): ToolContext {
-  return createToolContextFixture(store, telemetry, { now: NOW });
+const USAGE_CAPPED: UsageWire = {
+  plan: 'solo',
+  periodStart: '2026-08-01T00:00:00.000Z',
+  periodEnd: '2026-09-01T00:00:00.000Z',
+  turns: { used: 1600, allowance: 5000, fraction: 0.32 },
+  extractions: { used: 12, allowance: 50, fraction: 0.24 },
+  checkpoints: 7,
+  percentUsed: 32,
+  warn: false,
+};
+
+const USAGE_WARNING: UsageWire = { ...USAGE_CAPPED, percentUsed: 91, warn: true };
+
+const USAGE_UNCAPPED: UsageWire = {
+  ...USAGE_CAPPED,
+  plan: 'enterprise',
+  turns: { used: 1600, allowance: null, fraction: null },
+  extractions: { used: 12, allowance: null, fraction: null },
+  percentUsed: null,
+};
+
+function createContext(
+  store: ScopedStore,
+  telemetry: TelemetryEmitter,
+  usage?: UsageProbe | undefined,
+): ToolContext {
+  return createToolContextFixture(store, telemetry, { now: NOW, usage });
 }
 
 async function runTool(
   raw: unknown,
   fake: FakeStore,
   telemetry: FakeTelemetry,
+  usage?: UsageProbe | undefined,
 ): Promise<ToolResult> {
-  return assertTool.run(assertTool.parse(raw), createContext(fake.store, telemetry.emitter));
+  return assertTool.run(assertTool.parse(raw), createContext(fake.store, telemetry.emitter, usage));
 }
 
 async function runUnparsed(
@@ -1266,5 +1294,92 @@ describe('mneia_assert telemetry', () => {
     expect(result.isError).toBeUndefined();
     expect(statusOf(result)).toBe('written');
     expect(writtenOf(result).itemId).toBe(WRITTEN_ITEM_ID);
+  });
+});
+
+describe('mneia_assert reports usage to the agent, not just to the terminal', () => {
+  it('carries the meter on structuredContent so the agent sees it without another call', async () => {
+    const fake = createStore();
+    const result = await runTool(MINIMAL_RAW, fake, createTelemetry(), () =>
+      Promise.resolve(USAGE_CAPPED),
+    );
+
+    const { usage } = structuredOf(result);
+    expect(usage).toMatchObject({ plan: 'solo', percentUsed: 32, warn: false });
+  });
+
+  it('reads the meter after the write, so the number includes the item just asserted', async () => {
+    const fake = createStore();
+    let writesSeenByTheProbe = -1;
+    const probe: UsageProbe = () => {
+      writesSeenByTheProbe = fake.calls.filter((call) => call.method === 'writeCheckpoint').length;
+      return Promise.resolve(USAGE_CAPPED);
+    };
+
+    await runTool(MINIMAL_RAW, fake, createTelemetry(), probe);
+
+    expect(writesSeenByTheProbe).toBe(1);
+  });
+
+  it('reports usage null rather than omitting the key when no meter is behind it', async () => {
+    const fake = createStore();
+    const result = await runTool(MINIMAL_RAW, fake, createTelemetry());
+
+    expect(structuredOf(result)).toHaveProperty('usage', null);
+  });
+
+  it('answers with the item written even when the meter cannot be read', async () => {
+    const fake = createStore();
+    const result = await runTool(MINIMAL_RAW, fake, createTelemetry(), () =>
+      Promise.reject(new Error('billing store unreachable')),
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(statusOf(result)).toBe('written');
+    expect(structuredOf(result)).toHaveProperty('usage', null);
+  });
+
+  it('keeps the key present on a refusal, where nothing was written to meter', async () => {
+    const fake = createStore({ existing: HUMAN_CONFIRMED_ITEM });
+    const result = await runTool(
+      { ...MINIMAL_RAW, supersedesId: EXISTING_ITEM_ID },
+      fake,
+      createTelemetry(),
+      () => Promise.resolve(USAGE_CAPPED),
+    );
+
+    expect(statusOf(result)).not.toBe('written');
+    expect(structuredOf(result)).toHaveProperty('usage', null);
+  });
+
+  it('adds a content block only when the workspace is close to its limit', async () => {
+    const quiet = await runTool(MINIMAL_RAW, createStore(), createTelemetry(), () =>
+      Promise.resolve(USAGE_CAPPED),
+    );
+    expect(quiet.content).toHaveLength(1);
+
+    const loud = await runTool(MINIMAL_RAW, createStore(), createTelemetry(), () =>
+      Promise.resolve(USAGE_WARNING),
+    );
+    expect(loud.content).toHaveLength(2);
+    expect(loud.content[1]?.text).toContain('91%');
+  });
+
+  it('never leaks the embedding dial, which is recorded and never shown', async () => {
+    const result = await runTool(MINIMAL_RAW, createStore(), createTelemetry(), () =>
+      Promise.resolve(USAGE_CAPPED),
+    );
+
+    expect(JSON.stringify(structuredOf(result))).not.toContain('embedding');
+  });
+
+  it('reports an uncapped plan as uncapped rather than as zero used', async () => {
+    const result = await runTool(MINIMAL_RAW, createStore(), createTelemetry(), () =>
+      Promise.resolve(USAGE_UNCAPPED),
+    );
+
+    const { usage } = structuredOf(result);
+    expect(usage).toMatchObject({ percentUsed: null });
+    expect(JSON.stringify(usage)).toContain('no capped allowance');
   });
 });

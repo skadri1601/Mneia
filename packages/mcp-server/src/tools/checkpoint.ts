@@ -23,6 +23,8 @@ import type { ReviewQueueEntry } from '../review-queue.js';
 import { SourceSessionSchema } from '../source-session.js';
 import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
+import type { UsageBlock } from './usage.js';
+import { readUsage, usageWarningBlock } from './usage.js';
 
 const KIND_ERROR = `kind must be one of: ${ITEM_KINDS.join(', ')}`;
 const SCOPE_ERROR = `accessScope must be one of: ${ACCESS_SCOPES.join(', ')}`;
@@ -238,7 +240,7 @@ function failure(code: string, message: string, details: Record<string, unknown>
   return {
     content: [{ type: 'text', text: `mneia_checkpoint failed [${code}]. ${message}` }],
     isError: true,
-    structuredContent: { status: 'error', error: { code, message, ...details } },
+    structuredContent: { status: 'error', error: { code, message, ...details }, usage: null },
   };
 }
 
@@ -669,16 +671,19 @@ interface CheckpointOutcome {
   readonly signal: ReferenceSignal;
   readonly sawSlice: boolean;
   readonly sessionId: Uuid | null;
+  readonly usage: UsageBlock | null;
 }
 
 function toolResult(input: CheckpointInput, outcome: CheckpointOutcome): ToolResult {
   const { pending, written, checkpointId, queue, signal } = outcome;
+  const warning = usageWarningBlock(outcome.usage);
   return {
     content: [
       {
         type: 'text',
         text: renderText(pending, written, checkpointId, queue, signal, outcome.sawSlice),
       },
+      ...(warning === null ? [] : [warning]),
     ],
     structuredContent: {
       status: statusFor(pending.length, written.length),
@@ -710,6 +715,7 @@ function toolResult(input: CheckpointInput, outcome: CheckpointOutcome): ToolRes
         ignoredCount: signal.ignored,
         unrecognisedItemIds: signal.unrecognisedItemIds,
       },
+      usage: outcome.usage,
     },
   };
 }
@@ -748,6 +754,7 @@ async function run(input: CheckpointInput, context: ToolContext): Promise<ToolRe
         signal,
         sawSlice,
         sessionId,
+        usage: await readUsage(context),
       });
     }
 
@@ -797,6 +804,8 @@ async function run(input: CheckpointInput, context: ToolContext): Promise<ToolRe
       );
     }
 
+    // Read after the write, so the meter reflects this checkpoint rather than the state
+    // before it.
     return toolResult(input, {
       pending,
       written,
@@ -805,6 +814,7 @@ async function run(input: CheckpointInput, context: ToolContext): Promise<ToolRe
       signal,
       sawSlice,
       sessionId,
+      usage: await readUsage(context),
     });
   } catch (cause) {
     if (cause instanceof CandidateInputError) {

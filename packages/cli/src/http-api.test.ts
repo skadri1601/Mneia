@@ -10,7 +10,13 @@ import {
 } from '@mneia/core';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProjectConfig } from './config.js';
-import { MAX_UPLOAD_BYTES, httpCheckpointApi, httpInitApi, uploadableFrom } from './http-api.js';
+import {
+  httpCheckpointApi,
+  httpInitApi,
+  httpStatusApi,
+  MAX_UPLOAD_BYTES,
+  uploadableFrom,
+} from './http-api.js';
 
 const WORKSPACE_ID = '00000000-0000-4000-8000-000000000001';
 const PROJECT_ID = '00000000-0000-4000-8000-000000000002';
@@ -434,5 +440,93 @@ describe('httpInitApi imports constraints without conferring authority on them',
 
     expect(server.items).toHaveLength(1);
     expect(server.items[0]?.item.loadBearing).toBe(false);
+  });
+});
+
+describe('httpStatusApi.usage', () => {
+  const REPORT = {
+    plan: 'team',
+    periodStart: '2026-08-01T00:00:00.000Z',
+    periodEnd: '2026-09-01T00:00:00.000Z',
+    turns: { used: 380, allowance: 1000, fraction: 0.38 },
+    extractions: { used: 12, allowance: 100, fraction: 0.12 },
+    embeddingTokens: { used: 91_000, allowance: 500_000, fraction: 0.182 },
+    checkpoints: 142,
+    percentUsed: 38,
+    warn: false,
+  };
+
+  interface UsageCall {
+    readonly url: string;
+    readonly method: string | undefined;
+  }
+
+  function fakeUsageServer(respond: () => Response): UsageCall[] {
+    const calls: UsageCall[] = [];
+    vi.stubGlobal('fetch', (url: string, init?: { method?: string }) => {
+      calls.push({ url, method: init?.method });
+      return Promise.resolve(respond());
+    });
+    return calls;
+  }
+
+  const jsonResponse = (body: unknown, status = 200): Response =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  it('reads the meter with one GET, and asks for no identity or project first', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const calls = fakeUsageServer(() => jsonResponse({ usage: REPORT }));
+
+    const usage = await httpStatusApi.usage?.({ config });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe('https://app.mneia.dev/api/v1/usage');
+    expect(calls[0]?.method).toBe('GET');
+    expect(usage).toMatchObject({ plan: 'team', percentUsed: 38, checkpoints: 142 });
+  });
+
+  it('drops embeddingTokens on the way in, so no customer surface can render it', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    fakeUsageServer(() => jsonResponse({ usage: REPORT }));
+
+    const usage = await httpStatusApi.usage?.({ config });
+
+    expect(usage).not.toBeNull();
+    expect(usage).not.toHaveProperty('embeddingTokens');
+  });
+
+  it('accepts the report bare as well as enveloped', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    fakeUsageServer(() => jsonResponse(REPORT));
+
+    expect(await httpStatusApi.usage?.({ config })).toMatchObject({ percentUsed: 38 });
+  });
+
+  it('reads a deployment with no usage route as no meter rather than as a failure', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    fakeUsageServer(() =>
+      jsonResponse({ error: { code: 'not_found', message: 'no such route' } }, 404),
+    );
+
+    expect(await httpStatusApi.usage?.({ config })).toBeNull();
+  });
+
+  it('lets a rejected token through to the caller, which decides what to say about it', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    fakeUsageServer(() =>
+      jsonResponse({ error: { code: 'invalid_token', message: 'expired' } }, 401),
+    );
+
+    await expect(httpStatusApi.usage?.({ config })).rejects.toThrow('expired');
+  });
+
+  it('refuses a body it cannot read rather than rendering a half-parsed meter', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    fakeUsageServer(() => jsonResponse({ usage: { ...REPORT, percentUsed: 'lots' } }));
+
+    await expect(httpStatusApi.usage?.({ config })).rejects.toThrow(/cannot read/);
   });
 });

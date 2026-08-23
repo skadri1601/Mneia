@@ -3,11 +3,12 @@ import { WorkspaceSwitcher } from '../../components/WorkspaceSwitcher.js';
 import { subscriptionAddress } from '../../server/billing/billing-store.js';
 import { canOpenPortal, canStartCheckout } from '../../server/billing/checkout.js';
 import { isSeatedPlan } from '../../server/billing/limits.js';
-import { effectiveAllowances } from '../../server/billing/quota.js';
 import { billingStore, quotaStore } from '../../server/billing/runtime.js';
+import { loadUsageReport } from '../../server/billing/usage-store.js';
 import { getCurrentAccount } from '../../server/current-account.js';
 import { checkoutAction, portalAction, purchaseSeatsAction } from './actions.js';
 import styles from './Billing.module.css';
+import { UsageMeter } from './usage-meter.js';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,42 +24,23 @@ const title = (value: string): string => value.slice(0, 1).toUpperCase() + value
 
 const count = (value: number): string => value.toLocaleString('en-US');
 
-/**
- * One dial, as `used of allowance`.
- *
- * A null allowance is unmetered, and saying so is not the same as saying zero — a plan
- * with no ceiling must not render as one that has been exhausted.
- */
-const meter = (used: number, allowance: number | null): string =>
-  allowance === null ? `${count(used)} used — unmetered` : `${count(used)} of ${count(allowance)}`;
-
-/** The reset instant, as a date a person reads rather than the ISO string the API returns. */
-const resetDate = (at: Date): string =>
-  at.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    timeZone: 'UTC',
-  });
-
 const dollars = (micros: number): string => `$${(micros / 1_000_000).toFixed(2)}`;
 
 export default async function BillingPage({ searchParams }: BillingPageProps) {
   const account = await getCurrentAccount();
-  // Read together: both are one indexed query against workspace under the same scope, and
+  // Read together: each is one indexed query against workspace under the same scope, and
   // this page is not on the rehydrate path, so there is no §12.1 budget to protect here.
   const store = billingStore();
-  const [snapshot, subscription, quota, query] = await Promise.all([
+  const [snapshot, subscription, quota, usage, query] = await Promise.all([
     store.snapshot(account.workspace.id),
     store.subscriptionRef(account.workspace.id),
     quotaStore().quotaFor(account.workspace.id, new Date()),
+    loadUsageReport(account.workspace.id),
     searchParams,
   ]);
   if (snapshot === null || quota === null) {
     throw new Error('expected the authenticated workspace to have a billing snapshot; found none');
   }
-
-  const allowances = effectiveAllowances(quota);
 
   const billingAccount = {
     workspaceId: account.workspace.id,
@@ -136,43 +118,20 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
                 : `${count(snapshot.memberCount)} of ${count(snapshot.seatsPurchased)} purchased`}
             </dd>
           </div>
-        </dl>
-      </section>
-
-      <section className={styles.card} aria-labelledby="billing-usage">
-        <h2 id="billing-usage">This period</h2>
-        <dl className={styles.facts}>
-          <div>
-            <dt>Extractions</dt>
-            <dd>{meter(quota.extractionsUsed, allowances.extractions)}</dd>
-          </div>
-          <div>
-            <dt>Turns</dt>
-            <dd>{meter(quota.turnsUsed, allowances.turns)}</dd>
-          </div>
-          <div>
-            <dt>Embedding tokens</dt>
-            <dd>{meter(quota.embeddingTokensUsed, allowances.embeddingTokens)}</dd>
-          </div>
           <div>
             <dt>Prepaid balance</dt>
             <dd>{dollars(quota.walletBalanceMicros)}</dd>
           </div>
-          <div>
-            <dt>Resets</dt>
-            <dd>{resetDate(quota.period.end)}</dd>
-          </div>
         </dl>
         {/*
-          Said out loud rather than left for a customer to infer from a dial that never
-          moves: nothing in the product writes embedding_tokens_used, and nothing credits
-          wallet_balance_micros, so both read zero for every workspace today.
+          Said out loud rather than left for a customer to infer from a figure that never
+          moves: nothing credits wallet_balance_micros today, so this reads $0.00 for every
+          workspace.
         */}
-        <p>
-          Embedding usage is not yet recorded, so that dial reads zero. Prepaid balance can
-          currently only be credited by us — there is no self-serve top-up.
-        </p>
+        <p>Prepaid balance can currently only be credited by us — there is no self-serve top-up.</p>
       </section>
+
+      <UsageMeter report={usage} />
 
       {account.membership.role !== 'lead' ? (
         <p className={styles.access}>Only a workspace lead can manage billing.</p>

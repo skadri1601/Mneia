@@ -31,7 +31,7 @@ const SENTRY_KEYS = { SENTRY_DSN: 'https://key@o1.ingest.sentry.io/1' };
 const NO_SENTRY_DETAIL =
   'SENTRY_DSN is unset, so every unhandled error on this deployment is lost silently and nothing reports that it happened';
 const NO_BILLING_DETAIL =
-  'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /billing returns 503 and no workspace can subscribe — set the three repository secrets and re-run the deploy';
+  'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /api/stripe/webhook answers 503 and drops every Stripe event, and the checkout and portal actions on /billing throw when pressed, so no workspace can subscribe. The /billing page itself renders, so nothing looks broken until someone tries — set the three repository secrets and re-run the deploy';
 const NO_MODELS = {
   extraction: 'no_key',
   extractionFallback: 'no_key',

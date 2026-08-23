@@ -18,6 +18,8 @@ import {
   LINKED_TOOLS,
   ToolRegistry,
 } from '@mneia/mcp-server';
+import { clientVisibleUsage } from '../billing/usage.js';
+import { loadUsageReport } from '../billing/usage-store.js';
 import type { BearerIdentity } from '../store/device-store.js';
 import { withWorkspaceScope } from '../store-runtime.js';
 import { telemetry } from '../telemetry-runtime.js';
@@ -107,6 +109,22 @@ export function createRemoteMcpSession(
     store,
     telemetry: telemetry(),
     now: () => new Date(),
+    // The hosted surface is the only one with a billing layer behind it, so this is the only
+    // binding that supplies a probe; the local stdio binding leaves it undefined and its tools
+    // report usage: null rather than zeros. Without it every remote mneia_checkpoint,
+    // mneia_assert and mneia_rehydrate would answer null in production while every test passed,
+    // because the tests inject their own probe.
+    //
+    // This reads on its own connection rather than the scoped transaction above. ScopedStore
+    // exposes no raw read, and it would change nothing if it did: the meter is incremented by
+    // recordCheckpointUsage on the /api/v1/checkpoints/propose path, never by a store write in
+    // this transaction, so a committed read here and a read inside it return the same number.
+    // readUsage swallows a rejection, so a pool hiccup cannot turn a written checkpoint into a
+    // failed tool call.
+    usage: async () => {
+      const report = await loadUsageReport(store.scope.workspaceId);
+      return report === null ? null : clientVisibleUsage(report);
+    },
     slices,
     reviewQueue,
     sessionIdFor: sessions.sessionIdFor,

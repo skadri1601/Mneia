@@ -48,6 +48,8 @@ export type {
   StaleContextItemFilterWire,
   StaleContextItemWire,
   TrajectoryTurnWire,
+  UsageDialWire,
+  UsageWire,
   VerifyContextItemResultWire,
   VerifyContextItemWire,
 } from './wire.js';
@@ -143,6 +145,8 @@ export {
   StaleContextItemFilterWireSchema,
   StaleContextItemWireSchema,
   TrajectoryTurnWireSchema,
+  UsageDialWireSchema,
+  UsageWireSchema,
   VerifyContextItemResultWireSchema,
   VerifyContextItemWireSchema,
 } from './wire.js';

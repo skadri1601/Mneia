@@ -79,7 +79,7 @@ const refuse = (code: QuotaRefusal, message: string, dial?: QuotaDial): QuotaDec
  * total is the per-seat figure times the seats actually paid for - one heavy user draws on
  * a quiet colleague's share instead of being refused while the team has headroom.
  */
-const allowanceFor = (
+export const allowanceFor = (
   state: QuotaState,
   override: number | null,
   perSeat: number | null,

@@ -11,8 +11,8 @@ import {
 import { database } from './database.js';
 import { type SentryDelivery, sentryDelivery, sentryDropDetail } from './error-reporting.js';
 import type {
-  EnvLike as TelemetryEnvLike,
   TelemetryDelivery,
+  EnvLike as TelemetryEnvLike,
   TelemetryPosture,
 } from './telemetry-runtime.js';
 import { describeTelemetryPosture, planTelemetry, telemetryDelivery } from './telemetry-runtime.js';
@@ -177,7 +177,7 @@ export const describeErrorReportingPosture = (
 export const describeBillingPosture = (billing: BillingHealth): string | null =>
   billing === 'configured'
     ? null
-    : 'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /billing returns 503 and no workspace can subscribe — set the three repository secrets and re-run the deploy';
+    : 'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /api/stripe/webhook answers 503 and drops every Stripe event, and the checkout and portal actions on /billing throw when pressed, so no workspace can subscribe. The /billing page itself renders, so nothing looks broken until someone tries — set the three repository secrets and re-run the deploy';
 
 export const describeModelPosture = (posture: ModelPosture): string | null => {
   const missing: string[] = [];
