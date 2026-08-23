@@ -6,6 +6,25 @@ export const API_TOKEN_HASH_SETTING = 'mneia.api_token_hash';
 export const INVITATION_TOKEN_HASH_SETTING = 'mneia.invitation_token_hash';
 export const INVITATION_EMAIL_SETTING = 'mneia.invitation_email';
 
+// The OAuth authorization server reads a client and redeems a code before any workspace is known —
+// the token endpoint holds only the code — so those two policies key on their own GUC the way the
+// device grant polls on its own. See migration 0036.
+export const OAUTH_CLIENT_ID_SETTING = 'mneia.oauth_client_id';
+export const OAUTH_CODE_HASH_SETTING = 'mneia.oauth_code_hash';
+
+export const OAUTH_CODE_STATUSES = ['pending', 'redeemed'] as const;
+export type OAuthCodeStatus = (typeof OAUTH_CODE_STATUSES)[number];
+
+export const OAUTH_TOKEN_ENDPOINT_AUTH_METHODS = [
+  'none',
+  'client_secret_post',
+  'client_secret_basic',
+] as const;
+export type OAuthTokenEndpointAuthMethod = (typeof OAUTH_TOKEN_ENDPOINT_AUTH_METHODS)[number];
+
+export const OAUTH_APPLICATION_TYPES = ['native', 'web'] as const;
+export type OAuthApplicationType = (typeof OAUTH_APPLICATION_TYPES)[number];
+
 export const DEVICE_AUTHORIZATION_STATUSES = ['pending', 'approved', 'denied', 'redeemed'] as const;
 export type DeviceAuthorizationStatus = (typeof DEVICE_AUTHORIZATION_STATUSES)[number];
 
