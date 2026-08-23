@@ -21,6 +21,7 @@
     "check:tests": "node scripts/check-test-integrity.mjs",
     "check:policy": "node scripts/check-git-policy.mjs",
     "check:publish": "node scripts/check-publish.mjs",
+    "check:docs": "node scripts/check-doc-tools.mjs",
     "verify:journey": "node scripts/verify-client-journey.mjs",
     "verify:mcp": "node scripts/mcp-conformance.mjs",
     "db:migrate": "node scripts/db-migrate.mjs",

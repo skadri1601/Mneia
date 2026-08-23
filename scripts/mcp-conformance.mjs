@@ -32,6 +32,10 @@ startup and this reports that as a start failure, which is what a client shows.
 and the client's own initialize request is written there verbatim. That is how a
 client profile gets captured rather than guessed.`;
 
+// Every non-baseline profile is a verbatim replay of a handshake recorded from a real
+// client with --record, not a reconstruction. Hand-written profiles are how the previous
+// matrix came to claim Claude Code speaks 2025-06-18: that was the version the prober
+// happened to ask for, recorded as though the client had chosen it.
 const PROFILES = {
   baseline: {
     capturedFrom: null,
@@ -109,6 +113,11 @@ const parseArgs = (argv) => {
 
 const VERSION_SPEC = /^[A-Za-z0-9][A-Za-z0-9._+-]*$|^[\^~][0-9][A-Za-z0-9._+-]*$/;
 
+// Shim mode. We stand in for the real server so a client's own initialize frame can be
+// captured, which is the only way to learn what a client sends without guessing. The
+// replies are the bare minimum needed to keep the client talking long enough to reach
+// tools/list; this is a recorder, not a server. It works even when the client cannot
+// reach its model, which is how the Codex profile was captured through a usage limit.
 const recordHandshake = async (target) => {
   await mkdir(dirname(target), { recursive: true });
   let buffer = '';
@@ -159,6 +168,10 @@ const startServer = (options) => {
     });
     return { child, described: `node ${args[0]}` };
   }
+  // npx resolves to a .cmd shim on Windows, which Node refuses to spawn directly since the
+  // CVE-2024-27980 fix. Passing the whole command as one string under a shell is the form
+  // that works on both platforms; args are not interpolated from user input beyond
+  // options.version, which VERSION_SPEC has already constrained.
   const described = `npx -y @mneia/mcp-server@${options.version}`;
   const child = spawn(described, {
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -168,6 +181,9 @@ const startServer = (options) => {
   return { child, described };
 };
 
+// MCP over stdio frames each JSON-RPC message as one line of JSON. We buffer because a
+// single stdout chunk may split a message or carry several, and correlate replies to
+// requests by id — notifications carry no id and are ignored here.
 const createSession = (child, timeout) => {
   const pending = new Map();
   let buffer = '';
@@ -200,6 +216,9 @@ const createSession = (child, timeout) => {
   child.stderr.on('data', (chunk) => {
     stderr += chunk;
   });
+  // The server exits rather than erroring when it has no store to talk to, so an
+  // unanswered request usually means a startup failure. Surface its stderr with the
+  // rejection or the caller is left with a bare timeout and nothing to act on.
   child.on('close', (code) => {
     exited = code;
     for (const settle of pending.values()) {

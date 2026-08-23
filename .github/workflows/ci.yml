@@ -32,6 +32,9 @@ jobs:
       - name: lint (errors only)
         run: pnpm lint:ci
 
+      - name: documentation agrees with the shipped tool list
+        run: pnpm check:docs
+
       - name: the reported version matches the published one
         run: pnpm check:version
 
