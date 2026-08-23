@@ -72,9 +72,9 @@ describe('checkpointQuota', () => {
     it.each(['solo', 'enterprise'] as const)('does not gate %s on a subscription', (plan) => {
       // Free has nothing to lapse, and enterprise is the internal vehicle - gating it would
       // mean our own dogfooding stops when a billing row is untidy.
-      expect(
-        checkpointQuota(state({ plan, billingStatus: 'canceled' }), request()).allowed,
-      ).toBe(true);
+      expect(checkpointQuota(state({ plan, billingStatus: 'canceled' }), request()).allowed).toBe(
+        true,
+      );
     });
   });
 

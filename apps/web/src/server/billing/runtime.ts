@@ -70,7 +70,5 @@ export const checkpointQuotaFor = async (
   // A workspace row that does not exist cannot be metered. The caller is already
   // authenticated against it, so this is a torn state rather than an unpaid one, and
   // refusing the checkpoint would lose work over a bookkeeping gap.
-  return state === null
-    ? { allowed: true, source: 'allowance' }
-    : checkpointQuota(state, request);
+  return state === null ? { allowed: true, source: 'allowance' } : checkpointQuota(state, request);
 };
