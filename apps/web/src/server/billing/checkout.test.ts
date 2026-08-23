@@ -237,7 +237,7 @@ describe('seatSyncDecisionFor', () => {
 
     expect(decision.sync).toBe(false);
     if (decision.sync) throw new Error('expected no sync');
-    expect(decision.reason).toContain('migration 0036');
+    expect(decision.reason).toContain('migration 0037');
   });
 
   it('refuses a nonsense quantity rather than sending it to Stripe', () => {

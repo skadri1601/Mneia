@@ -215,7 +215,7 @@ export const seatSyncDecisionFor = (input: SeatSyncInput): SeatSyncDecision => {
       sync: false,
       reason:
         'this workspace has no Stripe subscription recorded, so there is nothing to address. ' +
-        'billing_subscription_ref and billing_subscription_item_ref (migration 0036) are written by the ' +
+        'billing_subscription_ref and billing_subscription_item_ref (migration 0037) are written by the ' +
         'subscription webhook from the live Stripe object, so a workspace subscribed before that migration ' +
         'fills in on its next lifecycle event rather than needing a backfill.',
     };
@@ -268,7 +268,7 @@ export interface SeatSyncOutcome {
  *
  * This is the thing that closes the leak. `StripeClient.updateSeats` has existed since
  * MNE-141 and was callable from nowhere, because the two identifiers it needs were not
- * stored; migration 0036 stores them and this reads them back.
+ * stored; migration 0037 stores them and this reads them back.
  *
  * **Idempotent by construction.** `updateSeats` sends an absolute quantity, never a delta,
  * so applying the same decision twice leaves Stripe in the same place — which is what makes

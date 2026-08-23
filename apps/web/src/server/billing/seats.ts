@@ -210,7 +210,7 @@ export const admitOneMoreSeat = (position: SeatPosition): SeatAdmission => {
 /**
  * The one thing seat management needs from the Stripe layer and does not own.
  *
- * `StripeSeatSync` in `checkout.ts` now implements this shape exactly, and migration `0036`
+ * `StripeSeatSync` in `checkout.ts` now implements this shape exactly, and migration `0037`
  * persists the subscription and item refs that `StripeClient.updateSeats` needs — so the only
  * thing still missing is a factory in `billing/runtime.ts` to construct it, which is a file
  * this lane does not own. Membership is written and tested against this interface rather than

@@ -209,7 +209,7 @@ export const handleStripeWebhook = async (input: HandleWebhookInput): Promise<We
   // is the live object read back from Stripe a few lines above, not the event body, so it
   // is current rather than whatever was true when the event fired. Without it
   // StripeClient.updateSeats has nothing to address and a Team workspace that gains a
-  // member keeps billing at its old quantity (migration 0036).
+  // member keeps billing at its old quantity (migration 0037).
   //
   // A cancellation clears it deliberately: a cancelled subscription's item must never be
   // the target of a later quantity change.

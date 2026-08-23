@@ -98,7 +98,7 @@ export interface StripeSubscription {
    *
    * Quantity lives on the item in the Stripe API, not on the subscription, so this is the
    * half of the address `updateSeats` cannot do without. Persisted alongside the
-   * subscription id (migration 0036) because it is otherwise only visible in a webhook.
+   * subscription id (migration 0037) because it is otherwise only visible in a webhook.
    */
   readonly itemId: string | null;
 }
