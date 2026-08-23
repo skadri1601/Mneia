@@ -35,7 +35,9 @@ const OPEN_RECIPIENT = 'open';
 const LINE_BREAKS = /\r\n|\r/g;
 const WHITESPACE_RUN = /\s+/g;
 const ORDERED_LIST_START = /^(\d{1,9})([.)])/;
-const BLOCK_MARKER_START = /^[#>*+=|~`_<-]/;
+const BLOCK_MARKER_START = /^[#>=|~`<]/;
+const BULLET_MARKER_START = /^[*+-](?:\s|$)/;
+const THEMATIC_BREAK = /^([*\-_])(?:\s*\1){2,}\s*$/;
 
 const pad = (value: number, width: number): string => String(value).padStart(width, '0');
 
@@ -57,7 +59,9 @@ function escapeLineStart(line: string): string {
   if (ORDERED_LIST_START.test(line)) {
     return line.replace(ORDERED_LIST_START, '$1\\$2');
   }
-  return BLOCK_MARKER_START.test(line) ? `\\${line}` : line;
+  const opensBlock =
+    BLOCK_MARKER_START.test(line) || BULLET_MARKER_START.test(line) || THEMATIC_BREAK.test(line);
+  return opensBlock ? `\\${line}` : line;
 }
 
 const bodyLinesFor = (item: ContextItem): readonly string[] =>
@@ -68,18 +72,15 @@ const bodyLinesFor = (item: ContextItem): readonly string[] =>
     .filter((line) => line !== '')
     .map((line) => `${BODY_INDENT}${escapeLineStart(line)}`);
 
-function actorFor(item: ContextItem, input: RenderHandoffInput): Actor {
+export function provenanceLine(item: ContextItem, input: RenderHandoffInput): string {
   const actor = input.actors.get(item.assertedBy);
   if (actor === undefined) {
-    throw new TypeError(
-      `renderHandoff expected actors to carry every asserting actor; context_item ${item.id} was asserted by ${item.assertedBy} and no actor was supplied — resolve the item's actors from the store before rendering`,
-    );
+    // The asserting actor was removed from the workspace. Attribution degrades to unattributed
+    // rather than failing the render, because dropping the item would silently drop a
+    // load-bearing constraint (§10.2). humanConfirmed is a fact on the item, not on the actor.
+    return `[${[UNATTRIBUTED_ACTOR, item.humanConfirmed ? 'human-confirmed' : 'unconfirmed'].join(META_SEPARATOR)}]`;
   }
-  return actor;
-}
 
-export function provenanceLine(item: ContextItem, input: RenderHandoffInput): string {
-  const actor = actorFor(item, input);
   const confirmation =
     actor.kind === 'human'
       ? item.humanConfirmed

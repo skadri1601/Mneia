@@ -58,6 +58,23 @@ const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504, 529]);
 const isRetryableStatus = (status: number): boolean =>
   RETRYABLE_STATUS.has(status) || status >= 500;
 
+/**
+ * Statuses that condemn the vendor rather than the request.
+ *
+ * A revoked key, a suspended account or a spent balance is not retryable — the identical
+ * call to the same vendor fails the same way — but it says nothing at all about the other
+ * vendor, which is exactly the case the fallback exists for. Without this a rotated
+ * OPENAI_API_KEY takes every checkpoint down until the deploy that replaces it, while a
+ * plain rate limit on the same key degrades to Haiku. /api/health cannot tell them apart
+ * either: it reports key_present for a key that no longer authenticates (MNE-266).
+ */
+const VENDOR_FATAL_STATUS = new Set([401, 402, 403]);
+
+export const isVendorFatal = (error: unknown): boolean =>
+  error instanceof ExtractionProviderError &&
+  error.status !== null &&
+  VENDOR_FATAL_STATUS.has(error.status);
+
 const bodySnippet = (body: string): string => body.slice(0, 300).replace(/\s+/g, ' ').trim();
 
 /**

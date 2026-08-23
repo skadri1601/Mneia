@@ -6,9 +6,12 @@ import { CliError } from './command.js';
 import {
   CONFIG_DIR,
   credentialsPath,
+  DEFAULT_ENDPOINT,
+  ENDPOINT_ENV_VAR,
   HOME_ENV_VAR,
   mneiaHomeDir,
   requireProjectConfig,
+  resolveEndpoint,
 } from './config.js';
 import { localConfigPath } from './local-binding.js';
 
@@ -55,6 +58,50 @@ describe('test isolation', () => {
     expect(mneiaHomeDir(process.env)).not.toBe(join(homedir(), CONFIG_DIR));
     expect(credentialsPath(process.env).startsWith(join(homedir(), CONFIG_DIR))).toBe(false);
     expect(localConfigPath(process.env).startsWith(join(homedir(), CONFIG_DIR))).toBe(false);
+  });
+});
+
+describe('resolveEndpoint', () => {
+  it('treats a set-but-empty MNEIA_API_URL as unset rather than letting it beat the default', () => {
+    expect(resolveEndpoint({ [ENDPOINT_ENV_VAR]: '' }, undefined)).toBe(DEFAULT_ENDPOINT);
+    expect(resolveEndpoint({ [ENDPOINT_ENV_VAR]: '   ' }, undefined)).toBe(DEFAULT_ENDPOINT);
+  });
+
+  it('names the variable and the value when MNEIA_API_URL is not a URL at all', () => {
+    const thrown = (): unknown => {
+      try {
+        return resolveEndpoint({ [ENDPOINT_ENV_VAR]: 'not a url' }, undefined);
+      } catch (cause) {
+        return cause;
+      }
+    };
+
+    const error = thrown();
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as CliError).kind).toBe('not_configured');
+    expect((error as CliError).message).toContain(ENDPOINT_ENV_VAR);
+    expect((error as CliError).message).toContain('not a url');
+    expect((error as CliError).fix).not.toContain('retry');
+  });
+
+  it('refuses a scheme that is not http or https', () => {
+    let error: unknown;
+    try {
+      resolveEndpoint({ [ENDPOINT_ENV_VAR]: 'ftp://example.com' }, undefined);
+    } catch (cause) {
+      error = cause;
+    }
+
+    expect(error).toBeInstanceOf(CliError);
+    expect((error as CliError).message).toContain('ftp');
+  });
+
+  it('prefers the environment, then the config file, then the default', () => {
+    expect(
+      resolveEndpoint({ [ENDPOINT_ENV_VAR]: 'https://env.example' }, 'https://file.example'),
+    ).toBe('https://env.example');
+    expect(resolveEndpoint({}, 'https://file.example')).toBe('https://file.example');
+    expect(resolveEndpoint({}, undefined)).toBe(DEFAULT_ENDPOINT);
   });
 });
 

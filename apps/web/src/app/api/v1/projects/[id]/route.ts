@@ -1,5 +1,5 @@
 import { handleGetProject } from '../../../../../server/api/handlers.js';
-import { serve } from '../../../../../server/api/serve.js';
+import { parseResourceId, serve } from '../../../../../server/api/serve.js';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -12,6 +12,6 @@ export const GET = async (
   return serve({
     request,
     input: id,
-    run: (store, projectId) => handleGetProject(store, projectId),
+    run: (store, projectId) => handleGetProject(store, parseResourceId(projectId, 'project id')),
   });
 };

@@ -10,6 +10,7 @@ import type {
 } from '@mneia/core';
 import { assembleSlice, candidateLimitFor as coreCandidateLimitFor } from '@mneia/core';
 import { z } from 'zod';
+import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 export const DEFAULT_TOKEN_BUDGET = 4000;
@@ -248,7 +249,7 @@ export const rehydrateTool: ToolDefinition<RehydrateInput> = {
   title: 'Rehydrate project context',
   description:
     'Load the minimal high-signal context slice for the task you are about to start: the active constraints you must not violate, the decisions already made and why, the open questions, and what was recently superseded so you do not re-propose it. Call this once at the start of every session before planning or writing code, and again whenever the task changes — it is cheap and safe to call unconditionally. Returns rendered markdown plus the slice id and included item ids for correlation. Use mneia_search instead when you already know the specific thing you are looking for.',
-  inputSchema: { ...z.toJSONSchema(rehydrateInputSchema, { io: 'input' }) },
+  inputSchema: closedInputSchema(z.toJSONSchema(rehydrateInputSchema, { io: 'input' })),
   parse: parseRehydrateInput,
   run: runRehydrate,
 };

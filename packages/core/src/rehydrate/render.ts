@@ -16,6 +16,8 @@ interface SliceSection {
 
 export const SHORT_ITEM_ID_MIN_LENGTH = 8;
 
+export const PLACEHOLDER_SHORT_ITEM_ID = '0'.repeat(SHORT_ITEM_ID_MIN_LENGTH);
+
 const BODY_INDENT = '  ';
 const META_SEPARATOR = ' · ';
 const DISPUTED_MARKER = '**DISPUTED — unresolved, do not rely on this**';
@@ -139,12 +141,8 @@ function attributionFor(item: ContextItem): readonly string[] {
   ];
 }
 
-function metaFor(item: ContextItem, shortIds: ReadonlyMap<Uuid, string>): string {
-  const parts = [
-    `#${shortIds.get(item.id) ?? item.id}`,
-    utcDay(item.assertedAt),
-    ...attributionFor(item),
-  ];
+function metaFor(item: ContextItem, shortId: string): string {
+  const parts = [`#${shortId}`, utcDay(item.assertedAt), ...attributionFor(item)];
 
   if (item.status === 'superseded' || item.status === 'retired') {
     parts.push(item.status);
@@ -153,12 +151,16 @@ function metaFor(item: ContextItem, shortIds: ReadonlyMap<Uuid, string>): string
   return `[${parts.join(META_SEPARATOR)}]`;
 }
 
-function renderItem(item: ContextItem, shortIds: ReadonlyMap<Uuid, string>): string {
-  const head = ['-', ...markersFor(item), metaFor(item, shortIds), inlineText(item.title)]
+export function renderItemBlock(item: ContextItem, shortId: string): string {
+  const head = ['-', ...markersFor(item), metaFor(item, shortId), inlineText(item.title)]
     .filter((part) => part !== '')
     .join(' ');
 
   return [head, ...bodyLinesFor(item)].join('\n');
+}
+
+function renderItem(item: ContextItem, shortIds: ReadonlyMap<Uuid, string>): string {
+  return renderItemBlock(item, shortIds.get(item.id) ?? item.id);
 }
 
 function renderHeader(input: RenderSliceInput, itemCount: number): string {

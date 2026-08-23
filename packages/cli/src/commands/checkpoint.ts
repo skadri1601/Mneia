@@ -547,6 +547,9 @@ export async function emitReviewEvents(
 const countOf = (count: number, noun: string): string =>
   `${count} ${count === 1 ? noun : `${noun}s`}`;
 
+const verbOf = (count: number, singular: string, plural: string): string =>
+  count === 1 ? singular : plural;
+
 export interface CheckpointOutcome {
   readonly checkpointId: Uuid;
   readonly automatic: number;
@@ -595,7 +598,7 @@ function renderPendingWithoutTty(
   automatic: readonly CheckpointCandidate[],
 ): string {
   const blocks = [
-    `${countOf(pending.length, 'candidate')} need a human and this is not an interactive terminal, so nothing was confirmed for them.`,
+    `${countOf(pending.length, 'candidate')} ${verbOf(pending.length, 'needs', 'need')} a human and this is not an interactive terminal, so nothing was confirmed for them.`,
     [
       'PENDING HUMAN CONFIRMATION — not recorded:',
       ...pending.map(
@@ -604,8 +607,8 @@ function renderPendingWithoutTty(
     ].join('\n'),
     automatic.length === 0
       ? 'Nothing was written.'
-      : `${countOf(automatic.length, 'item')} needed no human and ${automatic.length === 1 ? 'was' : 'were'} recorded.`,
-    'Run mneia checkpoint in a terminal to decide these, or surface them through the mneia_checkpoint MCP tool.',
+      : `${countOf(automatic.length, 'item')} needed no human and ${verbOf(automatic.length, 'was', 'were')} recorded.`,
+    'Run mneia checkpoint in a terminal to decide these, or mneia review --drain to decide them one keypress at a time. Nothing failed: the queue is where a candidate waits for a person.',
   ];
   return `${blocks.join('\n\n')}\n`;
 }
@@ -687,7 +690,7 @@ function reportTurnGaps(
   }
   if (proposal.pendingTurns > 0) {
     invocation.io.stderr(
-      `${prefix}${proposal.pendingTurns} turn${proposal.pendingTurns === 1 ? '' : 's'} were not read this time, so run mneia checkpoint again to cover them — nothing was skipped${proposal.incompleteReason === null ? '' : `: ${proposal.incompleteReason}`}\n`,
+      `${prefix}${countOf(proposal.pendingTurns, 'turn')} ${verbOf(proposal.pendingTurns, 'was', 'were')} not read this time, so run mneia checkpoint again to cover them — nothing was skipped${proposal.incompleteReason === null ? '' : `: ${proposal.incompleteReason}`}\n`,
     );
   }
   if (proposal.droppedBeforeUpload > 0) {
@@ -748,23 +751,33 @@ async function runSession(
   const canPrompt = deps.prompter.interactive && !invocation.json;
 
   if (!canPrompt && review.length > 0) {
-    if (automatic.length > 0) {
-      await callApi(config.endpoint, 'checkpoint', () =>
-        deps.api.commit({
-          config,
-          projectId: proposal.projectId,
-          sessionId: proposal.sessionId,
-          source: proposal.source,
-          sourceSessionRef: proposal.sourceSessionRef,
-          watermark: proposal.watermark,
-          trigger,
-          summary,
-          automatic,
-          reviewed: [],
-        }),
-      );
+    if (automatic.length === 0) {
+      return { session, proposal, outcome: null, automatic, pending: review, error: null };
     }
-    return { session, proposal, outcome: null, automatic, pending: review, error: null };
+
+    const receipt = await callApi(config.endpoint, 'checkpoint', () =>
+      deps.api.commit({
+        config,
+        projectId: proposal.projectId,
+        sessionId: proposal.sessionId,
+        source: proposal.source,
+        sourceSessionRef: proposal.sourceSessionRef,
+        watermark: proposal.watermark,
+        trigger,
+        summary,
+        automatic,
+        reviewed: [],
+      }),
+    );
+
+    return {
+      session,
+      proposal,
+      outcome: summarize(receipt, automatic, []),
+      automatic,
+      pending: review,
+      error: null,
+    };
   }
 
   let reviewed: readonly ReviewedCandidate[] = [];
@@ -818,11 +831,15 @@ function sessionRunLine(run: SessionRun): string {
   if (run.error !== null) {
     return `    failed: ${run.error}`;
   }
+  if (run.pending.length > 0) {
+    const recorded =
+      run.outcome === null
+        ? 'nothing recorded'
+        : `checkpoint ${run.outcome.checkpointId} — ${countOf(run.automatic.length, 'item')} recorded without asking`;
+    return `    ${countOf(run.pending.length, 'candidate')} ${verbOf(run.pending.length, 'needs', 'need')} a human and this is not an interactive terminal · ${recorded}`;
+  }
   if (run.outcome !== null) {
     return `    checkpoint ${run.outcome.checkpointId} — ${run.outcome.automatic} recorded without asking · ${run.outcome.confirmed} confirmed · ${run.outcome.edited} edited · ${run.outcome.rejected} rejected`;
-  }
-  if (run.pending.length > 0) {
-    return `    ${countOf(run.pending.length, 'candidate')} need a human and this is not an interactive terminal · ${countOf(run.automatic.length, 'item')} recorded without asking`;
   }
   return '    nothing to checkpoint — no candidates were proposed';
 }
@@ -850,14 +867,16 @@ function renderAllSessions(
   );
 
   const tally = [
-    `${recorded} of ${runs.length} ${runs.length === 1 ? 'session' : 'sessions'} recorded a checkpoint`,
+    `${recorded} of ${runs.length} ${verbOf(runs.length, 'session', 'sessions')} recorded a checkpoint`,
     `${pending} left waiting on a human`,
     `${failed} failed`,
   ].join(' · ');
 
   const footer = [
     tally,
-    'Each session resumes from its own watermark, so re-running mneia checkpoint covers whatever is left.',
+    pending === 0
+      ? 'Each session resumes from its own watermark, so re-running mneia checkpoint covers whatever is left.'
+      : 'Each session resumes from its own watermark, so re-running mneia checkpoint covers whatever is left. A candidate waiting on a human is not a failure — decide them with mneia review --drain.',
   ].join('\n');
 
   return `${[header, ...blocks, footer].join('\n\n')}\n`;
@@ -941,8 +960,7 @@ async function runEverySession(
       : renderAllSessions(runs, context.config, discovery),
   );
 
-  const unfinished = runs.filter((run) => run.error !== null || run.pending.length > 0);
-  return unfinished.length === 0 ? EXIT_OK : EXIT_FAILED;
+  return runs.some((run) => run.error !== null) ? EXIT_FAILED : EXIT_OK;
 }
 
 function renderOneSession(
@@ -965,10 +983,10 @@ function renderOneSession(
   if (run.pending.length > 0) {
     invocation.io.stdout(
       invocation.json
-        ? renderJson(null, run.pending, run.automatic, config, proposal, selection)
+        ? renderJson(run.outcome, run.pending, run.automatic, config, proposal, selection)
         : renderPendingWithoutTty(run.pending, run.automatic),
     );
-    return EXIT_FAILED;
+    return EXIT_OK;
   }
 
   const outcome = run.outcome;

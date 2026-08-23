@@ -807,7 +807,7 @@ class PostgresScopedStore implements ReviewCapableStore {
             AND context_item.kind IN ('decision', 'constraint')
             AND context_item.status = 'superseded'
             AND ${visibility}
-          ORDER BY context_item.asserted_at DESC, context_item.id DESC
+          ORDER BY COALESCE(context_item.valid_to, context_item.asserted_at) DESC, context_item.id DESC
           LIMIT ${supersededLimit}
        )
        SELECT * FROM candidate_rows

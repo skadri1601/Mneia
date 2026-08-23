@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { ContextItem, Uuid } from '../domain/types.js';
 import type { ItemKind, ItemStatus } from '../store/schema.js';
 import { DEFAULT_KIND_QUOTAS, packSlice } from './pack.js';
-import { countItemTokens, type TokenCounter } from './tokens.js';
+import { renderSlice } from './render.js';
+import { bpeTokenCounter, countItemTokens, type TokenCounter } from './tokens.js';
 import type { KindQuotas, ScoreComponents, ScoredItem } from './types.js';
 
 const counter: TokenCounter = { name: 'char-length', count: (text) => text.length };
@@ -311,5 +312,63 @@ describe('packSlice', () => {
     const request = { scored: facts(1), tokenBudget: 100, quotas: withQuotas({ fact: -0.1 }) };
 
     expect(() => packSlice(request, { counter })).toThrow(/"fact" quota/);
+  });
+});
+
+describe('the token budget the packer enforces is the budget the reader pays', () => {
+  const SLICE_CHROME_TOKENS = 100;
+
+  const KINDS: readonly ItemKind[] = [
+    'constraint',
+    'decision',
+    'open_question',
+    'fact',
+    'artifact_ref',
+  ];
+
+  const realisticCorpus = (): readonly ScoredItem[] =>
+    Array.from({ length: 60 }, (_unused, index) => {
+      const entry = scored({
+        id: `item-${String(index).padStart(2, '0')}`,
+        kind: KINDS[index % KINDS.length] ?? 'fact',
+        score: 1 - index / 100,
+        body: 'The deploy gate refuses to ship against a schema the build cannot satisfy.',
+        loadBearing: index % 11 === 0,
+      });
+      return {
+        ...entry,
+        item: {
+          ...entry.item,
+          title: 'Migrate production before the gate runs, not after it fails',
+          provenance: { actorKind: 'agent', actorDisplayName: 'Claude Code 2.1.0' },
+        },
+      };
+    });
+
+  it('does not spend twice the budget it reports', () => {
+    const budget = 3000;
+    const packed = packSlice({ scored: realisticCorpus(), tokenBudget: budget });
+    const rendered = bpeTokenCounter.count(
+      renderSlice({ task: 'ship the rehydrate fix', packed, generatedAt: NOW }),
+    );
+
+    expect(packed.items.length).toBeGreaterThan(0);
+    expect(packed.tokensUsed).toBeLessThanOrEqual(budget);
+    expect(rendered - packed.tokensUsed - packed.items.length).toBeLessThanOrEqual(
+      SLICE_CHROME_TOKENS,
+    );
+  });
+
+  it('leaves only the slice chrome uncharged, at every budget', () => {
+    for (const budget of [500, 1500, 3000, 8000]) {
+      const packed = packSlice({ scored: realisticCorpus(), tokenBudget: budget });
+      const rendered = bpeTokenCounter.count(
+        renderSlice({ task: 'ship it', packed, generatedAt: NOW }),
+      );
+
+      expect(rendered - packed.tokensUsed - packed.items.length).toBeLessThanOrEqual(
+        SLICE_CHROME_TOKENS,
+      );
+    }
   });
 });

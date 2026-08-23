@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { Buffer } from 'node:buffer';
-import type { ReviewCapableStore } from '@mneia/core';
+import type { ReviewCapableStore, Uuid } from '@mneia/core';
 import { StoreError, SupersedeNotAllowedError } from '@mneia/core';
 import type { z } from 'zod';
 import { ApiAuthError, apiError, apiOk, resolveBearerIdentity } from '../api-auth.js';
@@ -25,14 +25,45 @@ export interface RateLimitDependencies {
   readonly now: () => Date;
 }
 
-export interface ServeOptions<TInput> {
+type ServeRun<TInput> = (store: ReviewCapableStore, input: TInput) => Promise<unknown>;
+
+interface ServeCommon {
   readonly request: Request;
-  readonly schema?: z.ZodType<TInput> | undefined;
-  readonly input?: TInput | undefined;
-  readonly run: (store: ReviewCapableStore, input: TInput) => Promise<unknown>;
   readonly cost?: RequestCost | undefined;
   readonly limits?: RateLimitDependencies | undefined;
 }
+
+interface SchemaServeOptions<TInput> extends ServeCommon {
+  readonly schema: z.ZodType<TInput>;
+  readonly input?: undefined;
+  readonly run: ServeRun<TInput>;
+}
+
+interface ValueServeOptions<TInput> extends ServeCommon {
+  readonly schema?: undefined;
+  readonly input: TInput;
+  readonly run: ServeRun<TInput>;
+}
+
+// Two mutually exclusive ways in, so `input` can no longer be omitted and then read back as TInput.
+// A caller supplies a body schema or a value, never neither and never both.
+export type ServeOptions<TInput> = SchemaServeOptions<TInput> | ValueServeOptions<TInput>;
+
+const RESOURCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Every dynamic route segment goes through here rather than reaching a store method that happens
+// to call assertUuid. Uuid is a bare alias for string, so this cannot be enforced by the type
+// system; the enumeration guard in app/api/v1/dynamic-routes.test.ts is what keeps a new [id]
+// route from skipping it.
+export const parseResourceId = (value: string, what: string): Uuid => {
+  if (!RESOURCE_ID.test(value)) {
+    throw new ApiRequestError(
+      'invalid_request',
+      `expected the ${what} in the path to be a UUID; received ${JSON.stringify(value)} — pass the id exactly as the API returned it`,
+    );
+  }
+  return value;
+};
 
 const describeIssues = (error: z.ZodError): string =>
   error.issues
@@ -116,8 +147,10 @@ export const serve = async <TInput>(options: ServeOptions<TInput>): Promise<Resp
       });
     }
 
-    let input = options.input as TInput;
-    if (options.schema !== undefined) {
+    let input: TInput;
+    if (options.schema === undefined) {
+      input = options.input;
+    } else {
       const parsed = options.schema.safeParse(
         await readJsonBody(options.request, limits.config.maxRequestBytes),
       );

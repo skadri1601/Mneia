@@ -580,35 +580,31 @@ const actionFor = (entry: CommitEntry) =>
 
 export const MAX_UPLOAD_BYTES = 900_000;
 
-const UPLOAD_TRUNCATION_NOTE = '\n… truncated by mneia to the upload limit, %n more characters';
-
 /**
- * Cut one turn's text down to what the wire schema will accept.
- *
- * reduceTrajectory caps tool_call and tool_result at 2000 characters, but leaves `text`
- * and `thinking` turns whole, and this client reduces with an effectively infinite
- * maxChars so the global drop loop never runs either. A single long turn — a pasted log,
- * a large assistant answer — therefore reached the API at full length and was rejected by
- * TrajectoryTurnWireSchema outright. A rejected request is not lossy, it is fatal: that
- * session could never be checkpointed at all, which is the same failure mode as the
- * `.min(1)` probe bug (MNE-100). Truncating loses the tail of one turn; not truncating
- * loses the session.
+ * A turn longer than MAX_TURN_TEXT_LENGTH fails schema validation for the whole request,
+ * and because the offending turn is in every later upload of that session too, the failure
+ * is permanent: the session can never be checkpointed again. Trimming the tail of one turn
+ * loses less than refusing the session, and the note makes the loss visible in the prompt.
  */
-const withinTurnTextLimit = (text: string): string => {
+
+const truncationNote = (dropped: number): string =>
+  `\n… truncated by mneia, ${dropped} more characters`;
+
+const wireText = (text: string): string => {
   if (text.length <= MAX_TURN_TEXT_LENGTH) {
     return text;
   }
-  // Reserve room for the note itself. The reserve is an upper bound rather than the exact
-  // note length, because that depends on the digits in the count it is about to state.
-  const kept = MAX_TURN_TEXT_LENGTH - UPLOAD_TRUNCATION_NOTE.length - 20;
-  return `${text.slice(0, kept)}${UPLOAD_TRUNCATION_NOTE.replace('%n', String(text.length - kept))}`;
+  // truncationNote(text.length) is the widest the note can get, so budgeting for it keeps
+  // the result at or under the cap however many digits the real count needs.
+  const kept = MAX_TURN_TEXT_LENGTH - truncationNote(text.length).length;
+  return `${text.slice(0, kept)}${truncationNote(text.length - kept)}`;
 };
 
 const wireTurn = (turn: TrajectoryTurn) => ({
   ref: turn.ref,
   role: turn.role,
   kind: turn.kind,
-  text: withinTurnTextLimit(turn.text),
+  text: wireText(turn.text),
   toolName: turn.toolName,
   at: turn.at === null ? null : turn.at.toISOString(),
 });

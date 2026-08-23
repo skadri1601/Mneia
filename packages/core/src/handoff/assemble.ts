@@ -1,4 +1,4 @@
-import type { Actor, Embedding, Handoff, Uuid } from '../domain/types.js';
+import type { Actor, ContextItem, Embedding, Handoff, Uuid } from '../domain/types.js';
 import { mergeCandidates } from '../rehydrate/assemble.js';
 import { DEFAULT_KIND_QUOTAS, packSlice } from '../rehydrate/pack.js';
 import { DEFAULT_SCORING_WEIGHTS, scoreItems } from '../rehydrate/score.js';
@@ -37,6 +37,17 @@ export interface AssembledHandoff {
 }
 
 const dayMs = 24 * 60 * 60 * 1000;
+
+const supersededAt = (item: ContextItem): number =>
+  item.validTo === null ? Number.MAX_SAFE_INTEGER : item.validTo.getTime();
+
+function bySupersededThenId(a: ContextItem, b: ContextItem): number {
+  const gap = supersededAt(b) - supersededAt(a);
+  if (gap !== 0) {
+    return gap;
+  }
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
 
 async function resolveActors(
   store: ScopedStore,
@@ -103,7 +114,7 @@ export async function assembleHandoff(
       projectId: input.projectId,
       kinds: SUPERSEDED_KINDS,
       statuses: SUPERSEDED_STATUSES,
-      limit: HANDOFF_SUPERSEDED_LIMIT,
+      limit: input.itemLimit ?? DEFAULT_ITEM_LIMIT,
     }),
   ]);
 
@@ -116,9 +127,10 @@ export async function assembleHandoff(
 
   const packed = packSlice({ scored, tokenBudget, quotas: DEFAULT_KIND_QUOTAS });
 
-  const inWindow = superseded.filter(
-    (item) => item.validTo === null || item.validTo.getTime() >= supersededSince.getTime(),
-  );
+  const inWindow = superseded
+    .filter((item) => supersededAt(item) >= supersededSince.getTime())
+    .sort(bySupersededThenId)
+    .slice(0, HANDOFF_SUPERSEDED_LIMIT);
 
   const items = mergeCandidates(
     packed.items.map((entry) => entry.item),

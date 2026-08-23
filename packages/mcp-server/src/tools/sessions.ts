@@ -2,6 +2,7 @@ import type { Project, ProjectSessionSummary, ScopedStore, Uuid } from '@mneia/c
 import { ApiError, shortenItemIds } from '@mneia/core';
 import { z } from 'zod';
 import { shortActorId, shortActorIds } from './actors.js';
+import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const TOOL = 'mneia_sessions';
@@ -32,10 +33,9 @@ const SessionsInputSchema = z.object({
 
 export type SessionsInput = z.infer<typeof SessionsInputSchema>;
 
-const INPUT_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(SessionsInputSchema, {
-  target: 'draft-7',
-  io: 'input',
-});
+const INPUT_JSON_SCHEMA: Record<string, unknown> = closedInputSchema(
+  z.toJSONSchema(SessionsInputSchema, { target: 'draft-7', io: 'input' }),
+);
 
 export interface ProjectSessionFilterInput {
   readonly projectId: Uuid;

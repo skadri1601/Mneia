@@ -13,6 +13,7 @@ import {
   type ExtractionModel,
   ExtractionProviderError,
   type HttpExtractionOptions,
+  isVendorFatal,
   type ReasoningEffort,
   resolveExtractionModel,
   type ServiceTier,
@@ -140,16 +141,19 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
         return { text: response.text, model: primary.id, attempts };
       } catch (error) {
         const retryable = error instanceof ExtractionProviderError && error.retryable;
+        // Two different reasons to reach for the other vendor: this request might succeed
+        // on a second attempt, or this vendor is refusing everything we send it.
+        const worthFallingBack = retryable || isVendorFatal(error);
         const fits = fallback === null ? false : fitsWindow(request, fallback);
         attempts.push({
           model: primary.id,
-          outcome: retryable && fallback !== null && fits ? 'fell_back' : 'failed',
+          outcome: worthFallingBack && fallback !== null && fits ? 'fell_back' : 'failed',
           inputTokens: 0,
           outputTokens: 0,
           durationMs: now() - startedAt,
         });
 
-        if (!retryable || fallback === null) {
+        if (!worthFallingBack || fallback === null) {
           throw new ExtractionRunError(error, attempts);
         }
 

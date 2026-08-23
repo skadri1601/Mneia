@@ -120,6 +120,16 @@ describe('mneia_review_queue', () => {
     expect(/·\s*human-confirmed/.test(text)).toBe(false);
   });
 
+  it('says one item is waiting, not one item are waiting', async () => {
+    const context = contextWith(listing([pendingItem()]));
+
+    const result = await reviewQueueTool.run(reviewQueueTool.parse({}), context);
+    const text = result.content[0]?.text ?? '';
+
+    expect(text).toContain('1 item in payments-migration is waiting for human review');
+    expect(text).not.toContain('1 item in payments-migration are waiting');
+  });
+
   it('tells the agent that confirming is not its decision to make', async () => {
     const context = contextWith(listing([pendingItem()]));
 

@@ -151,18 +151,49 @@ describe('handleProposeCheckpoint', () => {
     expect(proposal.watermark).toBe('c');
   });
 
-  it('refuses an upload that does not reach back to the watermark, rather than paying twice', async () => {
-    // This used to re-extract the whole window silently. Never skipping a turn is the
-    // right instinct, but paying for every turn again is the wrong way to buy it: the
-    // watermark moves backwards and everything between is billed a second time. The
-    // client is told instead, and can either send from the watermark or declare a
-    // rotation - see the test below.
-    const { deps } = depsWith({ watermarkFor: vi.fn(async () => 'a-turn-we-were-not-sent') });
+  describe('an upload that does not reach back to the watermark', () => {
+    const unreachable = () => vi.fn(async () => 'a-turn-we-were-not-sent');
 
-    await expect(
-      handleProposeCheckpoint(storeStub(), input(['a', 'b', 'c']), deps),
-    ).rejects.toThrow(/does not contain watermark/);
-    expect(deps.run).not.toHaveBeenCalled();
+    it('still extracts it, because losing the turns costs more than reading them twice', async () => {
+      const { deps } = depsWith({ watermarkFor: unreachable() });
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(['a', 'b', 'c']), deps);
+
+      expect(deps.run).toHaveBeenCalled();
+      expect(proposal.candidates.length).toBeGreaterThan(0);
+    });
+
+    it('leaves the watermark where it was, so it can never walk backwards', async () => {
+      const { deps } = depsWith({ watermarkFor: unreachable() });
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(['a', 'b', 'c']), deps);
+
+      expect(proposal.watermark).toBe('a-turn-we-were-not-sent');
+      expect(proposal.watermark).not.toBe('c');
+    });
+
+    it('reports every sent turn as still pending, and says why', async () => {
+      const { deps } = depsWith({ watermarkFor: unreachable() });
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input(['a', 'b', 'c']), deps);
+
+      expect(proposal.pendingTurns).toBe(3);
+      expect(proposal.coverage?.pendingTurns).toBe(3);
+      expect(proposal.incompleteReason).toMatch(/does not contain watermark/);
+    });
+
+    it('does not hold the watermark when the probe uploads no turns at all', async () => {
+      // turnsSince cannot find a watermark in an empty array, so every watermark probe
+      // reports resolved: false. Treating that as a held watermark would be harmless but
+      // would put a failure message on a request that succeeded.
+      const { deps } = depsWith({ watermarkFor: unreachable() });
+
+      const { proposal } = await handleProposeCheckpoint(storeStub(), input([]), deps);
+
+      expect(proposal.watermark).toBe('a-turn-we-were-not-sent');
+      expect(proposal.incompleteReason).toBeNull();
+      expect(deps.run).not.toHaveBeenCalled();
+    });
   });
 
   it('re-reads the whole window when the client declares a rotated transcript, so no turn is skipped', async () => {

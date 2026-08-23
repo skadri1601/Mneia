@@ -193,17 +193,19 @@ export const handleProposeCheckpoint = async (
     };
   }
 
-  // Placed after the zero-pending-turns return above, and that ordering is load-bearing.
-  // The client's watermark probe uploads no turns, and turnsSince cannot find a watermark
-  // in an empty array, so it reports resolved: false for every probe. Checking here would
-  // refuse the probe and re-create MNE-100, where an oversized session could not be
-  // checkpointed at all.
-  if (!pending.resolved && input.fromStart !== true) {
-    throw new ApiRequestError(
-      'invalid_request',
-      `the upload does not contain watermark "${watermark}", so the turns between it and the first turn sent are missing. Extracting anyway would move the watermark backwards and re-run extraction over turns already recorded, which is billed again. Send the turns from the watermark onward, or set fromStart when the transcript has rotated and no longer goes back that far.`,
-    );
-  }
+  // The watermark may only move to a position this request can prove is ahead of the
+  // stored one, and the only proof available is finding the stored watermark inside the
+  // upload: everything after it in the same array is later by construction. When the
+  // upload does not reach back that far, extract it anyway - refusing would leave an
+  // oversized or rotated session unable to checkpoint at all - but leave the watermark
+  // where it is. The cost is re-reading those turns next time, which reconcileCandidates
+  // already deduplicates; the alternative is a watermark that walks backwards and turns
+  // that are never read at all.
+  //
+  // fromStart is the client declaring the transcript has rotated past the watermark, so
+  // the stored one names a turn that no longer exists anywhere. Holding it there would
+  // stall the session permanently, so that declaration is what unblocks the advance.
+  const mayAdvanceWatermark = pending.resolved || input.fromStart === true;
 
   const reduced = reduceTrajectory(
     {
@@ -341,6 +343,13 @@ export const handleProposeCheckpoint = async (
   }
 
   const consumedTurns = completedThrough + 1;
+  const heldWatermark = mayAdvanceWatermark ? null : watermark;
+  const pendingTurns = heldWatermark === null ? sent.length - consumedTurns : sent.length;
+  const reason =
+    heldWatermark === null
+      ? incompleteReason
+      : (incompleteReason ??
+        `the upload does not contain watermark "${heldWatermark}", so the turns between it and the first turn sent are missing and nothing here proves this run got past it. The ${consumedTurns} turns sent were extracted and any new candidates are proposed, but the watermark stays put and they are read again next time. Send the turns from the watermark onward, or set fromStart when the transcript has rotated and no longer goes back that far.`);
 
   const filtered = applyPrecisionFilter(candidates);
 
@@ -392,15 +401,15 @@ export const handleProposeCheckpoint = async (
       })),
       rejectedCount: filtered.rejected.length,
       duplicateCount: reconciled.duplicates.length,
-      watermark: lastCommitted.ref,
+      watermark: heldWatermark ?? lastCommitted.ref,
       consumedTurns,
       model,
-      pendingTurns: sent.length - consumedTurns,
-      incompleteReason,
+      pendingTurns,
+      incompleteReason: reason,
       coverage: {
         droppedTurns: reduced.droppedTurns,
         splitTurns,
-        pendingTurns: sent.length - consumedTurns,
+        pendingTurns,
         consumedTurns,
         incompleteCode,
       },

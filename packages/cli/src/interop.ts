@@ -202,13 +202,13 @@ function toConstraint(pending: PendingItem, path: string): ImportedConstraint | 
     return null;
   }
 
-  const first = normalizeWhitespace(pending.lines[0] ?? '');
-  if (first.length === 0) {
+  const whole = normalizeWhitespace(text);
+  if (whole.length === 0) {
     return null;
   }
 
-  const title = first.length > MAX_TITLE_LENGTH ? truncateTitle(first) : first;
-  return { title, body: text === title ? null : text, sourceRef: `${path}:${pending.line}` };
+  const title = whole.length > MAX_TITLE_LENGTH ? truncateTitle(whole) : whole;
+  return { title, body: whole === title ? null : whole, sourceRef: `${path}:${pending.line}` };
 }
 
 function skipFrontmatter(lines: readonly string[]): number {
