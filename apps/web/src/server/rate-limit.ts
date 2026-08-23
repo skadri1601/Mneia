@@ -1,18 +1,18 @@
-export type RateLimitBucket = 'requests' | 'checkpoints_hourly' | 'checkpoints_daily';
+export type RateLimitBucket = 'requests';
 
-export type RequestCost = 'read' | 'checkpoint';
+/**
+ * Kept as a type even with one member: the checkpoint path is metered by the three dials
+ * in quota.ts now, not here, and `cost` still marks which requests the limiter sees.
+ */
+export type RequestCost = 'read';
 
 export interface RateLimitConfig {
   readonly requestsPerMinute: number;
-  readonly checkpointsPerHour: number;
-  readonly checkpointsPerDay: number;
   readonly maxRequestBytes: number;
 }
 
 export const DEFAULT_RATE_LIMIT_CONFIG: RateLimitConfig = {
   requestsPerMinute: 120,
-  checkpointsPerHour: 60,
-  checkpointsPerDay: 200,
   maxRequestBytes: 1_048_576,
 };
 
@@ -42,14 +42,6 @@ export const readRateLimitConfig = (
     env.MNEIA_RATE_LIMIT_REQUESTS_PER_MINUTE,
     DEFAULT_RATE_LIMIT_CONFIG.requestsPerMinute,
   ),
-  checkpointsPerHour: readPositiveInteger(
-    env.MNEIA_RATE_LIMIT_CHECKPOINTS_PER_HOUR,
-    DEFAULT_RATE_LIMIT_CONFIG.checkpointsPerHour,
-  ),
-  checkpointsPerDay: readPositiveInteger(
-    env.MNEIA_RATE_LIMIT_CHECKPOINTS_PER_DAY,
-    DEFAULT_RATE_LIMIT_CONFIG.checkpointsPerDay,
-  ),
   maxRequestBytes: readPositiveInteger(
     env.MNEIA_MAX_REQUEST_BYTES,
     DEFAULT_RATE_LIMIT_CONFIG.maxRequestBytes,
@@ -70,50 +62,23 @@ export const windowStartFor = (now: Date, windowSeconds: number): Date =>
 export interface WindowsForInput {
   readonly cost: RequestCost;
   readonly tokenId: string;
-  readonly workspaceId: string;
   readonly now: Date;
   readonly config: RateLimitConfig;
 }
 
 export const windowsFor = ({
-  cost,
   tokenId,
-  workspaceId,
   now,
   config,
-}: WindowsForInput): readonly RateLimitWindow[] => {
-  const token = `token:${tokenId}`;
-  const windows: RateLimitWindow[] = [
-    {
-      bucket: 'requests',
-      subject: token,
-      windowStart: windowStartFor(now, MINUTE_SECONDS),
-      windowSeconds: MINUTE_SECONDS,
-      limit: config.requestsPerMinute,
-    },
-  ];
-
-  if (cost === 'checkpoint') {
-    windows.push(
-      {
-        bucket: 'checkpoints_hourly',
-        subject: token,
-        windowStart: windowStartFor(now, HOUR_SECONDS),
-        windowSeconds: HOUR_SECONDS,
-        limit: config.checkpointsPerHour,
-      },
-      {
-        bucket: 'checkpoints_daily',
-        subject: `workspace:${workspaceId}`,
-        windowStart: windowStartFor(now, DAY_SECONDS),
-        windowSeconds: DAY_SECONDS,
-        limit: config.checkpointsPerDay,
-      },
-    );
-  }
-
-  return windows;
-};
+}: WindowsForInput): readonly RateLimitWindow[] => [
+  {
+    bucket: 'requests',
+    subject: `token:${tokenId}`,
+    windowStart: windowStartFor(now, MINUTE_SECONDS),
+    windowSeconds: MINUTE_SECONDS,
+    limit: config.requestsPerMinute,
+  },
+];
 
 export interface RateLimitDecision {
   readonly allowed: boolean;
@@ -136,18 +101,8 @@ const describeDuration = (seconds: number): string => {
   return `${Math.ceil(seconds / HOUR_SECONDS)}h`;
 };
 
-const explain = (window: RateLimitWindow, observed: number, retryAfterSeconds: number): string => {
-  const wait = describeDuration(retryAfterSeconds);
-  const per = describeWindow(window.windowSeconds);
-
-  if (window.bucket === 'requests') {
-    return `this token has made ${observed} requests in ${per}, and the limit is ${window.limit} — retry in ${wait}, or spread the calls out. Raise it with MNEIA_RATE_LIMIT_REQUESTS_PER_MINUTE.`;
-  }
-  if (window.bucket === 'checkpoints_hourly') {
-    return `this token has run ${observed} checkpoints in ${per}, and the limit is ${window.limit} — retry in ${wait}. Checkpoint is the expensive call, so it is capped harder than reads. Raise it with MNEIA_RATE_LIMIT_CHECKPOINTS_PER_HOUR.`;
-  }
-  return `this workspace has run ${observed} checkpoints in ${per}, and the ceiling is ${window.limit} — it resets in ${wait}. This is a hard per-account ceiling, not a throttle: reads still work, and no checkpoint is lost. Raise it with MNEIA_RATE_LIMIT_CHECKPOINTS_PER_DAY, or contact support to lift it for the account.`;
-};
+const explain = (window: RateLimitWindow, observed: number, retryAfterSeconds: number): string =>
+  `this token has made ${observed} requests in ${describeWindow(window.windowSeconds)}, and the limit is ${window.limit} — retry in ${describeDuration(retryAfterSeconds)}, or spread the calls out. Raise it with MNEIA_RATE_LIMIT_REQUESTS_PER_MINUTE.`;
 
 export interface EvaluateRateLimitInput {
   readonly windows: readonly RateLimitWindow[];

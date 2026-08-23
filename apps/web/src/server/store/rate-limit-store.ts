@@ -22,4 +22,14 @@ export interface BumpCountersInput {
 
 export interface RateLimitStore {
   bump(input: BumpCountersInput): Promise<ReadonlyMap<RateLimitBucket, number>>;
+  /**
+   * Undo a bump whose request was then refused.
+   *
+   * The counter is meant to count requests we served. bump() has to increment before the
+   * decision, because the decision needs the resulting count, so a refusal has already
+   * been counted by the time we know to refuse it - which is how a refused request used
+   * to push the next one further over the limit. Only the refusal path pays this second
+   * round trip, so the served path still costs one.
+   */
+  release(input: BumpCountersInput): Promise<void>;
 }

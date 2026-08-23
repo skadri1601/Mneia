@@ -10,7 +10,6 @@ export const runtime = 'nodejs';
 export const POST = (request: Request): Promise<Response> =>
   serve({
     request,
-    cost: 'checkpoint',
     schema: CheckpointWriteWireSchema,
     run: (store, input) =>
       handleWriteCheckpoint(store, input, {

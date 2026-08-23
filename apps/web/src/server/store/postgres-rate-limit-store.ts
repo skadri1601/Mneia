@@ -16,7 +16,7 @@ const describeCause = (cause: unknown): string =>
 
 const readBucket = (row: SqlRow): RateLimitBucket => {
   const value = row.bucket;
-  if (value === 'requests' || value === 'checkpoints_hourly' || value === 'checkpoints_daily') {
+  if (value === 'requests') {
     return value;
   }
   throw new RateLimitError(
@@ -72,6 +72,31 @@ RETURNING bucket, count`;
     });
 
     return new Map(rows.map((row) => [readBucket(row), readCount(row)]));
+  }
+
+  async release(input: BumpCountersInput): Promise<void> {
+    if (input.windows.length === 0) {
+      return;
+    }
+
+    const params: SqlValue[] = [input.workspaceId];
+    const predicates = input.windows.map((window) => {
+      const base = params.length;
+      params.push(window.subject, window.bucket, window.windowStart);
+      return `(subject = $${base + 1}::text AND bucket = $${base + 2}::text AND window_start = $${base + 3}::timestamptz)`;
+    });
+
+    // GREATEST guards against a concurrent sweep having already removed the row's count;
+    // a counter below zero would let the next window start with free headroom.
+    const sql = `
+UPDATE rate_limit_counter
+   SET count = GREATEST(count - 1, 0)
+ WHERE workspace_id = $1::uuid
+   AND (${predicates.join(' OR ')})`;
+
+    await this.inTransaction(input.workspaceId, async (session) => {
+      await session.execute(sql, params);
+    });
   }
 
   private async inTransaction<T>(

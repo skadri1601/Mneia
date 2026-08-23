@@ -55,14 +55,17 @@ const { serve } = await import('./serve.js');
 
 const config: RateLimitConfig = {
   requestsPerMinute: 120,
-  checkpointsPerHour: 60,
-  checkpointsPerDay: 200,
   maxRequestBytes: 1_048_576,
 };
+
+const released: number[] = [];
 
 const limits = {
   store: {
     bump: async (): Promise<ReadonlyMap<RateLimitBucket, number>> => new Map(),
+    release: async (): Promise<void> => {
+      released.push(1);
+    },
   } satisfies RateLimitStore,
   config,
   now: () => new Date('2026-08-16T12:00:00.000Z'),

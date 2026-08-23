@@ -9,7 +9,6 @@ import {
 } from './rate-limit.js';
 
 const TOKEN = '9f1c2b3a-0000-4000-8000-000000000001';
-const WORKSPACE = '9f1c2b3a-0000-4000-8000-000000000002';
 const NOW = new Date('2026-08-07T13:37:42.500Z');
 
 const counts = (entries: Readonly<Record<string, number>>): ReadonlyMap<RateLimitBucket, number> =>
@@ -24,11 +23,10 @@ describe('windowStartFor', () => {
 });
 
 describe('windowsFor', () => {
-  it('charges a read against the per-token request budget only', () => {
+  it('charges every request against the per-token request budget, and nothing else', () => {
     const windows = windowsFor({
       cost: 'read',
       tokenId: TOKEN,
-      workspaceId: WORKSPACE,
       now: NOW,
       config: DEFAULT_RATE_LIMIT_CONFIG,
     });
@@ -38,41 +36,26 @@ describe('windowsFor', () => {
     expect(windows[0]?.subject).toBe(`token:${TOKEN}`);
   });
 
-  it('charges a checkpoint against the request, hourly, and workspace-daily budgets', () => {
+  // MNE-103: a checkpoint count is not a unit of cost - measured across 116 real checkpoints
+  // they ranged from 17 to 1,092 turns. What a checkpoint may consume is decided by the three
+  // dials in quota.ts against the plan's monthly allowance, so no bucket here is checkpoint
+  // shaped and mneia_assert no longer spends one.
+  it('has no checkpoint bucket, because checkpoints are metered by allowance not by count', () => {
     const windows = windowsFor({
-      cost: 'checkpoint',
+      cost: 'read',
       tokenId: TOKEN,
-      workspaceId: WORKSPACE,
       now: NOW,
       config: DEFAULT_RATE_LIMIT_CONFIG,
     });
 
-    expect(windows.map((window) => window.bucket)).toEqual([
-      'requests',
-      'checkpoints_hourly',
-      'checkpoints_daily',
-    ]);
-  });
-
-  it('keys the daily ceiling on the workspace, not the token, so cycling tokens does not reset it', () => {
-    const windows = windowsFor({
-      cost: 'checkpoint',
-      tokenId: TOKEN,
-      workspaceId: WORKSPACE,
-      now: NOW,
-      config: DEFAULT_RATE_LIMIT_CONFIG,
-    });
-
-    const daily = windows.find((window) => window.bucket === 'checkpoints_daily');
-    expect(daily?.subject).toBe(`workspace:${WORKSPACE}`);
+    expect(windows.map((window) => window.bucket)).toEqual(['requests']);
   });
 });
 
 describe('evaluateRateLimit', () => {
   const windows = windowsFor({
-    cost: 'checkpoint',
+    cost: 'read',
     tokenId: TOKEN,
-    workspaceId: WORKSPACE,
     now: NOW,
     config: DEFAULT_RATE_LIMIT_CONFIG,
   });
@@ -80,11 +63,7 @@ describe('evaluateRateLimit', () => {
   it('allows a request that lands exactly on the limit', () => {
     const decision = evaluateRateLimit({
       windows,
-      counts: counts({
-        requests: DEFAULT_RATE_LIMIT_CONFIG.requestsPerMinute,
-        checkpoints_hourly: DEFAULT_RATE_LIMIT_CONFIG.checkpointsPerHour,
-        checkpoints_daily: DEFAULT_RATE_LIMIT_CONFIG.checkpointsPerDay,
-      }),
+      counts: counts({ requests: DEFAULT_RATE_LIMIT_CONFIG.requestsPerMinute }),
       now: NOW,
     });
 
@@ -94,7 +73,7 @@ describe('evaluateRateLimit', () => {
   it('refuses the first request past the limit', () => {
     const decision = evaluateRateLimit({
       windows,
-      counts: counts({ requests: 121, checkpoints_hourly: 1, checkpoints_daily: 1 }),
+      counts: counts({ requests: 121 }),
       now: NOW,
     });
 
@@ -104,7 +83,7 @@ describe('evaluateRateLimit', () => {
   it('reports how long to wait, rounded up to the end of the window', () => {
     const decision = evaluateRateLimit({
       windows,
-      counts: counts({ requests: 999, checkpoints_hourly: 1, checkpoints_daily: 1 }),
+      counts: counts({ requests: 999 }),
       now: NOW,
     });
 
@@ -114,7 +93,7 @@ describe('evaluateRateLimit', () => {
   it('never reports a retry-after of zero, which a client would busy-loop on', () => {
     const decision = evaluateRateLimit({
       windows,
-      counts: counts({ requests: 999, checkpoints_hourly: 1, checkpoints_daily: 1 }),
+      counts: counts({ requests: 999 }),
       now: new Date('2026-08-07T13:37:59.999Z'),
     });
 
@@ -124,35 +103,13 @@ describe('evaluateRateLimit', () => {
   it('names the budget, the observed count, and how to raise it', () => {
     const decision = evaluateRateLimit({
       windows,
-      counts: counts({ requests: 1, checkpoints_hourly: 61, checkpoints_daily: 1 }),
+      counts: counts({ requests: 121 }),
       now: NOW,
     });
 
-    expect(decision.message).toContain('61 checkpoints');
-    expect(decision.message).toContain('the limit is 60');
-    expect(decision.message).toContain('MNEIA_RATE_LIMIT_CHECKPOINTS_PER_HOUR');
-  });
-
-  it('says the daily ceiling is a ceiling rather than a throttle', () => {
-    const decision = evaluateRateLimit({
-      windows,
-      counts: counts({ requests: 1, checkpoints_hourly: 1, checkpoints_daily: 501 }),
-      now: NOW,
-    });
-
-    expect(decision.allowed).toBe(false);
-    expect(decision.message).toContain('hard per-account ceiling');
-    expect(decision.message).toContain('no checkpoint is lost');
-  });
-
-  it('reports the tightest breached budget first, so the message names the real cause', () => {
-    const decision = evaluateRateLimit({
-      windows,
-      counts: counts({ requests: 121, checkpoints_hourly: 61, checkpoints_daily: 501 }),
-      now: NOW,
-    });
-
-    expect(decision.message).toContain('requests');
+    expect(decision.message).toContain('121 requests');
+    expect(decision.message).toContain('the limit is 120');
+    expect(decision.message).toContain('MNEIA_RATE_LIMIT_REQUESTS_PER_MINUTE');
   });
 
   it('allows when a bucket has no observed count', () => {
@@ -170,17 +127,19 @@ describe('readRateLimitConfig', () => {
   it('reads each budget from its own variable', () => {
     const config = readRateLimitConfig({
       MNEIA_RATE_LIMIT_REQUESTS_PER_MINUTE: '10',
-      MNEIA_RATE_LIMIT_CHECKPOINTS_PER_HOUR: '5',
-      MNEIA_RATE_LIMIT_CHECKPOINTS_PER_DAY: '20',
       MNEIA_MAX_REQUEST_BYTES: '2048',
     });
 
-    expect(config).toEqual({
-      requestsPerMinute: 10,
-      checkpointsPerHour: 5,
-      checkpointsPerDay: 20,
-      maxRequestBytes: 2048,
+    expect(config).toEqual({ requestsPerMinute: 10, maxRequestBytes: 2048 });
+  });
+
+  it('ignores the retired checkpoint budgets rather than carrying them forward', () => {
+    const config = readRateLimitConfig({
+      MNEIA_RATE_LIMIT_CHECKPOINTS_PER_HOUR: '5',
+      MNEIA_RATE_LIMIT_CHECKPOINTS_PER_DAY: '20',
     });
+
+    expect(config).toEqual(DEFAULT_RATE_LIMIT_CONFIG);
   });
 
   it('refuses a limit that is not a positive integer rather than silently defaulting', () => {
