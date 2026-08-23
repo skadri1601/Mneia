@@ -27,13 +27,13 @@ export const BLOG_INTRO: Intro = {
 };
 
 export const BLOG_STATUS =
-  'Posts are dated and not silently rewritten. If something here stops being true — a milestone lands, a number moves, a claim is revoked — the correction goes in a new post rather than quietly over the old one.';
+  'Posts are dated and not silently rewritten. If something here stops being true - a milestone lands, a number moves, a claim is revoked - the correction goes in a new post rather than quietly over the old one.';
 
 const HANDOFF_ESSAY: BlogPost = {
   slug: 'the-unit-of-value-is-the-handoff',
   title: 'The unit of value is not memory. It is the handoff.',
   description:
-    'Every AI memory product gives you somewhere to put context and a way to query it. That is a database posture, and it fails at the exact moment it is needed — when someone is picking up work they did not do.',
+    'Every AI memory product gives you somewhere to put context and a way to query it. That is a database posture, and it fails at the exact moment it is needed - when someone is picking up work they did not do.',
   eyebrow: 'Thesis',
   heading: 'The unit of value is not memory. It is the handoff.',
   lead: 'Every competitor built a place to store context and a way to query it. Querying requires knowing what to ask, and the defining condition of picking up work is not knowing what you do not know.',
@@ -50,7 +50,7 @@ const HANDOFF_ESSAY: BlogPost = {
           kind: 'text',
           paragraphs: [
             'Here is the test we keep coming back to. Someone joins a piece of work on Wednesday that someone else started on Monday. They have a memory store, fully populated, perfectly indexed. What do they type?',
-            'They type something about the task in front of them. They do not type **"what approaches did we already reject?"** — and that is almost always the most valuable thing in the store.',
+            'They type something about the task in front of them. They do not type **"what approaches did we already reject?"** - and that is almost always the most valuable thing in the store.',
             'This is not a search-quality problem that a better embedding fixes. It is structural. A query returns what you asked for, and the thing that hurts you when resuming work is precisely the thing you did not know to ask about. A store can only answer; it cannot volunteer.',
           ],
         },
@@ -89,7 +89,7 @@ const HANDOFF_ESSAY: BlogPost = {
         {
           kind: 'text',
           paragraphs: [
-            'That last row is the one nobody else produces, and it is the one we would keep if we could only keep one. A deleted item cannot warn anyone. When something is superseded here, the replacement points at what it replaced and the old item stays, marked, with its reasoning intact — because what a team tried and rejected on Monday is exactly what a fresh agent proposes on Tuesday.',
+            'That last row is the one nobody else produces, and it is the one we would keep if we could only keep one. A deleted item cannot warn anyone. When something is superseded here, the replacement points at what it replaced and the old item stays, marked, with its reasoning intact - because what a team tried and rejected on Monday is exactly what a fresh agent proposes on Tuesday.',
           ],
         },
       ],
@@ -107,9 +107,9 @@ const HANDOFF_ESSAY: BlogPost = {
         {
           kind: 'bullets',
           items: [
-            '**Several writers, so provenance stops being optional.** Once work moves between people, every item has to record who asserted it — a human or an agent, which one, when. A human-confirmed constraint and an unconfirmed agent guess are not the same object and must not render the same way.',
+            '**Several writers, so provenance stops being optional.** Once work moves between people, every item has to record who asserted it - a human or an agent, which one, when. A human-confirmed constraint and an unconfirmed agent guess are not the same object and must not render the same way.',
             '**Disagreement becomes a first-class state.** Two writers will contradict each other. An agent contradicting a human-confirmed item is stored as disputed rather than applied; two humans contradicting each other is never auto-resolved, because arbitrating between colleagues is not a decision software should make on their behalf.',
-            '**Permissions, because a transfer crosses a boundary.** Context does not stop at a team edge — a decision in payments changes what sales can promise — so the model assumes the company rather than the individual.',
+            '**Permissions, because a transfer crosses a boundary.** Context does not stop at a team edge - a decision in payments changes what sales can promise - so the model assumes the company rather than the individual.',
           ],
         },
         {
@@ -128,7 +128,7 @@ const HANDOFF_ESSAY: BlogPost = {
           kind: 'text',
           paragraphs: [
             'The other half of the bet: a handoff that only works inside one vendor’s client is not a handoff, it is a session feature.',
-            'Work does not stay in one tool. It stops in Claude Code and resumes in Cursor, or stops with an agent and resumes with a person who does not use agents at all. Model providers are structurally incentivised against that kind of neutrality — their memory makes their client stickier, which is the point of building it.',
+            'Work does not stay in one tool. It stops in Claude Code and resumes in Cursor, or stops with an agent and resumes with a person who does not use agents at all. Model providers are structurally incentivised against that kind of neutrality - their memory makes their client stickier, which is the point of building it.',
             'That gap does not close on its own, which is why we sit beside the frameworks and the clients rather than above them, and why the MCP server exposes no vendor-specific behaviour.',
           ],
         },
@@ -142,7 +142,7 @@ const HANDOFF_ESSAY: BlogPost = {
           kind: 'text',
           paragraphs: [
             'Not the feature list. Features get copied in a quarter.',
-            'What compounds is the record: after a year, the project carries its own history of what was decided, why, who confirmed it, and what was already ruled out. A competitor cannot copy that, because it is not our software — it is the customer’s own history, and it gets more useful every month it grows.',
+            'What compounds is the record: after a year, the project carries its own history of what was decided, why, who confirmed it, and what was already ruled out. A competitor cannot copy that, because it is not our software - it is the customer’s own history, and it gets more useful every month it grows.',
           ],
         },
       ],
@@ -206,7 +206,7 @@ const DOGFOOD: BlogPost = {
           kind: 'text',
           paragraphs: [
             'Where the client allows it, the loop should not depend on remembering. Two hooks: `SessionStart` runs `mneia brief` and injects the slice, `Stop` runs `mneia checkpoint`.',
-            'Both shell out to the published CLI rather than reimplementing the wire protocol. That is the whole point of a dogfood — if we call an internal path, we are testing something a customer does not have.',
+            'Both shell out to the published CLI rather than reimplementing the wire protocol. That is the whole point of a dogfood - if we call an internal path, we are testing something a customer does not have.',
           ],
         },
         {
@@ -220,13 +220,13 @@ const DOGFOOD: BlogPost = {
           items: [
             'An active stop-hook flag returns immediately, so it cannot recurse into itself.',
             'No session marker means the session never rehydrated, so it never checkpoints.',
-            'Fewer than six new transcript entries is a no-op — not every stop is a boundary.',
+            'Fewer than six new transcript entries is a no-op - not every stop is a boundary.',
             'The lock is claimed with an exclusive-create write, so a concurrent stop loses the race rather than doubling up. A lock older than ten minutes is taken over once, so a killed process cannot wedge the session.',
           ],
         },
         {
           kind: 'note',
-          text: 'The marker advances even after a failed attempt, because `mneia checkpoint` resumes from a server-side watermark. The marker is a debounce, never a record of what was captured — conflating those two is how you build something that silently drops sessions.',
+          text: 'The marker advances even after a failed attempt, because `mneia checkpoint` resumes from a server-side watermark. The marker is a debounce, never a record of what was captured - conflating those two is how you build something that silently drops sessions.',
         },
       ],
     },
@@ -237,13 +237,13 @@ const DOGFOOD: BlogPost = {
         {
           kind: 'text',
           paragraphs: [
-            'The project binding — which workspace and project this directory belongs to — is a property of the repository, not of one laptop. It is meant to be committed.',
+            'The project binding - which workspace and project this directory belongs to - is a property of the repository, not of one laptop. It is meant to be committed.',
             '`.gitignore` swallowed the whole of `.mneia/`, so the one file every client already reads could not be versioned. Narrowing it to `.mneia/*` plus a negation for `config.json` was a two-character fix that had been quietly making the binding a per-machine setup step for everyone.',
           ],
         },
         {
           kind: 'note',
-          text: 'Credentials stay in `~/.mneia/credentials`, outside the repository, and nothing committed references them. The binding file holds no secret — that separation is what makes committing it safe.',
+          text: 'Credentials stay in `~/.mneia/credentials`, outside the repository, and nothing committed references them. The binding file holds no secret - that separation is what makes committing it safe.',
         },
       ],
     },
@@ -254,8 +254,8 @@ const DOGFOOD: BlogPost = {
         {
           kind: 'text',
           paragraphs: [
-            'The recurring lesson was that the interesting bugs were never in the ranking algorithm. They were in provenance — which session an item came from, and whether the answer could be trusted — and in the boundaries around the model call rather than the call itself.',
-            'The other lesson is older and keeps being true: the checkpoint is the surface where the confirmation happens, so its interaction quality has weight out of all proportion to its size. Confirm has to be one keypress. Edit must not require retyping the item. Prompt only for what genuinely needs a human. A clumsy prompt there does not merely annoy — people skip the review, and the record stops being worth trusting.',
+            'The recurring lesson was that the interesting bugs were never in the ranking algorithm. They were in provenance - which session an item came from, and whether the answer could be trusted - and in the boundaries around the model call rather than the call itself.',
+            'The other lesson is older and keeps being true: the checkpoint is the surface where the confirmation happens, so its interaction quality has weight out of all proportion to its size. Confirm has to be one keypress. Edit must not require retyping the item. Prompt only for what genuinely needs a human. A clumsy prompt there does not merely annoy - people skip the review, and the record stops being worth trusting.',
           ],
         },
       ],
@@ -298,7 +298,7 @@ const WATERMARK: BlogPost = {
           kind: 'text',
           paragraphs: [
             'The watermark advanced to the last turn **fed in**, not the last turn actually **sent**.',
-            'On a short session those are the same turn and nothing is wrong. On a session larger than the cap, the reducer drops everything past the limit — and the watermark sails right over the dropped turns and marks them as done. The next checkpoint resumes from beyond them. They are never extracted, and nothing anywhere reports a loss.',
+            'On a short session those are the same turn and nothing is wrong. On a session larger than the cap, the reducer drops everything past the limit - and the watermark sails right over the dropped turns and marks them as done. The next checkpoint resumes from beyond them. They are never extracted, and nothing anywhere reports a loss.',
           ],
         },
         {
@@ -308,7 +308,7 @@ const WATERMARK: BlogPost = {
         {
           kind: 'text',
           paragraphs: [
-            'That is the shape of failure we care about most, and the reason it is worth a post. It is not a crash. There is no error, no retry, no degraded status — just a session that is quietly half-remembered, in the exact product whose entire promise is that it does not forget.',
+            'That is the shape of failure we care about most, and the reason it is worth a post. It is not a crash. There is no error, no retry, no degraded status - just a session that is quietly half-remembered, in the exact product whose entire promise is that it does not forget.',
           ],
         },
       ],
@@ -320,7 +320,7 @@ const WATERMARK: BlogPost = {
         {
           kind: 'text',
           paragraphs: [
-            'The instinct is to move the watermark to the last turn sent. That is necessary and not sufficient — it stops the data loss but leaves the tail permanently unreachable, because every subsequent run trims at the same place.',
+            'The instinct is to move the watermark to the last turn sent. That is necessary and not sufficient - it stops the data loss but leaves the tail permanently unreachable, because every subsequent run trims at the same place.',
             'The actual fix has three parts:',
           ],
         },
@@ -335,7 +335,7 @@ const WATERMARK: BlogPost = {
         {
           kind: 'text',
           paragraphs: [
-            'A related failure lived next door and is worth naming, because it is the same class. Failover to a smaller fallback model did not check whether the prompt fit the window it was failing over to — so an oversized prompt was handed to a smaller model and failed there, reporting the wrong cause. The fallback now refuses a window that cannot hold the prompt and says so.',
+            'A related failure lived next door and is worth naming, because it is the same class. Failover to a smaller fallback model did not check whether the prompt fit the window it was failing over to - so an oversized prompt was handed to a smaller model and failed there, reporting the wrong cause. The fallback now refuses a window that cannot hold the prompt and says so.',
           ],
         },
       ],
@@ -347,7 +347,7 @@ const WATERMARK: BlogPost = {
         {
           kind: 'text',
           paragraphs: [
-            'Neither component was wrong in isolation, and neither had a bug you could find by reading it alone. The defect existed only in the seam — in an assumption one made about the other that was true at small sizes and false at large ones.',
+            'Neither component was wrong in isolation, and neither had a bug you could find by reading it alone. The defect existed only in the seam - in an assumption one made about the other that was true at small sizes and false at large ones.',
             'The generalisable part: **a progress marker must never be derived from an input, only from a confirmed output.** "How far did I read" and "how far did I successfully process" look identical until something in between silently discards work, and by then the marker has already told you a lie you cannot detect.',
             'Both paths are now covered by tests that fail if the watermark moves over an unsent turn, which is the only version of this fix that stays fixed.',
           ],

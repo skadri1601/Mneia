@@ -7,6 +7,7 @@ import { handoffCommand } from './commands/handoff.js';
 import { initCommand } from './commands/init.js';
 import { logCommand } from './commands/log.js';
 import { loginCommand } from './commands/login.js';
+import { mcpCommand } from './commands/mcp.js';
 import { pickupCommand } from './commands/pickup.js';
 import { reviewCommand } from './commands/review.js';
 import { sessionsCommand } from './commands/sessions.js';
@@ -46,6 +47,7 @@ const commands: readonly CommandDefinition[] = [
   reviewCommand,
   loginCommand,
   whoamiCommand,
+  mcpCommand,
 ];
 
 const dispatch = (argv: readonly string[]): Promise<number> =>

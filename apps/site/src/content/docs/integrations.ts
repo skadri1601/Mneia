@@ -18,7 +18,7 @@ export const INTEGRATIONS: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'A handoff that only works inside one vendor’s tool is not a handoff — it is a session feature. The whole claim depends on the artifact surviving the crossing: written by an agent in one client, received by a person in another, weeks later.',
+            'A handoff that only works inside one vendor’s tool is not a handoff - it is a session feature. The whole claim depends on the artifact surviving the crossing: written by an agent in one client, received by a person in another, weeks later.',
             'Model providers are structurally incentivised against that. Every one of them wants its own instructions file and its own memory, and none of them has a reason to make your context portable to a competitor. That gap does not close.',
           ],
         },
@@ -35,19 +35,12 @@ export const INTEGRATIONS: DocPage = {
           ],
         },
         {
-          kind: 'table',
-          head: ['Client', 'How it connects'],
-          rows: [
-            ['**Claude Code**', 'MCP server entry, stdio. The CLI and the agent share credentials'],
-            ['**Cursor**', 'MCP server entry, stdio'],
-            ['**Codex**', 'MCP server entry, stdio'],
-            ['**Anything else that speaks MCP**', 'The same `mneia-mcp` command over stdio'],
-          ],
+          kind: 'client-setup',
         },
         {
           kind: 'text',
           paragraphs: [
-            'Client differences are normalised at the edge rather than leaking inward. Each client identifies itself and its version on the session, and where it exposes a stable session reference or a deep link back to the original conversation, those are stored too — so provenance can point at the actual conversation rather than at a summary of it.',
+            'Client differences are normalised at the edge rather than leaking inward. Each client identifies itself and its version on the session, and where it exposes a stable session reference or a deep link back to the original conversation, those are stored too - so provenance can point at the actual conversation rather than at a summary of it.',
           ],
         },
         {
@@ -63,7 +56,7 @@ export const INTEGRATIONS: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Teams already keep their constraints somewhere — `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`. Those files are read on `init` and the constraints in them are imported, so a project does not start empty and nobody has to retype what they already wrote down.',
+            'Teams already keep their constraints somewhere - `AGENTS.md`, `CLAUDE.md`, `.cursor/rules`. Those files are read on `init` and the constraints in them are imported, so a project does not start empty and nobody has to retype what they already wrote down.',
             'A generated section is written back into `AGENTS.md` inside a fence Mneia owns. That is what makes the value show up even in a session where the MCP server is not connected at all.',
           ],
         },
@@ -71,14 +64,14 @@ export const INTEGRATIONS: DocPage = {
           kind: 'bullets',
           items: [
             'Nothing outside the fence is ever touched. It is your file, in your repository, in your git history.',
-            'A hand-edit inside the fence is detected rather than overwritten — the boundary is a tested invariant, not a convention.',
+            'A hand-edit inside the fence is detected rather than overwritten - the boundary is a tested invariant, not a convention.',
             'If the fence has been damaged, `init` stops and says so rather than guessing where it used to be.',
           ],
         },
         {
           kind: 'text',
           paragraphs: [
-            '`.mneia/config.json` holds the project binding — workspace, project slug, endpoint. **No data and no credentials.** It is meant to be committed, because the binding is a property of the repository rather than of one laptop. Credentials live in `~/.mneia/credentials`, outside the repository, and never enter git.',
+            '`.mneia/config.json` holds the project binding - workspace, project slug, endpoint. **No data and no credentials.** It is meant to be committed, because the binding is a property of the repository rather than of one laptop. Credentials live in `~/.mneia/credentials`, outside the repository, and never enter git.',
           ],
         },
       ],
@@ -97,7 +90,7 @@ export const INTEGRATIONS: DocPage = {
             ],
             [
               '**Decision browser**',
-              'Reading the project record — what was decided, by whom, and what it replaced',
+              'Reading the project record - what was decided, by whom, and what it replaced',
             ],
             [
               '**Review queue**',
@@ -116,7 +109,7 @@ export const INTEGRATIONS: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'The web app is deliberately thin. It is a view onto the same verbs rather than a second product — if a surface here needed a verb the CLI and the MCP server do not have, that would be the signal it had started becoming something else.',
+            'The web app is deliberately thin. It is a view onto the same verbs rather than a second product - if a surface here needed a verb the CLI and the MCP server do not have, that would be the signal it had started becoming something else.',
           ],
         },
       ],
@@ -128,7 +121,7 @@ export const INTEGRATIONS: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'An ephemeral runner with no disk is an ordinary client rather than a special case. Set `MNEIA_TOKEN`, and every command behaves exactly as it does on a laptop — which matters as more work is done by agents inside pipelines rather than beside a person.',
+            'An ephemeral runner with no disk is an ordinary client rather than a special case. Set `MNEIA_TOKEN`, and every command behaves exactly as it does on a laptop - which matters as more work is done by agents inside pipelines rather than beside a person.',
           ],
         },
         {

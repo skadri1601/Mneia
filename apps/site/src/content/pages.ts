@@ -38,7 +38,7 @@ export function rich(text: string): Paragraph {
 export const HOME_INTRO: Intro = {
   eyebrow: 'Project memory and handoff',
   heading: 'Your agent forgets.',
-  lead: 'Your teammate never knew. Mneia captures what a session decided at the moment work stops, and gives it to whoever picks the work up next — the same person tomorrow, a colleague next week, or a different agent on the next task.',
+  lead: 'Your teammate never knew. Mneia captures what a session decided at the moment work stops, and gives it to whoever picks the work up next - the same person tomorrow, a colleague next week, or a different agent on the next task.',
 };
 
 export const HOME_PROBLEM: Block = {
@@ -111,7 +111,7 @@ export const HOME_SURFACES: Block = {
 export const HOME_START: Intro = {
   eyebrow: 'Get started',
   heading: 'Free for one. The point is the second person.',
-  lead: 'Create a workspace, install the CLI and the MCP server from npm, and checkpoint your first session — about five minutes. Then invite the teammate who will pick the work up, because that is the half nobody else builds.',
+  lead: 'Create a workspace, install the CLI and the MCP server from npm, and checkpoint your first session - about five minutes. Then invite the teammate who will pick the work up, because that is the half nobody else builds.',
 };
 
 export const OPERATIONS = [
@@ -330,7 +330,7 @@ export const TIERS = [
     price: '$15',
     amount: 15,
     unit: ' / month',
-    note: 'One person, working across as many projects as you like. No teammates — that is what Team is for.',
+    note: 'One person, working across as many projects as you like. No teammates - that is what Team is for.',
     contents: [
       'Everything in Solo',
       'Unlimited projects',
@@ -373,7 +373,7 @@ export const TIERS = [
 export const PRICING_PREVIEW: Paragraph = [
   { text: 'Pricing is in preview, and self-serve billing is not live yet.', strong: true },
   {
-    text: ' Nothing is charged today — write to us and we will set your team up directly. Two things are still moving: the seat price is not final until we have measured what a real checkpoint costs us to run, and the tiers above list only what ships today. Conflict resolution, handoffs, permission scopes, audit export, data residency, and bring-your-own-cloud are on the roadmap and are deliberately not sold as though they were here.',
+    text: ' Nothing is charged today - write to us and we will set your team up directly. Two things are still moving: the seat price is not final until we have measured what a real checkpoint costs us to run, and the tiers above list only what ships today. Conflict resolution, handoffs, permission scopes, audit export, data residency, and bring-your-own-cloud are on the roadmap and are deliberately not sold as though they were here.',
   },
 ];
 

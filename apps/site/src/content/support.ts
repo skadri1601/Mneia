@@ -12,7 +12,7 @@ export type ContactChannel = {
 export const CONTACT_INTRO: Intro = {
   eyebrow: 'Contact',
   heading: 'Four addresses, and a person behind each one.',
-  lead: 'Mneia is a small team. Nothing below routes into a ticket queue — pick the address that matches what you need and it reaches someone who can act on it.',
+  lead: 'Mneia is a small team. Nothing below routes into a ticket queue - pick the address that matches what you need and it reaches someone who can act on it.',
 };
 
 export const CONTACT_CHANNELS: readonly ContactChannel[] = [
@@ -52,7 +52,7 @@ export const CONTACT_ACCESS: Block = {
   paragraphs: [
     [
       {
-        text: 'Sign up at app.mneia.dev and install the clients from npm — there is no queue and nothing to request. If a colleague has already started, ask them to invite you instead, because accepting an invitation puts you in their workspace rather than a new one of your own.',
+        text: 'Sign up at app.mneia.dev and install the clients from npm - there is no queue and nothing to request. If a colleague has already started, ask them to invite you instead, because accepting an invitation puts you in their workspace rather than a new one of your own.',
       },
     ],
     [
@@ -136,7 +136,7 @@ export const HELP_TASKS: readonly HelpTask[] = [
   {
     question: 'How do I authenticate a machine, or CI?',
     answer:
-      'Interactively, mneia login writes a token to ~/.mneia/credentials. Non-interactively, set MNEIA_TOKEN in the environment — that is the path for CI and for an MCP client that starts the server without a shell.',
+      'Interactively, mneia login writes a token to ~/.mneia/credentials. Non-interactively, set MNEIA_TOKEN in the environment - that is the path for CI and for an MCP client that starts the server without a shell.',
     href: '/docs/cli',
     linkLabel: 'CLI reference',
   },
@@ -193,7 +193,7 @@ export const HELP_SYMPTOMS: readonly HelpSymptom[] = [
   {
     symptom: 'MNEIA_TOKEN is set but empty',
     cause:
-      'The variable exists with a blank or whitespace value — usually an unresolved secret reference in CI, or a shell export that lost its value.',
+      'The variable exists with a blank or whitespace value - usually an unresolved secret reference in CI, or a shell export that lost its value.',
     fix: 'Set it to the token value alone: no Bearer prefix, no quotes, no trailing newline. Unsetting it entirely falls back to the credentials file, which is often what you want locally.',
   },
   {
@@ -212,13 +212,13 @@ export const HELP_SYMPTOMS: readonly HelpSymptom[] = [
     symptom: 'the MCP server exits immediately on startup',
     cause:
       'Configuration is resolved before the server accepts a connection, so a missing token or a malformed endpoint stops it there rather than failing on the first tool call.',
-    fix: 'The message names the variable at fault. MCP clients bury server stderr — check the client’s log pane before assuming the server is broken.',
+    fix: 'The message names the variable at fault. MCP clients bury server stderr - check the client’s log pane before assuming the server is broken.',
   },
   {
     symptom: 'a tool call comes back as an error rather than a result',
     cause:
       'Arguments are validated before anything is read or written, so an invalid call changes nothing. Every failure carries a code, a summary, and a remedy.',
-    fix: 'Correct the arguments and call again. If the failure repeats with the same code, it is ours rather than yours — send it to security@mneia.dev if it looks like exposure, and otherwise report it with the code.',
+    fix: 'Correct the arguments and call again. If the failure repeats with the same code, it is ours rather than yours - send it to security@mneia.dev if it looks like exposure, and otherwise report it with the code.',
   },
   {
     symptom: 'you need the underlying stack trace',

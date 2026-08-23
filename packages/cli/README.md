@@ -1,10 +1,10 @@
 # @mneia/cli
 
-The command line interface for [Mneia](https://mneia.dev) — shared project memory and handoff for
+The command line interface for [Mneia](https://mneia.dev) - shared project memory and handoff for
 teams working with AI agents.
 
 Your agent forgets between sessions. Your teammates never knew in the first place. Mneia captures
-what a session decided, and gives the next session — or the next person — the part of it that
+what a session decided, and gives the next session - or the next person - the part of it that
 matters.
 
 ```
@@ -26,10 +26,11 @@ Mneia is a hosted service. Create a workspace at [app.mneia.dev](https://app.mne
 ```
 mneia login          # sign this machine in, via a browser device-code flow
 mneia init           # attach this repo to a project and import its existing constraints
+mneia mcp install    # detect installed MCP clients and connect MNEIA
 ```
 
-`login` prints a link to open, a user code, and a confirmation number. Approve it in the browser —
-check the workspace named on that page is the one you expect — and the token is written to
+`login` prints a link to open, a user code, and a confirmation number. Approve it in the browser -
+check the workspace named on that page is the one you expect - and the token is written to
 `~/.mneia/credentials` with `0600` permissions. `init` writes `.mneia/config.json` in the repo,
 naming the workspace and project this directory is bound to. Commit that file; it holds no secret.
 
@@ -62,6 +63,15 @@ rehydration is not empty.
 | `mneia status` | Show what is stale, disputed, or unanswered in this project. |
 | `mneia handoff [--to <actor-id>] [--window <days>]` | Freeze a receivable handoff artifact for whoever picks the work up next. |
 | `mneia pickup [<handoff-id>]` | Receive a handoff, or list the open ones when no id is given. |
+| `mneia mcp install [--client <client> \| --all] [--yes]` | Detect or select MCP clients and register `mneia-mcp` in their native configuration. |
+| `mneia mcp list [--client <client> \| --all]` | Show where MNEIA is registered. |
+| `mneia mcp uninstall [--client <client> \| --all] --yes` | Remove only the MNEIA server entry from selected clients. |
+
+For an agent setting up one selected client, use an explicit, non-interactive command:
+
+```
+mneia mcp install --client codex --yes
+```
 
 `--help` on any command prints its full usage. `--json` makes the output machine-readable. `mneia
 --version` prints the version.
@@ -86,7 +96,7 @@ $ mneia
 ```
 
 Anything you type that does not start with `/` is rehydrated as a task, because that is the thing
-you do most. Commands are the same nine, prefixed with a slash and taking the same flags —
+you do most. Commands use the same names, prefixed with a slash and taking the same flags -
 `/status --json`, `/log --limit 5`, `/checkpoint -m "chose the token bucket"`.
 
 Typing `/` opens a menu of every command, and each further character narrows it. The arrow keys move
@@ -112,7 +122,7 @@ mneia brief "add rate limiting to the public API"
 ```
 
 Prints the minimal high-signal slice for that task under a token budget: the decisions that bear on
-it, the constraints that are still active, the open questions — and what was already tried and
+it, the constraints that are still active, the open questions - and what was already tried and
 rejected, so the agent does not propose it again. Load-bearing constraints are always included,
 whatever the budget pressure.
 
@@ -139,21 +149,21 @@ local replica to reconcile.
 
 ## Privacy
 
-Mneia is hosted. Your context is stored in the service, and access to it is enforced by controls —
-workspace scope on every row, Postgres row-level security, retention, and residency — not by where
+Mneia is hosted. Your context is stored in the service, and access to it is enforced by controls -
+workspace scope on every row, Postgres row-level security, retention, and residency - not by where
 the bytes happen to sit. Usage events carry ids and timings, never your content.
 
 Read the [privacy policy](https://mneia.dev/privacy) for what is kept and for how long.
 
 ## Stability
 
-`0.x`. The command surface will move before `1.0` — pin an exact version in CI if a change to the
+`0.x`. The command surface will move before `1.0` - pin an exact version in CI if a change to the
 output shape would break you.
 
 ## See also
 
-- [`@mneia/mcp-server`](https://www.npmjs.com/package/@mneia/mcp-server) — the same operations as MCP
+- [`@mneia/mcp-server`](https://www.npmjs.com/package/@mneia/mcp-server) - the same operations as MCP
   tools, for Claude Code, Cursor, Codex, and any MCP client
-- [`@mneia/core`](https://www.npmjs.com/package/@mneia/core) — the library underneath both
+- [`@mneia/core`](https://www.npmjs.com/package/@mneia/core) - the library underneath both
 
 Apache-2.0.

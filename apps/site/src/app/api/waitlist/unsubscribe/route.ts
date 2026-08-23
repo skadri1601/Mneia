@@ -24,7 +24,7 @@ export async function POST(request: Request): Promise<Response> {
     await forgetSignup(token);
   } catch (error) {
     if (error instanceof WaitlistError) Sentry.captureException(error);
-    return json({ ok: false, error: 'we could not do that just now — try again shortly' }, 503);
+    return json({ ok: false, error: 'we could not do that just now - try again shortly' }, 503);
   }
 
   return json({ ok: true }, 200);

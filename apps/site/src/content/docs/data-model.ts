@@ -8,7 +8,7 @@ export const DATA_MODEL: DocPage = {
     'The schema underneath Mneia: identities and actors, teams and projects, the context item with its provenance and bi-temporal columns, embeddings, checkpoints, handoffs, conflicts, and the event spine.',
   eyebrow: 'Reference',
   heading: 'Postgres, bi-temporal where it matters, provenance on everything.',
-  lead: 'One store, one dependency. The shape of the schema is the shape of the product, so it is documented rather than hidden — the parts that carry our judgement are meant to be inspectable and arguable.',
+  lead: 'One store, one dependency. The shape of the schema is the shape of the product, so it is documented rather than hidden - the parts that carry our judgement are meant to be inspectable and arguable.',
   minutes: 11,
   sections: [
     {
@@ -18,7 +18,7 @@ export const DATA_MODEL: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Everything lives in Postgres with pgvector. Not Postgres plus a graph database plus a cache plus a queue — one engine, transactional, with hybrid retrieval good enough at this scale.',
+            'Everything lives in Postgres with pgvector. Not Postgres plus a graph database plus a cache plus a queue - one engine, transactional, with hybrid retrieval good enough at this scale.',
             'That is a deliberate constraint rather than minimalism for its own sake. A single-dependency system is one an enterprise buyer can deploy inside their own boundary as a conversation rather than a procurement project, and it keeps the whole store inside one transaction where it belongs.',
           ],
         },
@@ -111,7 +111,7 @@ export const DATA_MODEL: DocPage = {
         },
         {
           kind: 'note',
-          text: 'The guaranteed-inclusion pass in rehydration has its own partial index — active, load-bearing, still valid, keyed by workspace and project. Without it the constraint guarantee would be correct but not cheap, and a guarantee that costs latency gets negotiated away.',
+          text: 'The guaranteed-inclusion pass in rehydration has its own partial index - active, load-bearing, still valid, keyed by workspace and project. Without it the constraint guarantee would be correct but not cheap, and a guarantee that costs latency gets negotiated away.',
         },
       ],
     },
@@ -136,7 +136,7 @@ export const DATA_MODEL: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Vectors live in their own table, keyed by item **and model**. A vector is meaningless without the model that produced it: two vectors from different models in one index give a cosine distance that means nothing, and the result is retrieval that is subtly wrong rather than broken — degradation that reads as bad ranking rather than as a bug.',
+            'Vectors live in their own table, keyed by item **and model**. A vector is meaningless without the model that produced it: two vectors from different models in one index give a cosine distance that means nothing, and the result is retrieval that is subtly wrong rather than broken - degradation that reads as bad ranking rather than as a bug.',
             'The composite key is what lets two models be queryable at once during a backfill, which is the exact moment the guarantee is the only thing standing. It also keeps vectors off the rehydration read path by construction, rather than by a filter flag somebody can forget.',
           ],
         },
@@ -160,7 +160,7 @@ export const DATA_MODEL: DocPage = {
             ],
             [
               '`checkpoint_item`',
-              'One row per item touched, with the action taken — created, updated, superseded, or rejected',
+              'One row per item touched, with the action taken - created, updated, superseded, or rejected',
             ],
             [
               '`handoff`',
@@ -168,7 +168,7 @@ export const DATA_MODEL: DocPage = {
             ],
             [
               '`handoff_item`',
-              'The item set behind the frozen prose, by section — what backs the live link',
+              'The item set behind the frozen prose, by section - what backs the live link',
             ],
             [
               '`conflict`',
@@ -179,7 +179,7 @@ export const DATA_MODEL: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Cost is recorded on the checkpoint because that is where it is incurred — the extraction call is the one real marginal cost in the system, and measuring it anywhere else would be an estimate.',
+            'Cost is recorded on the checkpoint because that is where it is incurred - the extraction call is the one real marginal cost in the system, and measuring it anywhere else would be an estimate.',
             '`conflict.rationale` is not optional metadata. The resolution without the reason is the half that could have been derived from the rows anyway.',
           ],
         },
@@ -192,7 +192,7 @@ export const DATA_MODEL: DocPage = {
         {
           kind: 'text',
           paragraphs: [
-            'Every write path emits a typed event carrying actor, project, timestamp, and item ids — never content. The table is partitioned by month from the beginning, because attaching partitioning to a large table later is a rewrite rather than a migration.',
+            'Every write path emits a typed event carrying actor, project, timestamp, and item ids - never content. The table is partitioned by month from the beginning, because attaching partitioning to a large table later is a rewrite rather than a migration.',
           ],
         },
         {
@@ -200,7 +200,7 @@ export const DATA_MODEL: DocPage = {
           head: ['Event', 'What it is for'],
           rows: [
             ['`rehydration.slice_shown`', 'The denominator for slice quality'],
-            ['`rehydration.item_referenced`', 'Which items actually got used — ground truth'],
+            ['`rehydration.item_referenced`', 'Which items actually got used - ground truth'],
             ['`rehydration.item_ignored`', 'Negative examples, equally valuable'],
             ['`checkpoint.item_extracted`', 'Extractor precision'],
             ['`checkpoint.item_confirmed` / `edited` / `rejected`', 'The human correction signal'],
@@ -212,7 +212,7 @@ export const DATA_MODEL: DocPage = {
         },
         {
           kind: 'note',
-          text: 'Coverage is enforced by a test, not by convention. A new write path with no event is a defect even when every other test passes — the record it feeds cannot be reconstructed after the fact.',
+          text: 'Coverage is enforced by a test, not by convention. A new write path with no event is a defect even when every other test passes - the record it feeds cannot be reconstructed after the fact.',
         },
       ],
     },
@@ -224,7 +224,7 @@ export const DATA_MODEL: DocPage = {
           kind: 'text',
           paragraphs: [
             'Audit events live in their own table, deliberately. Telemetry is opt-out and redacted; an audit log that can be either is not an audit log.',
-            'Usage accounting is a third thing again — a materialised projection of the event spine, incremented inside the checkpoint transaction so it cannot drift from the thing it counts. It is never a second source of truth.',
+            'Usage accounting is a third thing again - a materialised projection of the event spine, incremented inside the checkpoint transaction so it cannot drift from the thing it counts. It is never a second source of truth.',
           ],
         },
       ],

@@ -177,7 +177,7 @@ export const ROUTES: readonly RouteEntry[] = [
     name: 'Conflict resolution',
     title: 'Conflict resolution',
     description:
-      'How Mneia arbitrates when two sources disagree: agent versus agent, agent versus a human-confirmed item, and human versus human — plus rationale capture and why the three rules are not symmetrical.',
+      'How Mneia arbitrates when two sources disagree: agent versus agent, agent versus a human-confirmed item, and human versus human - plus rationale capture and why the three rules are not symmetrical.',
     priority: 0.7,
     changeFrequency: 'monthly',
   },
@@ -195,7 +195,7 @@ export const ROUTES: readonly RouteEntry[] = [
     name: 'CLI reference',
     title: 'CLI reference',
     description:
-      'Every Mneia CLI command — init, login, whoami, brief, checkpoint, handoff, pickup, conflicts, log, and status — plus the interactive session, with flags, environment variables, JSON output, and exit codes.',
+      'Every Mneia CLI command - init, login, whoami, brief, checkpoint, handoff, pickup, conflicts, log, and status - plus the interactive session, with flags, environment variables, JSON output, and exit codes.',
     priority: 0.7,
     changeFrequency: 'weekly',
   },
@@ -204,7 +204,7 @@ export const ROUTES: readonly RouteEntry[] = [
     name: 'MCP server reference',
     title: 'MCP server reference',
     description:
-      'The Mneia MCP tools — mneia_rehydrate, mneia_assert, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, and mneia_conflicts — how to configure the server, and when to call each one.',
+      'The Mneia MCP tools - mneia_rehydrate, mneia_assert, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, and mneia_conflicts - how to configure the server, and when to call each one.',
     priority: 0.7,
     changeFrequency: 'weekly',
   },
@@ -267,7 +267,7 @@ export const ROUTES: readonly RouteEntry[] = [
     name: 'The unit of value is not memory. It is the handoff.',
     title: 'The unit of value is not memory. It is the handoff.',
     description:
-      'Every AI memory product gives you somewhere to put context and a way to query it. That is a database posture, and it fails at the exact moment it is needed — when someone is picking up work they did not do.',
+      'Every AI memory product gives you somewhere to put context and a way to query it. That is a database posture, and it fails at the exact moment it is needed - when someone is picking up work they did not do.',
     priority: 0.6,
     changeFrequency: 'monthly',
   },
