@@ -21,6 +21,7 @@ import {
 import { z } from 'zod';
 import type { ReviewQueueEntry } from '../review-queue.js';
 import { SourceSessionSchema } from '../source-session.js';
+import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const KIND_ERROR = `kind must be one of: ${ITEM_KINDS.join(', ')}`;
@@ -133,10 +134,9 @@ const CheckpointInputSchema = z.object({
 export type CheckpointCandidate = z.infer<typeof CandidateSchema>;
 export type CheckpointInput = z.infer<typeof CheckpointInputSchema>;
 
-const INPUT_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(CheckpointInputSchema, {
-  target: 'draft-7',
-  io: 'input',
-});
+const INPUT_JSON_SCHEMA: Record<string, unknown> = closedInputSchema(
+  z.toJSONSchema(CheckpointInputSchema, { target: 'draft-7', io: 'input' }),
+);
 
 const CONFIRM_NEXT_STEP =
   'Surface this to a human and let them confirm, edit, or reject it. It is not stored anywhere until they do.';

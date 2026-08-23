@@ -1,6 +1,7 @@
 import type { PendingReviewFilter, PendingReviewItem, Project, ScopedStore } from '@mneia/core';
 import { sanitizeActorName } from '@mneia/core';
 import { z } from 'zod';
+import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const TOOL = 'mneia_review_queue';
@@ -44,10 +45,9 @@ const ReviewQueueInputSchema = z.object({
 
 export type ReviewQueueInput = z.infer<typeof ReviewQueueInputSchema>;
 
-const INPUT_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(ReviewQueueInputSchema, {
-  target: 'draft-7',
-  io: 'input',
-});
+const INPUT_JSON_SCHEMA: Record<string, unknown> = closedInputSchema(
+  z.toJSONSchema(ReviewQueueInputSchema, { target: 'draft-7', io: 'input' }),
+);
 
 export interface ReviewQueueCapableStore extends ScopedStore {
   listPendingReviewItems(filter: PendingReviewFilter): Promise<readonly PendingReviewItem[]>;
@@ -85,6 +85,9 @@ const messageOf = (cause: unknown): string =>
 
 const countOf = (count: number, noun: string): string =>
   `${count} ${count === 1 ? noun : `${noun}s`}`;
+
+const verbOf = (count: number, singular: string, plural: string): string =>
+  count === 1 ? singular : plural;
 
 const pad = (value: number, width: number): string => String(value).padStart(width, '0');
 
@@ -131,8 +134,8 @@ export function renderQueue(
   const loadBearing = items.filter((item) => item.loadBearing).length;
   const header =
     items.length === limit
-      ? `${countOf(items.length, 'item')} in ${project.slug} are waiting for human review — the limit was reached, so there may be more. ${loadBearing} load-bearing.`
-      : `${countOf(items.length, 'item')} in ${project.slug} are waiting for human review, ${loadBearing} of them load-bearing.`;
+      ? `${countOf(items.length, 'item')} in ${project.slug} ${verbOf(items.length, 'is', 'are')} waiting for human review — the limit was reached, so there may be more. ${loadBearing} load-bearing.`
+      : `${countOf(items.length, 'item')} in ${project.slug} ${verbOf(items.length, 'is', 'are')} waiting for human review, ${loadBearing} of them load-bearing.`;
 
   return [header, items.map(renderPendingItem).join('\n'), CONFIRMATION_NOTICE].join('\n\n');
 }

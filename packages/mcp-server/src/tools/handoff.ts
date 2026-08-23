@@ -16,6 +16,7 @@ import {
   ROSTER_UNSUPPORTED_MESSAGE,
   resolveActorReference,
 } from './actors.js';
+import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const MAX_NEXT_ACTION_LENGTH = 1000;
@@ -97,15 +98,13 @@ const ReceiveInputSchema = z.object({
 export type CreateHandoffInput = z.infer<typeof CreateInputSchema>;
 export type ReceiveHandoffInput = z.infer<typeof ReceiveInputSchema>;
 
-const CREATE_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(CreateInputSchema, {
-  target: 'draft-7',
-  io: 'input',
-});
+const CREATE_JSON_SCHEMA: Record<string, unknown> = closedInputSchema(
+  z.toJSONSchema(CreateInputSchema, { target: 'draft-7', io: 'input' }),
+);
 
-const RECEIVE_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(ReceiveInputSchema, {
-  target: 'draft-7',
-  io: 'input',
-});
+const RECEIVE_JSON_SCHEMA: Record<string, unknown> = closedInputSchema(
+  z.toJSONSchema(ReceiveInputSchema, { target: 'draft-7', io: 'input' }),
+);
 
 function describeIssues(error: z.ZodError): string {
   return error.issues
@@ -357,10 +356,9 @@ const InboxInputSchema = z.object({
 
 export type InboxHandoffInput = z.infer<typeof InboxInputSchema>;
 
-const INBOX_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(InboxInputSchema, {
-  target: 'draft-7',
-  io: 'input',
-});
+const INBOX_JSON_SCHEMA: Record<string, unknown> = closedInputSchema(
+  z.toJSONSchema(InboxInputSchema, { target: 'draft-7', io: 'input' }),
+);
 
 const utcMinute = (value: Date): string => value.toISOString().replace('T', ' ').slice(0, 16);
 
@@ -401,7 +399,7 @@ function renderInbox(
 
   const shortIds = shortenItemIds(waiting.map((handoff) => handoff.id));
   const blocks: string[] = [
-    `${countOf(waiting.length, 'handoff')} waiting on ${project.slug} — ${countOf(addressed.length, 'addressed to you')}, ${countOf(open.length, 'open to anyone')}.`,
+    `${countOf(waiting.length, 'handoff')} waiting on ${project.slug} — ${addressed.length} addressed to you, ${open.length} open to anyone.`,
   ];
 
   if (addressed.length > 0) {

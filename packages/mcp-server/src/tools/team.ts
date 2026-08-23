@@ -9,6 +9,7 @@ import {
   shortActorId,
   shortActorIds,
 } from './actors.js';
+import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const TOOL = 'mneia_team';
@@ -27,10 +28,9 @@ const TeamInputSchema = z.object({
 
 export type TeamInput = z.infer<typeof TeamInputSchema>;
 
-const INPUT_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(TeamInputSchema, {
-  target: 'draft-7',
-  io: 'input',
-});
+const INPUT_JSON_SCHEMA: Record<string, unknown> = closedInputSchema(
+  z.toJSONSchema(TeamInputSchema, { target: 'draft-7', io: 'input' }),
+);
 
 function describeIssues(error: z.ZodError): string {
   return error.issues

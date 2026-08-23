@@ -216,6 +216,23 @@ describe('mneia_handoff_inbox', () => {
     expect(textOf(result)).toContain('from claude-code (agent)');
   });
 
+  it('counts handoffs without pluralising the phrase into "addressed to yous"', async () => {
+    const result = await handoffInboxTool.run(
+      handoffInboxTool.parse({}),
+      contextWith({
+        listInboxHandoffs: vi.fn(async () => [
+          handoffOf(HANDOFF_OPEN, AGENT, null),
+          handoffOf(HANDOFF_MINE, TEAMMATE, null),
+        ]),
+      }),
+    );
+
+    const text = textOf(result);
+    expect(text).toContain('0 addressed to you, 2 open to anyone.');
+    expect(text).not.toContain('yous');
+    expect(text).not.toContain('anyones');
+  });
+
   it('says plainly that nothing is waiting rather than returning an empty block', async () => {
     const result = await handoffInboxTool.run(
       handoffInboxTool.parse({}),

@@ -1,6 +1,7 @@
 import type { RetireContextItemResult, ScopedStore } from '@mneia/core';
 import { ApiError } from '@mneia/core';
 import { z } from 'zod';
+import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -33,10 +34,9 @@ const RetireInputSchema = z.object({
 
 export type RetireInput = z.infer<typeof RetireInputSchema>;
 
-const INPUT_JSON_SCHEMA: Record<string, unknown> = z.toJSONSchema(RetireInputSchema, {
-  target: 'draft-7',
-  io: 'input',
-});
+const INPUT_JSON_SCHEMA: Record<string, unknown> = closedInputSchema(
+  z.toJSONSchema(RetireInputSchema, { target: 'draft-7', io: 'input' }),
+);
 
 interface RetireCapableStore extends ScopedStore {
   retireContextItem(input: {
