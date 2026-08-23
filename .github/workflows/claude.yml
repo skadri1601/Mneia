@@ -1,0 +1,48 @@
+name: Claude Code
+
+# Tag-triggered only. There is no `prompt` input, which is what puts the action in
+# interactive mode: it waits for the trigger phrase instead of running on every PR.
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  claude:
+    # Keeps a runner from starting on comments that never mention @claude. The action
+    # checks the trigger phrase again itself; this only saves the minutes.
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    permissions:
+      # contents stays read: this reviews, it never pushes to the branch.
+      contents: read
+      # issues and pull-requests are write because a PR comment is an issue comment,
+      # and the action posts its progress and its findings as one.
+      issues: write
+      pull-requests: write
+      # Required for the action's default GitHub App authentication.
+      id-token: write
+      # Lets Claude read CI results on the PR it is reviewing.
+      actions: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history so Claude can diff the branch against main rather than
+          # reading the head commit in isolation.
+          fetch-depth: 0
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: |
+            --model claude-sonnet-5
+            --max-turns 15
