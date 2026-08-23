@@ -186,6 +186,23 @@ const asRecord = (value: unknown): Record<string, unknown> | null =>
 
 const asNumber = (value: unknown): number => (typeof value === 'number' ? value : 0);
 
+/**
+ * OpenAI rejects a `prompt_cache_key` longer than 64 characters with a 400, which takes the
+ * whole extraction down rather than degrading to an uncached call. `workspaceId:projectId`
+ * is two UUIDs and a separator - 73 - so it failed every checkpoint in production between
+ * the cacheKey landing and this fix.
+ *
+ * Stripping the punctuation out of two UUIDs leaves exactly 64 hex characters, so nothing
+ * is lost for the key we actually send, and the ids stay legible in the provider dashboard
+ * rather than being replaced by a hash nobody can trace back to a project. A longer key from
+ * some future caller is truncated rather than sent: a fragmented cache costs money, while a
+ * 400 costs the whole checkpoint.
+ */
+const OPENAI_MAX_CACHE_KEY_LENGTH = 64;
+
+export const openAiCacheKey = (raw: string): string =>
+  raw.replace(/[^a-zA-Z0-9]/g, '').slice(0, OPENAI_MAX_CACHE_KEY_LENGTH);
+
 export function createOpenAiExtractionProvider(options: HttpExtractionOptions): ExtractionProvider {
   const url = `${options.baseUrl ?? 'https://api.openai.com/v1'}/responses`;
   const reasoningEffort = options.reasoningEffort ?? DEFAULT_REASONING_EFFORT;
@@ -206,7 +223,9 @@ export function createOpenAiExtractionProvider(options: HttpExtractionOptions): 
       reasoning: { effort: reasoningEffort },
       // 'auto' is the provider default; sending it explicitly is noise, so omit it.
       ...(tier === 'flex' ? { service_tier: 'flex' } : {}),
-      ...(request.cacheKey === undefined ? {} : { prompt_cache_key: request.cacheKey }),
+      ...(request.cacheKey === undefined
+        ? {}
+        : { prompt_cache_key: openAiCacheKey(request.cacheKey) }),
     });
 
   const send = async (request: ExtractionProviderRequest, tier: ServiceTier): Promise<unknown> =>
