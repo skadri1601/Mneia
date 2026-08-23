@@ -94,6 +94,58 @@ export type StoreErrorCode =
   | 'no_row'
   | 'rollback_failed';
 
+/** Postgres SQLSTATE for foreign_key_violation. */
+export const FOREIGN_KEY_VIOLATION = '23503';
+
+interface PostgresErrorShape {
+  readonly code?: unknown;
+  readonly constraint?: unknown;
+  readonly detail?: unknown;
+  readonly table?: unknown;
+}
+
+const textField = (value: unknown): string | null =>
+  typeof value === 'string' && value.length > 0 ? value : null;
+
+/**
+ * Turn a foreign-key violation into a `not_found`, because it is one.
+ *
+ * Every write here takes ids from the caller and lets the database decide whether they
+ * name anything: `assertUuid` checks the shape of a uuid, never its existence. So a
+ * well-formed uuid for a project in another workspace - or for no project at all - reached
+ * the INSERT, tripped `checkpoint_workspace_id_project_id_fkey`, and came back as a raw
+ * driver error. `serve` has no branch for that, so it was reported to Sentry and rethrown,
+ * and the caller got a bare 500 with no body: a client mistake presented as a crash.
+ *
+ * Found on 2026-08-23 by passing a workspace id where a project id belonged. The uuids in
+ * `detail` are ids the caller already sent us, so echoing them back leaks nothing and is
+ * the fastest way for them to see which one was wrong.
+ */
+export const translateIntegrityViolation = (error: unknown): unknown => {
+  if (typeof error !== 'object' || error === null) {
+    return error;
+  }
+
+  const candidate = error as PostgresErrorShape;
+  if (candidate.code !== FOREIGN_KEY_VIOLATION) {
+    return error;
+  }
+
+  const constraint = textField(candidate.constraint);
+  const detail = textField(candidate.detail);
+  const table = textField(candidate.table);
+
+  return new StoreError(
+    'not_found',
+    `a referenced row does not exist${table === null ? '' : ` for the write to ${table}`}${
+      constraint === null ? '' : `, violating ${constraint}`
+    }${detail === null ? '' : `: ${detail}`}. ` +
+      'Every id in this call is well-formed, so one of them names nothing in this workspace — ' +
+      'a project id and a workspace id are easy to confuse. Nothing was written.',
+    { cause: error },
+  );
+};
+
 export class StoreError extends Error {
   readonly code: StoreErrorCode;
 
@@ -392,8 +444,12 @@ class PostgresScopedStore implements ReviewCapableStore {
   }
 
   private async rows(sql: string, params: readonly SqlValue[] = []): Promise<readonly SqlRow[]> {
-    const result = await this.executor().execute<SqlRow>(sql, params);
-    return result.rows;
+    try {
+      const result = await this.executor().execute<SqlRow>(sql, params);
+      return result.rows;
+    } catch (error) {
+      throw translateIntegrityViolation(error);
+    }
   }
 
   private async atomic<T>(what: string, run: () => Promise<T>): Promise<T> {
