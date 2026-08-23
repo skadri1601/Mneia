@@ -326,9 +326,23 @@ export const TIERS = [
     featured: false,
   },
   {
+    name: 'Pro',
+    price: '$15',
+    amount: 15,
+    unit: ' / month',
+    note: 'One person, working across as many projects as you like. No teammates — that is what Team is for.',
+    contents: [
+      'Everything in Solo',
+      'Unlimited projects',
+      'Higher checkpoint allowance',
+      'A single seat, not a shared workspace',
+    ],
+    featured: false,
+  },
+  {
     name: 'Team',
-    price: '$24',
-    amount: 24,
+    price: '$25',
+    amount: 25,
     unit: ' / user / month',
     note: 'The difference that matters: more than one person writing to the same project memory.',
     contents: [
@@ -425,7 +439,7 @@ export const PRICING_FAQ: readonly Faq[] = [
   {
     question: 'How much does Mneia cost?',
     answer:
-      'Solo is free. Team is $24 per user per month and includes a checkpoint allowance sized well above ordinary use. Enterprise is custom priced, for organisations that need a contract rather than a card. Two caveats worth stating plainly: self-serve billing is not live yet, so nothing is charged today and we set teams up directly; and the seat price is not final until we have measured what a real checkpoint costs to run. If it moves, it moves before anyone is billed.',
+      'Solo is free. Pro is $15 a month for one person: unlimited projects and a higher checkpoint allowance, but no teammates. Team is $25 per user per month, adds shared projects and roles, and includes an allowance sized well above ordinary use. Enterprise is custom priced, for organisations that need a contract rather than a card. Two caveats worth stating plainly: self-serve billing is not live yet, so nothing is charged today and we set teams up directly; and the seat price is not final until we have measured what a real checkpoint costs to run. If it moves, it moves before anyone is billed.',
   },
   {
     question: 'Is the free tier a trial?',
