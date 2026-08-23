@@ -287,7 +287,7 @@ describe('model posture', () => {
       extractionFallback: 'key_present',
       embeddings: 'key_present',
       billing: 'configured',
-      errorReporting: 'configured',
+      errorReporting: 'unproven',
       capabilities: { ready: [...CAPABILITY_NAMES], failing: [], unconfigured: [] },
     });
   });
@@ -326,7 +326,7 @@ describe('model posture', () => {
     }
   });
 
-  it('reports errorReporting configured once SENTRY_DSN is set', async () => {
+  it('reports errorReporting unproven once SENTRY_DSN is set but nothing has been sent', async () => {
     const session = new RecordingSession();
 
     const report = await checkHealth(
@@ -336,7 +336,7 @@ describe('model posture', () => {
       noDelivery,
     );
 
-    expect(report.errorReporting).toBe('configured');
+    expect(report.errorReporting).toBe('unproven');
     expect(report.detail ?? '').not.toContain('lost silently');
   });
 
@@ -529,7 +529,7 @@ describe('the capability manifest', () => {
     extractionFallback: 'key_present',
     embeddings: 'key_present',
     billing: 'configured',
-    errorReporting: 'configured',
+    errorReporting: 'unproven',
   };
 
   it('classifies every capability the report names, so a new one cannot go unwatched', async () => {
