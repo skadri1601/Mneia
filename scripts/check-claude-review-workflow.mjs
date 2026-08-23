@@ -36,7 +36,7 @@ requireText(
 );
 requireText(
   review,
-  'Bash(gh pr *),Bash(gh api *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git blame *),Bash(git status *)',
+  'Bash(gh pr view *),Bash(gh pr diff *),Bash(gh pr list *),Bash(gh pr comment *),Bash(gh issue view *),Bash(gh issue list *),Bash(gh search *),Bash(gh api *),Bash(git diff *),Bash(git log *),Bash(git show *),Bash(git blame *),Bash(git status *)',
   'read-only plugin command permissions',
 );
 requireText(

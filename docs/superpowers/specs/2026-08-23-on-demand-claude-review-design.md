@@ -44,7 +44,7 @@ The repository's review constraints remain available through `CLAUDE.md`, which 
 
 The specialist review lives in a separate `.github/workflows/claude-review.yml`. Separating it from the generic assistant path makes the manual trigger and fixed prompt auditable. `.github/workflows/claude.yml` changes only enough to exclude the reserved command.
 
-The review workflow keeps least-privilege repository access: read contents and Actions results, plus write issues and pull requests for progress, summaries, and inline findings. It uses the existing `ANTHROPIC_API_KEY`; Claude Max does not fund GitHub Action API usage.
+The review workflow keeps least-privilege repository access: read contents and Actions results, plus write issues and pull requests for progress, summaries, and inline findings. Claude's shell allow-list is limited to the plugin's read/comment GitHub CLI subcommands and read-only Git history commands; it does not allow merge, close, edit, reset, commit, or push operations. It uses the existing `ANTHROPIC_API_KEY`; Claude Max does not fund GitHub Action API usage.
 
 The current `claude-sonnet-5` and `--max-turns 1500` settings remain on the generic workflow. The specialist workflow does not force that model because the official plugin selects the documented mix of review and verification models. Its timeout is 30 minutes so the plugin's parallel passes can complete without turning the turn ceiling into the controlling failure mode.
 
