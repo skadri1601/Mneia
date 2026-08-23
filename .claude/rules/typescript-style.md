@@ -6,15 +6,20 @@ paths:
 
 # TypeScript style
 
-## No comments
+## Comments
 
-**Do not add comments unless asked.** This is a standing instruction from the founder.
+**Comments are allowed, for the understanding of the code and the decision behind it.** Ruled by the
+founder 2026-08-23, replacing the earlier "no comments unless asked". `AGENTS.md` §Code style is the
+authority; this file previously contradicted it, which would have had the next agent stripping
+comments the founder asked for.
 
-Names and structure carry the meaning. Rationale belongs in the Linear ticket or the commit message,
-where it is dated, attributed, and searchable — a comment is none of those things and rots silently.
+What has not changed is what makes a comment worth writing. Names and structure still carry the
+*what*; a comment earns its place by carrying the *why* — a protocol quirk, an upstream bug, a
+constraint that is not visible from the code, or a decision that looks wrong until you know the
+reason. A comment restating the line below it still rots silently and still costs the next reader.
 
-The narrow exception: a comment that records a genuinely non-obvious external constraint, such as a
-protocol quirk or an upstream bug with a link. If you cannot name the constraint, do not write it.
+Rationale that is dated and attributable belongs in the commit message as well, where it is
+searchable. The two are not alternatives.
 
 ## Strictness
 
