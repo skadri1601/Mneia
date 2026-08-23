@@ -50,7 +50,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/git-lane-guard.mjs",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/git-lane-guard.mjs\"",
             "timeout": 15,
             "statusMessage": "Checking git lane policy"
           }
@@ -61,7 +61,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/worktree-guard.mjs",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/worktree-guard.mjs\"",
             "timeout": 15,
             "statusMessage": "Checking worktree policy"
           }
@@ -73,7 +73,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/mneia-rehydrate.mjs",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/mneia-rehydrate.mjs\"",
             "timeout": 25,
             "statusMessage": "Rehydrating Mneia project memory"
           }
@@ -85,7 +85,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node .claude/hooks/mneia-checkpoint.mjs",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/mneia-checkpoint.mjs\"",
             "timeout": 60,
             "statusMessage": "Checkpointing to Mneia"
           }
