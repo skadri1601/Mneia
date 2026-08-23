@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 36
+-- schema version: 37
 
 -- extensions
 
@@ -496,6 +496,83 @@ ALTER TABLE mneia_schema_migration ADD CONSTRAINT mneia_schema_migration_checksu
 ALTER TABLE mneia_schema_migration ADD CONSTRAINT mneia_schema_migration_name_not_null NOT NULL name;
 ALTER TABLE mneia_schema_migration ADD CONSTRAINT mneia_schema_migration_pkey PRIMARY KEY (version);
 ALTER TABLE mneia_schema_migration ADD CONSTRAINT mneia_schema_migration_version_not_null NOT NULL version;
+
+CREATE TABLE oauth_authorization_code (
+  id uuid NOT NULL,
+  code_hash text NOT NULL,
+  client_id text NOT NULL,
+  workspace_id uuid NOT NULL,
+  actor_id uuid NOT NULL,
+  redirect_uri text NOT NULL,
+  code_challenge text NOT NULL,
+  code_challenge_method text DEFAULT 'S256'::text NOT NULL,
+  resource text,
+  scope text DEFAULT ''::text NOT NULL,
+  status text DEFAULT 'pending'::text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  expires_at timestamp with time zone NOT NULL,
+  redeemed_at timestamp with time zone
+);
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_actor_id_not_null NOT NULL actor_id;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_client_id_fkey FOREIGN KEY (client_id) REFERENCES oauth_client(client_id) ON DELETE CASCADE;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_client_id_not_null NOT NULL client_id;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_code_challenge_method_check CHECK ((code_challenge_method = 'S256'::text));
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_code_challenge_method_not_null NOT NULL code_challenge_method;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_code_challenge_not_null NOT NULL code_challenge;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_code_hash_not_null NOT NULL code_hash;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_created_at_not_null NOT NULL created_at;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_expires_after_creation CHECK ((expires_at > created_at));
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_expires_at_not_null NOT NULL expires_at;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_id_not_null NOT NULL id;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_pkey PRIMARY KEY (id);
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_redeemed_at_matches_status CHECK (((status = 'redeemed'::text) = (redeemed_at IS NOT NULL)));
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_redirect_uri_not_null NOT NULL redirect_uri;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_scope_not_null NOT NULL scope;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'redeemed'::text])));
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_status_not_null NOT NULL status;
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_workspace_id_actor_id_fkey FOREIGN KEY (workspace_id, actor_id) REFERENCES actor(workspace_id, id);
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
+ALTER TABLE oauth_authorization_code ADD CONSTRAINT oauth_authorization_code_workspace_id_not_null NOT NULL workspace_id;
+CREATE UNIQUE INDEX oauth_authorization_code_code_hash_key ON public.oauth_authorization_code USING btree (code_hash);
+CREATE INDEX oauth_authorization_code_expiry_idx ON public.oauth_authorization_code USING btree (expires_at);
+ALTER TABLE oauth_authorization_code ENABLE ROW LEVEL SECURITY;
+ALTER TABLE oauth_authorization_code FORCE ROW LEVEL SECURITY;
+CREATE POLICY oauth_authorization_code_issue ON oauth_authorization_code FOR INSERT WITH CHECK (((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid) AND (status = 'pending'::text) AND (redeemed_at IS NULL)));
+CREATE POLICY oauth_authorization_code_redeem ON oauth_authorization_code FOR UPDATE USING (((code_hash = NULLIF(current_setting('mneia.oauth_code_hash'::text, true), ''::text)) AND (status = 'pending'::text) AND (expires_at > now()))) WITH CHECK (((code_hash = NULLIF(current_setting('mneia.oauth_code_hash'::text, true), ''::text)) AND (status = 'redeemed'::text)));
+CREATE POLICY oauth_authorization_code_redeem_lookup ON oauth_authorization_code FOR SELECT USING (((code_hash = NULLIF(current_setting('mneia.oauth_code_hash'::text, true), ''::text)) AND (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL)));
+CREATE POLICY oauth_authorization_code_workspace_isolation ON oauth_authorization_code FOR SELECT USING ((workspace_id = (NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text))::uuid));
+
+CREATE TABLE oauth_client (
+  id uuid NOT NULL,
+  client_id text NOT NULL,
+  client_secret_hash text,
+  client_name text NOT NULL,
+  redirect_uris text[] NOT NULL,
+  grant_types text[] DEFAULT ARRAY['authorization_code'::text] NOT NULL,
+  response_types text[] DEFAULT ARRAY['code'::text] NOT NULL,
+  token_endpoint_auth_method text DEFAULT 'none'::text NOT NULL,
+  application_type text DEFAULT 'native'::text NOT NULL,
+  created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_application_type_check CHECK ((application_type = ANY (ARRAY['native'::text, 'web'::text])));
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_application_type_not_null NOT NULL application_type;
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_client_id_not_null NOT NULL client_id;
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_client_name_not_null NOT NULL client_name;
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_created_at_not_null NOT NULL created_at;
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_grant_types_not_null NOT NULL grant_types;
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_has_redirect_uri CHECK ((cardinality(redirect_uris) > 0));
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_id_not_null NOT NULL id;
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_pkey PRIMARY KEY (id);
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_redirect_uris_not_null NOT NULL redirect_uris;
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_response_types_not_null NOT NULL response_types;
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_secret_matches_auth_method CHECK (((token_endpoint_auth_method = 'none'::text) = (client_secret_hash IS NULL)));
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_token_endpoint_auth_method_check CHECK ((token_endpoint_auth_method = ANY (ARRAY['none'::text, 'client_secret_post'::text, 'client_secret_basic'::text])));
+ALTER TABLE oauth_client ADD CONSTRAINT oauth_client_token_endpoint_auth_method_not_null NOT NULL token_endpoint_auth_method;
+CREATE UNIQUE INDEX oauth_client_client_id_key ON public.oauth_client USING btree (client_id);
+ALTER TABLE oauth_client ENABLE ROW LEVEL SECURITY;
+ALTER TABLE oauth_client FORCE ROW LEVEL SECURITY;
+CREATE POLICY oauth_client_lookup ON oauth_client FOR SELECT USING ((client_id = NULLIF(current_setting('mneia.oauth_client_id'::text, true), ''::text)));
+CREATE POLICY oauth_client_register ON oauth_client FOR INSERT WITH CHECK ((NULLIF(current_setting('mneia.workspace_id'::text, true), ''::text) IS NULL));
 
 CREATE TABLE project (
   id uuid NOT NULL,

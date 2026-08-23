@@ -12,6 +12,11 @@ const isPublicRoute = createRouteMatcher([
   // does. Without this Clerk answers an unauthenticated MCP client with a 302 to /sign-in, which
   // a client reports as a malformed response rather than as an auth failure it could act on.
   '/api/mcp',
+  // register and token are machine endpoints authenticated by OAuth's own rules — a client secret
+  // or a PKCE verifier — so Clerk must not answer them with a redirect to /sign-in. Note that
+  // /oauth/authorize is deliberately absent: that page is the human consent step and Clerk sign-in
+  // is exactly what it needs.
+  '/api/oauth/(.*)',
   // RFC 9728 discovery has to be readable before anyone is authenticated — that is its whole job.
   '/.well-known/(.*)',
 ]);
