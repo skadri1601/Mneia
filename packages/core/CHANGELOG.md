@@ -1,5 +1,11 @@
 # @mneia/core
 
+## 0.16.0
+
+### Minor Changes
+
+- d0a3c74: Add cross-client MCP install, list, and uninstall commands, with agent-ready setup documentation for Codex, Claude, Cursor, Gemini CLI, VS Code, Windsurf, and other MCP clients.
+
 ## 0.15.0
 
 ### Minor Changes
