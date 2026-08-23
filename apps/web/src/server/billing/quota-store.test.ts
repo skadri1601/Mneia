@@ -76,9 +76,15 @@ const ROW: SqlRow = {
   plan: 'team',
   billing_status: 'active',
   seats_purchased: 4,
-  checkpoint_allowance: 200,
+  turn_allowance: 200_000,
+  extraction_allowance: 1_250,
+  embedding_token_allowance: 2_000_000,
+  wallet_balance_micros: 45_000,
   member_count: 3,
   checkpoints_used: 17,
+  turns_used: 2_720,
+  extractions_used: 17,
+  embedding_tokens_used: 1_700,
 };
 
 const storeWith = (respond: Responder) => {
@@ -121,11 +127,14 @@ describe('PostgresQuotaStore.quotaFor', () => {
     expect(reads).toHaveLength(1);
 
     const sql = reads[0]?.sql ?? '';
-    expect(sql).toContain('w.checkpoint_allowance');
+    expect(sql).toContain('w.turn_allowance');
+    expect(sql).toContain('w.extraction_allowance');
+    expect(sql).toContain('w.wallet_balance_micros');
     expect(sql).toContain('w.seats_purchased');
     expect(sql).toContain('team_member');
     expect(sql).toContain('workspace_usage_period');
-    expect(sql).toContain('p.checkpoints_used');
+    expect(sql).toContain('p.turns_used');
+    expect(sql).toContain('p.extractions_used');
     expect(sql).not.toContain('count(DISTINCT u.created_at)');
   });
 
@@ -140,10 +149,10 @@ describe('PostgresQuotaStore.quotaFor', () => {
   });
 
   it('reads a workspace with no period row yet as zero, not as missing', async () => {
-    const { store } = storeWith(() => [{ ...ROW, checkpoints_used: 0 }]);
+    const { store } = storeWith(() => [{ ...ROW, turns_used: 0, extractions_used: 0 }]);
 
     await expect(store.quotaFor(WORKSPACE_ID, NOW)).resolves.toMatchObject({
-      checkpointsUsed: 0,
+      extractionsUsed: 0,
     });
   });
 
@@ -155,8 +164,13 @@ describe('PostgresQuotaStore.quotaFor', () => {
       billingStatus: 'active',
       seatsPurchased: 4,
       memberCount: 3,
-      checkpointAllowance: 200,
-      checkpointsUsed: 17,
+      turnAllowance: 200_000,
+      extractionAllowance: 1_250,
+      embeddingTokenAllowance: 2_000_000,
+      walletBalanceMicros: 45_000,
+      turnsUsed: 2_720,
+      extractionsUsed: 17,
+      embeddingTokensUsed: 1_700,
       period: {
         start: new Date('2026-08-01T00:00:00.000Z'),
         end: new Date('2026-09-01T00:00:00.000Z'),
@@ -165,11 +179,11 @@ describe('PostgresQuotaStore.quotaFor', () => {
   });
 
   it('keeps a null allowance null rather than reading it as zero, which would refuse everyone', async () => {
-    const { store } = storeWith(() => [{ ...ROW, checkpoint_allowance: null }]);
+    const { store } = storeWith(() => [{ ...ROW, extraction_allowance: null }]);
 
     const state = await store.quotaFor(WORKSPACE_ID, NOW);
 
-    expect(state?.checkpointAllowance).toBeNull();
+    expect(state?.extractionAllowance).toBeNull();
   });
 
   it('returns null when row-level security hides the workspace', async () => {
@@ -186,7 +200,7 @@ describe('PostgresQuotaStore.quotaFor', () => {
   });
 
   it('refuses a usage count the database could not produce rather than guessing zero', async () => {
-    const { store } = storeWith(() => [{ ...ROW, checkpoints_used: 'many' }]);
+    const { store } = storeWith(() => [{ ...ROW, extractions_used: 'many' }]);
 
     await expect(store.quotaFor(WORKSPACE_ID, NOW)).rejects.toBeInstanceOf(BillingError);
   });

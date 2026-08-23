@@ -252,7 +252,12 @@ describeIf('MNE-141 the billing journey a two-member team actually walks', () =>
 
       const entitled = await quota.quotaFor(WORKSPACE, NOW);
       expect(entitled).not.toBeNull();
-      expect(checkpointQuota(entitled as NonNullable<typeof entitled>)).toEqual({ allowed: true });
+      expect(
+        checkpointQuota(entitled as NonNullable<typeof entitled>, {
+          turns: 160,
+          estimatedCostMicros: 22,
+        }),
+      ).toEqual({ allowed: true, source: 'allowance' });
 
       expect(canOpenPortal(attempt(paid))).toBe(true);
       expect(portalRequestFor(attempt(paid))).toMatchObject({ customerId: FIRST_CUSTOMER });
@@ -313,7 +318,12 @@ describeIf('MNE-141 the billing journey a two-member team actually walks', () =>
       });
 
       const state = await quota.quotaFor(WORKSPACE, NOW);
-      expect(checkpointQuota(state as NonNullable<typeof state>)).toEqual({ allowed: true });
+      expect(
+        checkpointQuota(state as NonNullable<typeof state>, {
+          turns: 160,
+          estimatedCostMicros: 22,
+        }),
+      ).toEqual({ allowed: true, source: 'allowance' });
     });
   }, 120_000);
 
@@ -395,7 +405,12 @@ describeIf('MNE-141 the billing journey a two-member team actually walks', () =>
 
       const state = await quota.quotaFor(WORKSPACE, NOW);
       expect(state).toMatchObject({ memberCount: 3, seatsPurchased: 2 });
-      expect(checkpointQuota(state as NonNullable<typeof state>)).toMatchObject({
+      expect(
+        checkpointQuota(state as NonNullable<typeof state>, {
+          turns: 160,
+          estimatedCostMicros: 22,
+        }),
+      ).toMatchObject({
         allowed: false,
         code: 'seats_exceeded',
       });
@@ -432,6 +447,9 @@ describeIf('§9 workspace_usage_period is the margin guard, not an estimate of o
         projectId: PROJECT,
         checkpointId: null,
         attempts: [attemptRecord, { ...attemptRecord, outcome: 'fell_back' as const }],
+        turns: 160,
+        costMicros: 44,
+        walletDebitMicros: 0,
       });
 
       expect(Number((await periodRow(admin))?.checkpoints_used)).toBe(1);
@@ -452,6 +470,9 @@ describeIf('§9 workspace_usage_period is the margin guard, not an estimate of o
           projectId: PROJECT,
           checkpointId: null,
           attempts: [{ ...attemptRecord, outcome: 'exploded' as unknown as 'succeeded' }],
+          turns: 160,
+          costMicros: 22,
+          walletDebitMicros: 0,
         }),
       ).rejects.toThrow();
 
@@ -473,6 +494,9 @@ describeIf('§9 workspace_usage_period is the margin guard, not an estimate of o
             projectId: PROJECT,
             checkpointId: null,
             attempts: [attemptRecord],
+            turns: 160,
+            costMicros: 22,
+            walletDebitMicros: 0,
           }),
         ),
       );
@@ -483,7 +507,7 @@ describeIf('§9 workspace_usage_period is the margin guard, not an estimate of o
 
   it('is what the quota gate reads, and refuses at the allowance', async () => {
     await withWorkspace(async ({ admin, quota, usage }) => {
-      await admin.query('UPDATE workspace SET checkpoint_allowance = 3 WHERE id = $1', [WORKSPACE]);
+      await admin.query('UPDATE workspace SET extraction_allowance = 3 WHERE id = $1', [WORKSPACE]);
 
       for (let index = 0; index < 3; index += 1) {
         await usage.recordUsage({
@@ -491,14 +515,23 @@ describeIf('§9 workspace_usage_period is the margin guard, not an estimate of o
           projectId: PROJECT,
           checkpointId: null,
           attempts: [attemptRecord],
+          turns: 160,
+          costMicros: 22,
+          walletDebitMicros: 0,
         });
       }
 
       const state = await quota.quotaFor(WORKSPACE, NOW);
-      expect(state).toMatchObject({ checkpointAllowance: 3, checkpointsUsed: 3 });
-      expect(checkpointQuota(state as NonNullable<typeof state>)).toMatchObject({
+      expect(state).toMatchObject({ extractionAllowance: 3, extractionsUsed: 3, turnsUsed: 480 });
+      expect(
+        checkpointQuota(state as NonNullable<typeof state>, {
+          turns: 160,
+          estimatedCostMicros: 22,
+        }),
+      ).toMatchObject({
         allowed: false,
         code: 'allowance_exhausted',
+        dial: 'extractions',
       });
     });
   }, 120_000);

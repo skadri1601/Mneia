@@ -3,7 +3,7 @@ import 'server-only';
 import type { PostgresConnectionSource } from '@mneia/core';
 import { database } from '../database.js';
 import { type BillingStore, PostgresBillingStore } from './billing-store.js';
-import { checkpointQuota, type QuotaDecision } from './quota.js';
+import { checkpointQuota, type QuotaDecision, type QuotaRequest } from './quota.js';
 import { PostgresQuotaStore, type QuotaStore } from './quota-store.js';
 import { requireStripeConfiguration, StripeClient } from './stripe.js';
 
@@ -63,8 +63,12 @@ export const quotaStore = (): QuotaStore => createQuotaStore(database);
 export const checkpointQuotaFor = async (
   workspaceId: string,
   now: Date,
+  request: QuotaRequest,
   store: QuotaStore = quotaStore(),
 ): Promise<QuotaDecision> => {
   const state = await store.quotaFor(workspaceId, now);
-  return state === null ? { allowed: true } : checkpointQuota(state);
+  // A workspace row that does not exist cannot be metered. The caller is already
+  // authenticated against it, so this is a torn state rather than an unpaid one, and
+  // refusing the checkpoint would lose work over a bookkeeping gap.
+  return state === null ? { allowed: true, source: 'allowance' } : checkpointQuota(state, request);
 };

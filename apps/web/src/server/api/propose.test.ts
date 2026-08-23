@@ -70,6 +70,7 @@ const input = (refs: readonly string[], text?: (ref: string) => string): Checkpo
   source: 'claude-code',
   sessionRef: 'session-1',
   trigger: 'task_boundary',
+  fromStart: false,
   turns: refs.map((ref) =>
     turn(ref, text === undefined ? `A decision worth keeping about ${ref}` : text(ref)),
   ),
@@ -93,7 +94,7 @@ const CANDIDATES = JSON.stringify({
 const depsWith = (overrides: Partial<Parameters<typeof handleProposeCheckpoint>[2]> = {}) => {
   const seen: { prompts: string[]; usage: unknown[] } = { prompts: [], usage: [] };
   const deps = {
-    quota: vi.fn(async () => ({ allowed: true }) as const),
+    quota: vi.fn(async () => ({ allowed: true, source: 'allowance' }) as const),
     run: vi.fn(async (request: { system: string; user: string; maxOutputTokens: number }) => {
       seen.prompts.push(request.user);
       return {
@@ -115,6 +116,7 @@ const depsWith = (overrides: Partial<Parameters<typeof handleProposeCheckpoint>[
       seen.usage.push(usage);
     }),
     servableContextTokens: 200_000,
+    primaryModel: 'gpt-5.6-luna',
     ...overrides,
   };
   return { deps, seen };
@@ -139,9 +141,30 @@ describe('handleProposeCheckpoint', () => {
     expect(proposal.watermark).toBe('c');
   });
 
-  it('re-reads the whole window when the watermark is not in this transcript, so no turn is skipped', async () => {
+  it('refuses an upload that does not reach back to the watermark, rather than paying twice', async () => {
+    // This used to re-extract the whole window silently. Never skipping a turn is the
+    // right instinct, but paying for every turn again is the wrong way to buy it: the
+    // watermark moves backwards and everything between is billed a second time. The
+    // client is told instead, and can either send from the watermark or declare a
+    // rotation - see the test below.
+    const { deps } = depsWith({ watermarkFor: vi.fn(async () => 'a-turn-we-were-not-sent') });
+
+    await expect(
+      handleProposeCheckpoint(storeStub(), input(['a', 'b', 'c']), deps),
+    ).rejects.toThrow(/does not contain watermark/);
+    expect(deps.run).not.toHaveBeenCalled();
+  });
+
+  it('re-reads the whole window when the client declares a rotated transcript, so no turn is skipped', async () => {
+    // The original property, kept for the case it was actually written for. A rotated
+    // transcript genuinely no longer holds the watermark, and that is permanent for the
+    // session, so refusing would mean it could never checkpoint again.
     const { deps } = depsWith({ watermarkFor: vi.fn(async () => 'from-a-rotated-transcript') });
-    const { proposal } = await handleProposeCheckpoint(storeStub(), input(['a', 'b', 'c']), deps);
+    const { proposal } = await handleProposeCheckpoint(
+      storeStub(),
+      { ...input(['a', 'b', 'c']), fromStart: true },
+      deps,
+    );
 
     expect(proposal.consumedTurns).toBe(3);
   });
@@ -289,7 +312,12 @@ describe('handleProposeCheckpoint', () => {
 
     await expect(handleProposeCheckpoint(storeStub(), input(['a']), deps)).rejects.toThrow();
     expect(seen.usage).toHaveLength(1);
-    expect(deps.recordUsage).toHaveBeenCalledWith({ projectId: PROJECT.id, attempts });
+    // toMatchObject, not toHaveBeenCalledWith: the record now also carries the turn count,
+    // the priced cost and any wallet debit, and this test is about the attempts surviving
+    // a rejected or failed extraction, not about the shape of the whole record.
+    expect(deps.recordUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: PROJECT.id, attempts }),
+    );
   });
 
   it('records billable attempts when extraction fails', async () => {
@@ -312,7 +340,12 @@ describe('handleProposeCheckpoint', () => {
       /re-read on the next checkpoint/,
     );
     expect(seen.usage).toHaveLength(1);
-    expect(deps.recordUsage).toHaveBeenCalledWith({ projectId: PROJECT.id, attempts });
+    // toMatchObject, not toHaveBeenCalledWith: the record now also carries the turn count,
+    // the priced cost and any wallet debit, and this test is about the attempts surviving
+    // a rejected or failed extraction, not about the shape of the whole record.
+    expect(deps.recordUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: PROJECT.id, attempts }),
+    );
   });
 
   describe('the coverage carried to §17', () => {

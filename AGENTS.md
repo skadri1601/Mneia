@@ -436,7 +436,7 @@ never ad-hoc SQL. Anything else that wants to bypass the product needs the found
 
 ## Code style
 
-- **No comments unless asked.** Names and structure carry the meaning. Rationale goes in the ticket
+- **you can comments  for better understanding of the code and decision, behind it.** Names and structure carry the meaning. Rationale goes in the ticket
   or the commit message, where it is searchable and dated.
 - Match the conventions of surrounding code before introducing new ones.
 - Never log or commit secrets, tokens, or user content.
@@ -527,7 +527,7 @@ model hosting, a vector database. If a diff starts building one, name which one.
 
 ### Style, briefly
 
-No code comments unless the ticket asked for them — rationale belongs in the commit message where
+you can comment  for better understanding of the code and decision, behind it— rationale belongs in the commit message where
 it is dated and searchable. No `any`, no non-null assertions, validate at trust boundaries. Domain
 terms match §9 exactly: `context_item`, `load_bearing`, `human_confirmed`, `asserted_by`,
 `valid_from`, `decay_after`. Errors name what was expected, what was received, and what to do.

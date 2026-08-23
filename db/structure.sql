@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 34
+-- schema version: 35
 
 -- extensions
 
@@ -192,8 +192,10 @@ CREATE TABLE checkpoint_usage (
   output_tokens integer NOT NULL,
   duration_ms integer NOT NULL,
   outcome text NOT NULL,
-  created_at timestamp with time zone DEFAULT now() NOT NULL
+  created_at timestamp with time zone DEFAULT now() NOT NULL,
+  cost_micros bigint
 );
+ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_cost_is_not_negative CHECK (((cost_micros IS NULL) OR (cost_micros >= 0)));
 ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_created_at_not_null NOT NULL created_at;
 ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_duration_ms_not_null NOT NULL duration_ms;
 ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_id_not_null NOT NULL id;
@@ -208,6 +210,7 @@ ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_pkey PRIMARY KEY (i
 ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_workspace_id_checkpoint_id_fkey FOREIGN KEY (workspace_id, checkpoint_id) REFERENCES checkpoint(workspace_id, id);
 ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE checkpoint_usage ADD CONSTRAINT checkpoint_usage_workspace_id_not_null NOT NULL workspace_id;
+CREATE INDEX checkpoint_usage_cost_idx ON public.checkpoint_usage USING btree (workspace_id, created_at) INCLUDE (cost_micros) WHERE (cost_micros IS NOT NULL);
 CREATE INDEX checkpoint_usage_metering_idx ON public.checkpoint_usage USING btree (workspace_id, created_at);
 ALTER TABLE checkpoint_usage ENABLE ROW LEVEL SECURITY;
 ALTER TABLE checkpoint_usage FORCE ROW LEVEL SECURITY;

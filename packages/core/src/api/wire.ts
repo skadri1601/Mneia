@@ -836,7 +836,20 @@ export const CheckpointProposeWireSchema = z.object({
   source: z.enum(TRAJECTORY_SOURCES),
   sessionRef: z.string().min(1).max(300),
   trigger: z.enum(CHECKPOINT_TRIGGERS),
+  // No .min(1): the client probes for the server's watermark by uploading no turns at
+  // all, and requiring one made an oversized session impossible to checkpoint (MNE-100).
   turns: z.array(TrajectoryTurnWireSchema).max(MAX_TRAJECTORY_TURNS),
+  /**
+   * The client is knowingly re-sending from the start of the transcript.
+   *
+   * Normally an upload that does not contain the server's watermark means turns went
+   * missing between the two, and re-extracting would bill for work already paid for. But
+   * a rotated or truncated transcript no longer holds the watermark at all, and for that
+   * session the condition is permanent — refusing it would mean it could never checkpoint
+   * again. The client sets this only when it has looked for the watermark and found the
+   * transcript does not go back that far.
+   */
+  fromStart: z.boolean().default(false),
 });
 
 export type CheckpointProposeWire = z.infer<typeof CheckpointProposeWireSchema>;

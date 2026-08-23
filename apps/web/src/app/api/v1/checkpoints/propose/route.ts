@@ -19,9 +19,10 @@ export const POST = (request: Request): Promise<Response> =>
       const sourceStore = checkpointSourceStore();
       const runner = extractionRunner();
       return handleProposeCheckpoint(store, input, {
-        quota: () => checkpointQuotaFor(store.scope.workspaceId, new Date()),
+        quota: (request) => checkpointQuotaFor(store.scope.workspaceId, new Date(), request),
         run: (prompt) => runner.run(prompt),
         servableContextTokens: runner.servableContextTokens,
+        primaryModel: runner.primary,
         watermarkFor: (query) =>
           sourceStore.watermarkFor({ ...query, workspaceId: store.scope.workspaceId }),
         recordUsage: (usage) =>

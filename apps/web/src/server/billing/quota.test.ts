@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { QuotaState } from './quota.js';
+import type { QuotaRequest, QuotaState } from './quota.js';
 
 vi.mock('server-only', () => ({}));
 
 const { checkpointQuota, monthPeriod } = await import('./quota.js');
+const { planLimits } = await import('./limits.js');
 
 const PERIOD = monthPeriod(new Date('2026-08-16T12:00:00.000Z'));
 
@@ -12,9 +13,21 @@ const state = (overrides: Partial<QuotaState> = {}): QuotaState => ({
   billingStatus: 'active',
   seatsPurchased: null,
   memberCount: 1,
-  checkpointAllowance: null,
-  checkpointsUsed: 0,
+  turnAllowance: null,
+  extractionAllowance: null,
+  embeddingTokenAllowance: null,
+  turnsUsed: 0,
+  extractionsUsed: 0,
+  embeddingTokensUsed: 0,
+  walletBalanceMicros: 0,
   period: PERIOD,
+  ...overrides,
+});
+
+/** A modest checkpoint: a few hundred turns, costing about half a cent. */
+const request = (overrides: Partial<QuotaRequest> = {}): QuotaRequest => ({
+  turns: 160,
+  estimatedCostMicros: 6_200,
   ...overrides,
 });
 
@@ -34,119 +47,149 @@ describe('monthPeriod', () => {
 });
 
 describe('checkpointQuota', () => {
-  it('leaves a null allowance unmetered, because every workspace has one today', () => {
-    expect(checkpointQuota(state({ checkpointAllowance: null, checkpointsUsed: 9_999 }))).toEqual({
-      allowed: true,
+  it('allows a fresh workspace from its allowance', () => {
+    expect(checkpointQuota(state(), request())).toEqual({ allowed: true, source: 'allowance' });
+  });
+
+  describe('the subscription gate covers every paid plan', () => {
+    // Gating on Team alone let a cancelled Pro workspace keep its full allowance, which is
+    // the whole reason Pro could not be sold until this was fixed.
+    it.each(['pro', 'team'] as const)('refuses %s when the subscription is canceled', (plan) => {
+      const decision = checkpointQuota(
+        state({ plan, billingStatus: 'canceled', seatsPurchased: 5 }),
+        request(),
+      );
+
+      expect(decision).toMatchObject({ allowed: false, code: 'subscription_inactive' });
+    });
+
+    it.each(['active', 'trialing', 'past_due'] as const)('lets %s through', (billingStatus) => {
+      // past_due is deliberately entitled: a failed card should prompt a fix, not silently
+      // stop a team from capturing work they will be billed for anyway.
+      expect(checkpointQuota(state({ plan: 'pro', billingStatus }), request()).allowed).toBe(true);
+    });
+
+    it.each(['solo', 'enterprise'] as const)('does not gate %s on a subscription', (plan) => {
+      // Free has nothing to lapse, and enterprise is the internal vehicle - gating it would
+      // mean our own dogfooding stops when a billing row is untidy.
+      expect(checkpointQuota(state({ plan, billingStatus: 'canceled' }), request()).allowed).toBe(
+        true,
+      );
     });
   });
 
-  it('refuses at the allowance rather than one past it', () => {
-    expect(checkpointQuota(state({ checkpointAllowance: 10, checkpointsUsed: 10 }))).toMatchObject({
-      allowed: false,
-      code: 'allowance_exhausted',
+  describe('seats', () => {
+    it('refuses a team with more members than purchased seats', () => {
+      const decision = checkpointQuota(
+        state({ plan: 'team', seatsPurchased: 2, memberCount: 3 }),
+        request(),
+      );
+
+      expect(decision).toMatchObject({ allowed: false, code: 'seats_exceeded' });
     });
-    expect(checkpointQuota(state({ checkpointAllowance: 10, checkpointsUsed: 9 }))).toEqual({
-      allowed: true,
+
+    it('does not apply the seat check to a single-seat paid plan', () => {
+      // Pro is one seat by definition, so it never purchases seats and must not be
+      // measured against a count it does not have.
+      expect(
+        checkpointQuota(state({ plan: 'pro', seatsPurchased: null, memberCount: 1 }), request())
+          .allowed,
+      ).toBe(true);
     });
   });
 
-  it('names usage, allowance and the reset boundary, so the refusal says what to do', () => {
-    const decision = checkpointQuota(state({ checkpointAllowance: 10, checkpointsUsed: 10 }));
+  describe('the dials', () => {
+    it('refuses when this request would push turns past the allowance', () => {
+      // Checked against what the request consumes, not just what is already spent, so one
+      // oversized upload cannot step over the ceiling in a single move.
+      const limits = planLimits('solo');
+      const decision = checkpointQuota(
+        state({ turnsUsed: (limits.turns ?? 0) - 10 }),
+        request({ turns: 100 }),
+      );
 
-    expect(decision.allowed).toBe(false);
-    if (decision.allowed) {
-      throw new Error('expected the decision to be a refusal');
-    }
-    expect(decision.message).toContain('10 of its 10');
-    expect(decision.message).toContain('2026-09-01T00:00:00.000Z');
-  });
+      expect(decision).toMatchObject({ allowed: false, dial: 'turns' });
+    });
 
-  it('enforces a configured allowance on solo without mentioning checkout', () => {
-    const decision = checkpointQuota(
-      state({ plan: 'solo', checkpointAllowance: 3, checkpointsUsed: 3 }),
-    );
+    it('refuses when the extraction allowance is spent, even with turns to spare', () => {
+      const limits = planLimits('solo');
+      const decision = checkpointQuota(
+        state({ extractionsUsed: limits.extractions ?? 0 }),
+        request({ turns: 1 }),
+      );
 
-    expect(decision).toMatchObject({ allowed: false, code: 'allowance_exhausted' });
-    if (decision.allowed) {
-      throw new Error('expected the decision to be a refusal');
-    }
-    expect(decision.message).not.toContain('seat');
-  });
+      expect(decision).toMatchObject({ allowed: false, dial: 'extractions' });
+    });
 
-  it('keeps a past-due Team workspace working, because dunning is not cancellation', () => {
-    expect(
-      checkpointQuota(
-        state({ plan: 'team', billingStatus: 'past_due', seatsPurchased: 3, memberCount: 3 }),
-      ),
-    ).toEqual({ allowed: true });
-  });
+    it('meters enterprise against nothing at all', () => {
+      expect(
+        checkpointQuota(
+          state({ plan: 'enterprise', turnsUsed: 10_000_000, extractionsUsed: 10_000_000 }),
+          request(),
+        ),
+      ).toEqual({ allowed: true, source: 'allowance' });
+    });
 
-  it.each(['active', 'trialing'] as const)('allows a %s Team workspace', (billingStatus) => {
-    expect(
-      checkpointQuota(state({ plan: 'team', billingStatus, seatsPurchased: 2, memberCount: 2 })),
-    ).toEqual({ allowed: true });
-  });
+    it('lets a per-workspace override beat the plan default', () => {
+      // This is the grant path: a design partner or promo gets headroom without inventing
+      // a plan for them.
+      const limits = planLimits('solo');
+      const used = (limits.extractions ?? 0) + 5;
 
-  it('refuses a Team workspace whose subscription is no longer entitled', () => {
-    expect(
-      checkpointQuota(
-        state({ plan: 'team', billingStatus: 'canceled', seatsPurchased: 3, memberCount: 3 }),
-      ),
-    ).toMatchObject({ allowed: false, code: 'subscription_inactive' });
-  });
+      expect(
+        checkpointQuota(
+          state({ extractionsUsed: used, extractionAllowance: used + 100 }),
+          request(),
+        ).allowed,
+      ).toBe(true);
+    });
 
-  it('refuses a Team workspace with fewer seats than members', () => {
-    const decision = checkpointQuota(
-      state({ plan: 'team', billingStatus: 'active', seatsPurchased: 2, memberCount: 5 }),
-    );
+    it('pools a team allowance across purchased seats', () => {
+      // Per seat and pooled, so one heavy user draws on a quiet colleague's share rather
+      // than being refused while the team has headroom.
+      const perSeat = planLimits('team').extractions ?? 0;
 
-    expect(decision).toMatchObject({ allowed: false, code: 'seats_exceeded' });
-    if (decision.allowed) {
-      throw new Error('expected the decision to be a refusal');
-    }
-    expect(decision.message).toContain('5 members');
-    expect(decision.message).toContain('2 purchased seats');
-  });
-
-  it('checks entitlement before the allowance, so the actionable refusal wins', () => {
-    expect(
-      checkpointQuota(
+      const decision = checkpointQuota(
         state({
           plan: 'team',
-          billingStatus: 'canceled',
-          seatsPurchased: 1,
+          seatsPurchased: 4,
           memberCount: 4,
-          checkpointAllowance: 1,
-          checkpointsUsed: 99,
+          extractionsUsed: perSeat * 3,
         }),
-      ),
-    ).toMatchObject({ code: 'subscription_inactive' });
+        request(),
+      );
+
+      expect(decision.allowed).toBe(true);
+    });
   });
 
-  it('holds an enterprise workspace to its explicit allowance, and to nothing else', () => {
-    expect(
-      checkpointQuota(
-        state({
-          plan: 'enterprise',
-          billingStatus: 'active',
-          seatsPurchased: null,
-          memberCount: 400,
-          checkpointAllowance: 50_000,
-          checkpointsUsed: 12,
-        }),
-      ),
-    ).toEqual({ allowed: true });
+  describe('the wallet', () => {
+    const exhausted = (overrides: Partial<QuotaState> = {}): QuotaState =>
+      state({ extractionsUsed: planLimits('solo').extractions ?? 0, ...overrides });
 
-    expect(
-      checkpointQuota(
-        state({
-          plan: 'enterprise',
-          billingStatus: 'active',
-          memberCount: 400,
-          checkpointAllowance: 50_000,
-          checkpointsUsed: 50_000,
-        }),
-      ),
-    ).toMatchObject({ allowed: false, code: 'allowance_exhausted' });
+    it('draws on prepaid balance once the allowance is gone', () => {
+      // BUSINESS.md has always said allowance then overage. Work does not stop while there
+      // is balance to spend.
+      const decision = checkpointQuota(exhausted({ walletBalanceMicros: 50_000 }), request());
+
+      expect(decision).toEqual({ allowed: true, source: 'wallet', debitMicros: 6_200 });
+    });
+
+    it('refuses when the balance cannot cover this checkpoint, and says so', () => {
+      const decision = checkpointQuota(exhausted({ walletBalanceMicros: 100 }), request());
+
+      expect(decision).toMatchObject({ allowed: false, code: 'wallet_empty' });
+      if (!decision.allowed) {
+        expect(decision.message).toContain('$0.00');
+      }
+    });
+
+    it('names the allowance, not the wallet, when there is no balance at all', () => {
+      // A customer who has never topped up should be told to add a balance, not that an
+      // empty one fell short.
+      const decision = checkpointQuota(exhausted(), request());
+
+      expect(decision).toMatchObject({ allowed: false, code: 'allowance_exhausted' });
+    });
   });
 });
