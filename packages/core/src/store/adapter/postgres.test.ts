@@ -4,7 +4,13 @@ import type { SqlResult, SqlValue } from '../driver.js';
 import { RLS_POSTURE_SQL } from '../rls-guard.js';
 import type { ActorKind } from '../schema.js';
 import type { PostgresConnectionSource, PostgresSession } from './postgres.js';
-import { PostgresStoreAdapter, type StoreError } from './postgres.js';
+import {
+  FOREIGN_KEY_VIOLATION,
+  PostgresStoreAdapter,
+  StoreError as StoreErrorClass,
+  type StoreError,
+  translateIntegrityViolation,
+} from './postgres.js';
 import type { CheckpointWrite } from './types.js';
 
 const SCOPE = {
@@ -496,5 +502,57 @@ describe('PostgresStoreAdapter active project resolution', () => {
     );
 
     expect(project).toBeNull();
+  });
+});
+
+describe('translateIntegrityViolation', () => {
+  const violation = (over: Record<string, unknown> = {}): unknown =>
+    Object.assign(new Error('insert or update on table "checkpoint" violates foreign key'), {
+      code: FOREIGN_KEY_VIOLATION,
+      constraint: 'checkpoint_workspace_id_project_id_fkey',
+      detail:
+        'Key (workspace_id, project_id)=(874090eb-c7bc-49ef-b653-93e24148a92c, 874090eb-c7bc-49ef-b653-93e24148a92c) is not present in table "project".',
+      table: 'checkpoint',
+      ...over,
+    });
+
+  it('turns a foreign-key violation into not_found rather than an unmapped crash', () => {
+    const translated = translateIntegrityViolation(violation());
+
+    expect(translated).toBeInstanceOf(StoreErrorClass);
+    expect((translated as InstanceType<typeof StoreErrorClass>).code).toBe('not_found');
+  });
+
+  it('names the constraint and echoes the ids the caller sent, so the wrong one is visible', () => {
+    const message = (translateIntegrityViolation(violation()) as Error).message;
+
+    expect(message).toContain('checkpoint_workspace_id_project_id_fkey');
+    expect(message).toContain('874090eb-c7bc-49ef-b653-93e24148a92c');
+    expect(message).toContain('Nothing was written.');
+  });
+
+  it('keeps the driver error as the cause', () => {
+    const original = violation();
+
+    expect((translateIntegrityViolation(original) as Error).cause).toBe(original);
+  });
+
+  it('passes any other database error through untouched, rather than mislabelling it', () => {
+    const other = violation({ code: '23505' });
+
+    expect(translateIntegrityViolation(other)).toBe(other);
+  });
+
+  it('passes non-objects through, because a thrown string has no SQLSTATE', () => {
+    expect(translateIntegrityViolation('boom')).toBe('boom');
+    expect(translateIntegrityViolation(null)).toBeNull();
+  });
+
+  it('still reads when the driver supplies no constraint or detail', () => {
+    const bare = translateIntegrityViolation(
+      violation({ constraint: undefined, detail: undefined, table: undefined }),
+    );
+
+    expect((bare as Error).message).toContain('a referenced row does not exist');
   });
 });
