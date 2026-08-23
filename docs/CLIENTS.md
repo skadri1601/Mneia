@@ -199,27 +199,50 @@ a deploy cannot strand a client. Two consequences worth knowing before relying o
 |---|---|---|---|---|---|---|
 | **Claude Code** 2.1.239 | JSON, `mcpServers` key | **Yes** | **Yes** — `docs/handshakes/claude-code.jsonl` | **Yes — 11** | **Yes** | `claude mcp add-json` pointed at the recorder to capture the handshake, then `claude -p` to drive it. Tool calls driven throughout this session against the hosted store |
 | **Codex CLI** 0.149.0 | **TOML**, `[mcp_servers.<name>]` | **Yes** — `enabled`, `transport: stdio` | **Yes** — `docs/handshakes/codex.jsonl` | **Yes — Codex issues `tools/list` itself**, before it reaches the model | **Not run** | `codex mcp add` into an isolated `CODEX_HOME`, then `codex exec`. Codex launched the server, initialized and requested `tools/list` before failing at the model on a usage limit |
-| **Cursor Agent** 2026.08.11 | JSON, `mcpServers` key | **Yes** — `mneia: ready` | **Yes** — `docs/handshakes/cursor.jsonl` | **Yes — 11, with argument names** | **Not run** | Installed during this check. `cursor-agent mcp enable`, then `cursor-agent mcp list-tools mneia`, which enumerates tools without needing the model. `cursor-agent -p` stops at *"Authentication required. Please run 'agent login'"* — an interactive browser flow |
+| **Cursor Agent** 2026.08.11 | JSON, `mcpServers` key | **Yes** — `mneia: ready` | **Yes** — `docs/handshakes/cursor.jsonl` | **Yes — 11, with argument names** | **Yes — a read and a write** | Installed during this check. `cursor-agent mcp enable`, then `mcp list-tools mneia` for discovery without a model. After `agent login`, `cursor-agent -p --approve-mcps` drove `mneia_sessions` and then `mneia_assert`, which wrote item `551fe9ce` to the live project |
 
-All three clients now register, hand shake, and enumerate the full eleven. The one thing no client
-but Claude Code has done is take an agent turn: Codex is blocked on an OpenAI usage limit that
-resets 2026-08-23 11:20, and Cursor on `agent login`, which needs a browser. **Both are account
-limits on this machine, not defects in the server** — every one of them reached `tools/list` and got
-the same eleven tools back.
+All three clients register, hand shake, and enumerate the full eleven. **Cursor has now driven both
+a read and a write**, which is what MNE-79's clause asks for and what turned up the
+`checkpoint.source` defect below. Codex remains discovery-only, blocked on an OpenAI usage limit
+rather than on anything in the server.
 
-### Production has only ever seen one client
+### 🔴 No client but Claude Code could write, and nobody knew
 
-`mneia_sessions` against the live project returns four MCP sessions, total:
+Until 2026-08-23 `mneia_sessions` returned only `claude-code` and a hand-driven probe. That was read
+here as "nobody else has tried it yet". **It was not. It was impossible.**
 
-| `clientName` | Sessions |
-|---|---|
-| `claude-code` | 3 |
-| `stdio-probe` | 1 — the hand-driven probe from the 2026-08-19 check |
+The hosted API validates `checkpoint.source` against `TRAJECTORY_SOURCES` — `claude-code`,
+`claude-desktop`, `codex`, `cursor`, `gemini`, `warp`, `file` — and the MCP server passed the client
+name from the initialize handshake straight through. Those names do not match:
 
-**No Cursor session and no Codex session has ever reached production.** A session opens on first
-write, so discovery alone would not create one — but it means the neutrality claim currently rests
-on protocol conformance and captured handshakes, not on a second client having ever written
-anything. That is the gap MNE-79 is really about.
+| Client sends | Valid source? | Result before the fix |
+|---|---|---|
+| `claude-code` | **yes**, by coincidence | writes |
+| `Cursor` | no — capitalised | **every write rejected** |
+| `codex-mcp-client` | no — different string | **every write rejected** |
+
+`mneia_assert` from Cursor failed with `checkpoint.source: Invalid input`. So Claude Code worked
+only because it happens to call itself exactly what the enum calls it, and **the evidence that
+looked like low adoption was a defect wearing adoption's clothes.**
+
+`checkpointSourceFor` in `packages/mcp-server/src/session-provenance.ts` now maps client identities
+onto sources explicitly. Lower-casing alone is not the fix — it repairs Cursor and leaves Codex
+silently unattributed. An unrecognised client yields `null` rather than a guess, because recording a
+wrong source is worse than recording none.
+
+**Verified after the fix, from Cursor, against production:**
+
+| `clientName` | Sessions | Wrote |
+|---|---|---|
+| `claude-code` | 3 | yes |
+| **`Cursor` 1.0.0** | **2** | **yes — 1 checkpoint, 1 item** |
+| `lane-d-probe` | 1 | yes |
+| `stdio-probe` | 1 | the 2026-08-19 hand-driven probe |
+
+§3 Corollary B finally has the evidence it asks for: a second, different client has written to the
+store. **This is what the founder's rule about using the product through a customer's surface is
+for.** Every conformance run in this file passed while this was broken, because a conformance run
+reads. Nothing found it until a real client was asked to write.
 
 ### Two client-side differences that matter
 
