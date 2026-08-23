@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { WorkspaceSwitcher } from '../../components/WorkspaceSwitcher.js';
+import { subscriptionAddress } from '../../server/billing/billing-store.js';
 import { canOpenPortal, canStartCheckout } from '../../server/billing/checkout.js';
+import { isSeatedPlan } from '../../server/billing/limits.js';
 import { effectiveAllowances } from '../../server/billing/quota.js';
 import { billingStore, quotaStore } from '../../server/billing/runtime.js';
 import { getCurrentAccount } from '../../server/current-account.js';
-import { checkoutAction, portalAction } from './actions.js';
+import { checkoutAction, portalAction, purchaseSeatsAction } from './actions.js';
 import styles from './Billing.module.css';
 
 export const dynamic = 'force-dynamic';
@@ -45,8 +47,10 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   const account = await getCurrentAccount();
   // Read together: both are one indexed query against workspace under the same scope, and
   // this page is not on the rehydrate path, so there is no §12.1 budget to protect here.
-  const [snapshot, quota, query] = await Promise.all([
-    billingStore().snapshot(account.workspace.id),
+  const store = billingStore();
+  const [snapshot, subscription, quota, query] = await Promise.all([
+    store.snapshot(account.workspace.id),
+    store.subscriptionRef(account.workspace.id),
     quotaStore().quotaFor(account.workspace.id, new Date()),
     searchParams,
   ]);
@@ -63,6 +67,16 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
   const checkoutAvailable = canStartCheckout({ account: billingAccount, snapshot });
   const portalAvailable = canOpenPortal({ account: billingAccount, snapshot });
   const checkoutNotice = first(query.checkout);
+  const seatNotice = first(query.seats);
+
+  // Reuses canOpenPortal rather than restating its status set: seat sync and the portal
+  // gate on the same three statuses (active, trialing, past_due) for the same reason, and
+  // a second copy of that list here would drift from SYNCABLE_STATUSES in checkout.ts.
+  const seatControlAvailable = portalAvailable && isSeatedPlan(snapshot.plan);
+  // Both halves, or neither. Migration 0036 writes these from the live Stripe object in the
+  // subscription webhook, so a workspace that subscribed before it fills in on its next
+  // lifecycle event — which is a real state a lead can be sitting in right now.
+  const address = subscription === null ? null : subscriptionAddress(subscription);
 
   return (
     <main className={styles.page}>
@@ -81,6 +95,16 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
       {checkoutNotice === 'canceled' ? (
         <p className={styles.notice} role="status">
           Checkout canceled.
+        </p>
+      ) : null}
+      {seatNotice === 'updated' ? (
+        <p className={styles.notice} role="status">
+          Seat count updated. The subscription now bills for the seats shown below.
+        </p>
+      ) : null}
+      {seatNotice === 'unchanged' ? (
+        <p className={styles.notice} role="status">
+          No seat change was applied — the subscription already bills for that many seats.
         </p>
       ) : null}
 
@@ -162,6 +186,47 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
             <input name="attemptToken" type="hidden" value={randomUUID()} />
             <button type="submit">Start Team checkout</button>
           </form>
+        </section>
+      ) : null}
+
+      {seatControlAvailable && address !== null ? (
+        <section className={styles.card} aria-labelledby="seat-count">
+          <h2 id="seat-count">Seats</h2>
+          <p>
+            This workspace pays for {count(snapshot.seatsPurchased ?? 0)} seat
+            {snapshot.seatsPurchased === 1 ? '' : 's'} and has {count(snapshot.memberCount)}{' '}
+            accepted member{snapshot.memberCount === 1 ? '' : 's'}. Changing this bills the
+            difference for the rest of the period; releasing a seat is credited against the next
+            invoice.
+          </p>
+          <form action={purchaseSeatsAction} className={styles.form}>
+            <label htmlFor="seats">Seats to pay for</label>
+            <input
+              id="seats"
+              name="seats"
+              type="number"
+              min={Math.max(snapshot.memberCount, 1)}
+              step={1}
+              defaultValue={snapshot.seatsPurchased ?? snapshot.memberCount}
+            />
+            <button type="submit">Update seat count</button>
+          </form>
+        </section>
+      ) : null}
+
+      {seatControlAvailable && address === null ? (
+        <section className={styles.card} aria-labelledby="seat-count-unavailable">
+          <h2 id="seat-count-unavailable">Seats</h2>
+          {/*
+            Said rather than hidden. A control that silently fails is worse than an absent
+            one, and an empty panel would read as a bug. This resolves itself.
+          */}
+          <p>
+            Seat changes are not available yet for this workspace. Its Stripe subscription reference
+            has not been recorded, which happens on the subscription&rsquo;s next lifecycle event —
+            a renewal, a payment, or a change made from the billing portal. Until then, use the
+            billing portal below.
+          </p>
         </section>
       ) : null}
 

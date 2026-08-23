@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   CheckpointProposeWireSchema,
+  CheckpointWriteWireSchema,
   DEFAULT_MAX_CHARS,
   MAX_TRAJECTORY_TURNS,
   MAX_TURN_TEXT_LENGTH,
@@ -56,6 +57,53 @@ interface FakeServer {
   readonly rejected: string[];
 }
 
+const ok = (body: unknown): Response =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+
+const identityResponse = (): Response =>
+  ok({
+    actor: { id: ACTOR_ID, display_name: 'Ada', kind: 'human' },
+    workspace: { id: WORKSPACE_ID, slug: 'acme', display_name: 'Acme' },
+    team: { id: '00000000-0000-4000-8000-000000000004', display_name: 'Core' },
+  });
+
+const writtenCheckpointResponse = (): Response =>
+  ok({
+    result: {
+      checkpoint: {
+        id: '00000000-0000-4000-8000-000000000009',
+        workspaceId: WORKSPACE_ID,
+        projectId: PROJECT_ID,
+        sessionId: null,
+        actorId: ACTOR_ID,
+        trigger: 'manual',
+        createdAt: '2026-08-16T00:00:00.000Z',
+        summary: null,
+      },
+      items: [],
+      written: [],
+    },
+  });
+
+const proposalResponse = (pending: readonly WireTurn[], watermark: string | null): Response =>
+  ok({
+    proposal: {
+      workspaceId: WORKSPACE_ID,
+      projectId: PROJECT_ID,
+      actorId: ACTOR_ID,
+      candidates: [],
+      rejectedCount: 0,
+      watermark: pending.at(-1)?.ref ?? watermark,
+      consumedTurns: pending.length,
+      model: pending.length === 0 ? '' : 'gpt-5.6-luna',
+      pendingTurns: 0,
+      incompleteReason: null,
+    },
+  });
+
 const schemaRejection = (error: ZodError): string =>
   error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`).join('; ');
 
@@ -82,16 +130,7 @@ function fakeServer(): FakeServer {
 
   vi.stubGlobal('fetch', (url: string, init?: { body?: string }) => {
     if (url.endsWith('/api/me')) {
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            actor: { id: ACTOR_ID, display_name: 'Ada', kind: 'human' },
-            workspace: { id: WORKSPACE_ID, slug: 'acme', display_name: 'Acme' },
-            team: { id: '00000000-0000-4000-8000-000000000004', display_name: 'Core' },
-          }),
-          { status: 200, headers: { 'content-type': 'application/json' } },
-        ),
-      );
+      return Promise.resolve(identityResponse());
     }
 
     requests += 1;
@@ -197,6 +236,140 @@ describe('uploadableFrom', () => {
     const trajectory = await readTrajectoryFile(await trajectoryFile(TURN_COUNT, TURN_CHARS));
 
     expect(uploadableFrom(trajectory.turns, 30)[0]?.ref).toBe('t30');
+  });
+});
+
+interface HostedServer {
+  readonly seen: Set<string>;
+  readonly commits: number;
+  readonly rejected: string[];
+  readonly state: () => { commits: number; watermark: string | null };
+}
+
+/**
+ * A fake that advances the watermark the way the real server does: only on a commit.
+ *
+ * The propose-only fake above advances it on every proposal, which quietly models a
+ * system we do not have — the hosted API stores source_watermark on the checkpoint row,
+ * and nothing writes that row except a commit. Tests that rely on progress across runs
+ * belong here, against this, or they are testing the fake.
+ *
+ * Extraction here keeps nothing, which is the case MNE-100 stalls on: a mature project
+ * where most sessions reduce to duplicates and every run would otherwise re-extract and
+ * re-bill the same turns.
+ */
+function fakeHostedServer(): HostedServer {
+  const seen = new Set<string>();
+  const rejected: string[] = [];
+  let watermark: string | null = null;
+  let commits = 0;
+
+  vi.stubGlobal('fetch', (url: string, init?: { body?: string }) => {
+    if (url.endsWith('/api/me')) {
+      return Promise.resolve(identityResponse());
+    }
+
+    const raw = JSON.parse(init?.body ?? '{}');
+
+    if (url.endsWith('/api/v1/checkpoints')) {
+      const write = CheckpointWriteWireSchema.safeParse(raw);
+      if (!write.success) {
+        const message = schemaRejection(write.error);
+        rejected.push(message);
+        return Promise.resolve(badRequest(message));
+      }
+      commits += 1;
+      watermark = write.data.checkpoint.sourceWatermark ?? watermark;
+      return Promise.resolve(writtenCheckpointResponse());
+    }
+
+    const parsed = CheckpointProposeWireSchema.safeParse(raw);
+    if (!parsed.success) {
+      const message = schemaRejection(parsed.error);
+      rejected.push(message);
+      return Promise.resolve(badRequest(message));
+    }
+
+    const turns = parsed.data.turns;
+    const at = watermark;
+    const index = at === null ? -1 : turns.findIndex((turn) => turn.ref === at);
+    const pending = at === null ? turns : index >= 0 ? turns.slice(index + 1) : turns;
+    for (const turn of pending) {
+      seen.add(turn.ref);
+    }
+
+    return Promise.resolve(proposalResponse(pending, watermark));
+  });
+
+  return {
+    seen,
+    rejected,
+    get commits() {
+      return commits;
+    },
+    state: () => ({ commits, watermark }),
+  };
+}
+
+describe('a session that extracts to nothing, against a server that banks on commit only', () => {
+  // Mirrors the rule runSession applies; the rule itself is tested in checkpoint.test.ts.
+  const runOnce = async (path: string): Promise<number> => {
+    const proposal = await httpCheckpointApi.propose({ config, trigger: 'manual', fromFile: path });
+    if (
+      proposal.candidates.length === 0 &&
+      proposal.watermark !== null &&
+      proposal.consumedTurns > 0
+    ) {
+      await httpCheckpointApi.commit({
+        config,
+        projectId: proposal.projectId,
+        sessionId: proposal.sessionId,
+        source: proposal.source,
+        sourceSessionRef: proposal.sourceSessionRef,
+        watermark: proposal.watermark,
+        trigger: 'manual',
+        summary: null,
+        automatic: [],
+        reviewed: [],
+      });
+    }
+    return proposal.pendingTurns;
+  };
+
+  it('reaches every turn across runs instead of re-reading the first upload forever', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const path = await trajectoryFile(TURN_COUNT, TURN_CHARS);
+    const server = fakeHostedServer();
+
+    let runs = 0;
+    let pending = 1;
+    while (pending > 0 && runs < 20) {
+      pending = await runOnce(path);
+      runs += 1;
+    }
+
+    const expected = Array.from({ length: TURN_COUNT }, (_, index) => `t${index}`);
+
+    expect(server.rejected).toEqual([]);
+    expect([...server.seen].sort()).toEqual([...expected].sort());
+    expect(pending).toBe(0);
+    expect(runs).toBeGreaterThan(1);
+  });
+
+  it('stops writing once the watermark is at the end, so re-running costs nothing', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const path = await trajectoryFile(5, 100);
+    const server = fakeHostedServer();
+
+    await runOnce(path);
+    const afterFirst = server.state().commits;
+    await runOnce(path);
+    await runOnce(path);
+
+    // consumedTurns is 0 once nothing is new, so no further checkpoint rows are appended.
+    expect(afterFirst).toBe(1);
+    expect(server.state().commits).toBe(1);
+    expect(server.state().watermark).toBe('t4');
   });
 });
 

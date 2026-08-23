@@ -1,6 +1,6 @@
 import 'server-only';
 
-import type { BillingStore } from './billing-store.js';
+import type { BillingStore, BillingSubscriptionRef } from './billing-store.js';
 import { type BillingState, billingStatusFor, stateAfterSubscription } from './seats.js';
 import {
   BillingError,
@@ -204,7 +204,21 @@ export const handleStripeWebhook = async (input: HandleWebhookInput): Promise<We
   }
 
   const state = priced.state;
-  await input.store.applyBillingState({ workspaceId, state });
+
+  // The subscription's address, recorded at the only moment it is reliably in hand. This
+  // is the live object read back from Stripe a few lines above, not the event body, so it
+  // is current rather than whatever was true when the event fired. Without it
+  // StripeClient.updateSeats has nothing to address and a Team workspace that gains a
+  // member keeps billing at its old quantity (migration 0036).
+  //
+  // A cancellation clears it deliberately: a cancelled subscription's item must never be
+  // the target of a later quantity change.
+  const address: BillingSubscriptionRef =
+    state.billingStatus === 'canceled'
+      ? { subscriptionRef: null, itemRef: null }
+      : { subscriptionRef: live.id, itemRef: live.itemId };
+
+  await input.store.applyBillingState({ workspaceId, state, subscription: address });
 
   return {
     eventId,

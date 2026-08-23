@@ -345,7 +345,9 @@ describe('handleProposeCheckpoint', () => {
       // checkpoint; it travels as walletAuthorizationMicros so the store can reconcile
       // downwards to the real cost.
       const { deps, seen } = depsWith({
-        quota: vi.fn(async () => ({ allowed: true, source: 'wallet', debitMicros: 9_999 }) as const),
+        quota: vi.fn(
+          async () => ({ allowed: true, source: 'wallet', debitMicros: 9_999 }) as const,
+        ),
       });
 
       await handleProposeCheckpoint(storeStub(), input(['a', 'b']), deps);
@@ -382,7 +384,9 @@ describe('handleProposeCheckpoint', () => {
       let call = 0;
       const { deps, seen } = depsWith({
         servableContextTokens: 20_000,
-        quota: vi.fn(async () => ({ allowed: true, source: 'wallet', debitMicros: 50_000 }) as const),
+        quota: vi.fn(
+          async () => ({ allowed: true, source: 'wallet', debitMicros: 50_000 }) as const,
+        ),
         run: vi.fn(async () => {
           call += 1;
           if (call === 1) {
@@ -394,7 +398,10 @@ describe('handleProposeCheckpoint', () => {
 
       await handleProposeCheckpoint(
         storeStub(),
-        input(['a', 'b', 'c', 'd'], () => bulky('x')),
+        input(
+          Array.from({ length: 40 }, (_, index) => `t${index}`),
+          bulky,
+        ),
         deps,
       );
 
@@ -594,7 +601,7 @@ describe('handleProposeCheckpoint', () => {
       let call = 0;
       const { deps, seen } = depsWith({
         servableContextTokens: 20_000,
-        run: vi.fn(async (request: { system: string; user: string; maxOutputTokens: number }) => {
+        run: vi.fn(async () => {
           call += 1;
           if (call === 2) {
             throw new Error('the provider reset the connection');

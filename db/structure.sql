@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 35
+-- schema version: 36
 
 -- extensions
 
@@ -755,10 +755,14 @@ CREATE TABLE workspace (
   turn_allowance bigint,
   extraction_allowance integer,
   embedding_token_allowance bigint,
-  wallet_balance_micros bigint DEFAULT 0 NOT NULL
+  wallet_balance_micros bigint DEFAULT 0 NOT NULL,
+  billing_subscription_ref text,
+  billing_subscription_item_ref text
 );
 ALTER TABLE workspace ADD CONSTRAINT workspace_billing_status_check CHECK ((billing_status = ANY (ARRAY['active'::text, 'trialing'::text, 'past_due'::text, 'canceled'::text])));
 ALTER TABLE workspace ADD CONSTRAINT workspace_billing_status_not_null NOT NULL billing_status;
+ALTER TABLE workspace ADD CONSTRAINT workspace_billing_subscription_item_ref_is_not_blank CHECK (((billing_subscription_item_ref IS NULL) OR (billing_subscription_item_ref <> ''::text)));
+ALTER TABLE workspace ADD CONSTRAINT workspace_billing_subscription_ref_is_not_blank CHECK (((billing_subscription_ref IS NULL) OR (billing_subscription_ref <> ''::text)));
 ALTER TABLE workspace ADD CONSTRAINT workspace_checkpoint_allowance_check CHECK (((checkpoint_allowance IS NULL) OR (checkpoint_allowance >= 0)));
 ALTER TABLE workspace ADD CONSTRAINT workspace_company_size_check CHECK (((company_size IS NULL) OR (company_size = ANY (ARRAY['1-9'::text, '10-49'::text, '50-199'::text, '200-499'::text, '500+'::text]))));
 ALTER TABLE workspace ADD CONSTRAINT workspace_created_at_not_null NOT NULL created_at;

@@ -336,6 +336,36 @@ describe('the review queue wire contract', () => {
   });
 });
 
+describe('CheckpointWriteWireSchema with no items', () => {
+  const projectId = '11111111-1111-4111-8111-111111111111';
+
+  it('accepts an item-less checkpoint that carries a watermark', () => {
+    // Extraction that read turns and kept nothing still has to record how far it got, or
+    // the same turns are re-read and re-billed on every later run (MNE-100).
+    const parsed = CheckpointWriteWireSchema.safeParse({
+      checkpoint: {
+        projectId,
+        trigger: 'manual',
+        source: 'claude-code',
+        sourceSessionRef: 'session-1',
+        sourceWatermark: 't41',
+      },
+      items: [],
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it('refuses an item-less checkpoint with no watermark, which would record nothing', () => {
+    const parsed = CheckpointWriteWireSchema.safeParse({
+      checkpoint: { projectId, trigger: 'manual' },
+      items: [],
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+});
+
 describe('CheckpointProposeWireSchema', () => {
   const probe = {
     project: 'acme/billing',

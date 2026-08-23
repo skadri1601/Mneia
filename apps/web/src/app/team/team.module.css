@@ -156,6 +156,8 @@
 
 .revoke {
   min-height: var(--target-min);
+  display: inline-flex;
+  align-items: center;
   border: 1px solid var(--tile-hairline);
   border-radius: var(--rounded-pill);
   background: var(--canvas);
@@ -163,6 +165,84 @@
   padding: var(--space-sm) var(--space-lg);
   font: inherit;
   cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/*
+ * The in-page confirmation. It replaces the member's row rather than overlaying it, so the
+ * consequences are read in the place the action was started from and nothing is hidden
+ * behind a dialog the browser owns.
+ */
+.confirm {
+  display: grid;
+  gap: var(--space-md);
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-sm);
+  background: var(--surface-pearl);
+  padding: var(--space-md);
+}
+
+.card .confirmTitle {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.rowActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+/* What each offered role actually permits, read next to the button that grants it. */
+.rolePowers {
+  list-style: none;
+  display: grid;
+  gap: var(--space-sm);
+  padding: 0;
+  color: var(--tile-muted);
+  font-size: var(--size-fine-print);
+}
+
+.rolePowers strong {
+  color: var(--ink);
+  font-weight: var(--weight-semibold);
+}
+
+.confirmActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+/*
+ * The confirming control. There is no danger colour in this app's token vocabulary and this
+ * is not the place to invent one, so it is distinguished the way the rest of the app
+ * distinguishes emphasis: a solid ink border and semibold weight against the outlined
+ * secondary buttons around it.
+ */
+.destructive {
+  min-height: var(--target-min);
+  border: 2px solid var(--ink);
+  border-radius: var(--rounded-pill);
+  background: var(--canvas);
+  color: var(--ink);
+  padding: var(--space-sm) var(--space-lg);
+  font: inherit;
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+}
+
+.destructive:active {
+  transform: scale(var(--press-scale));
+}
+
+.destructive:focus-visible,
+.revoke:focus-visible {
+  outline: 2px solid var(--primary-focus);
+  outline-offset: 2px;
 }
 
 .notice,

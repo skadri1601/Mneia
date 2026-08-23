@@ -93,6 +93,14 @@ export interface StripeSubscription {
   readonly customerId: string | null;
   /** The price the first item is on. What the workspace is paying for decides its plan. */
   readonly priceId: string | null;
+  /**
+   * The first subscription item's id.
+   *
+   * Quantity lives on the item in the Stripe API, not on the subscription, so this is the
+   * half of the address `updateSeats` cannot do without. Persisted alongside the
+   * subscription id (migration 0036) because it is otherwise only visible in a webhook.
+   */
+  readonly itemId: string | null;
 }
 
 export interface StripeHostedSession {
@@ -173,6 +181,7 @@ export const decodeSubscription = (payload: unknown): StripeSubscription => {
     quantity: firstItemQuantity(record),
     customerId: asString(customer) ?? asString(asRecord(customer).id),
     priceId: firstItemPriceId(record),
+    itemId: asString(firstItem(record).id),
   };
 };
 

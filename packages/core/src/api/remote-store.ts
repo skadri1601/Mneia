@@ -270,6 +270,12 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
         items: write.items.map((entry) => ({
           action: entry.action,
           item: encodeNewItem(entry.item),
+          // The item this one contradicts. Dropping it meant the hosted path created no
+          // conflict rows and emitted no conflict.detected, so the arbitration dataset
+          // §17 calls the moat was collecting nothing from any hosted checkpoint — and
+          // BUSINESS.md is explicit that it is not retrofittable. Same one-line omission
+          // as the source watermark, on the same call (MNE-100).
+          conflictsWith: entry.conflictsWith ?? null,
         })),
       });
       return decodeCheckpointWriteResult(result);

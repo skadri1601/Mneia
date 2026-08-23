@@ -8,8 +8,8 @@ import {
   type SqlRow,
   WORKSPACE_SETTING,
 } from '@mneia/core';
-import { costMicrosFor } from '../billing/pricing.js';
 import type { ExtractionAttemptRecord } from '../api/propose.js';
+import { costMicrosFor } from '../billing/pricing.js';
 
 export interface WatermarkQuery {
   readonly workspaceId: string;

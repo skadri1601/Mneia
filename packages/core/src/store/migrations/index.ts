@@ -33,6 +33,7 @@ import { migration as workspacePlanPro } from './0032-workspace-plan-pro.js';
 import { migration as contextItemVerificationDue } from './0033-context-item-verification-due.js';
 import { migration as turnMeteringAndWallet } from './0034-turn-metering-and-wallet.js';
 import { migration as checkpointUsageCost } from './0035-checkpoint-usage-cost.js';
+import { migration as workspaceSubscriptionRef } from './0037-workspace-subscription-ref.js';
 import type { Migration } from './migration.js';
 
 export type { AppliedMigration, Migration } from './migration.js';
@@ -73,4 +74,5 @@ export const MIGRATIONS: readonly Migration[] = [
   contextItemVerificationDue,
   turnMeteringAndWallet,
   checkpointUsageCost,
+  workspaceSubscriptionRef,
 ];

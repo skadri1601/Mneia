@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import type { BillingSnapshot, BillingStore } from './billing-store.js';
+import type { BillingSnapshot, BillingStore, BillingSubscriptionRef } from './billing-store.js';
 import type { StripeConfiguration, StripeSubscription } from './stripe.js';
 
 vi.mock('server-only', () => ({}));
@@ -95,6 +95,7 @@ const deliver = async (input: Delivery) =>
 
 const storeStub = (overrides: Partial<BillingStore> = {}): BillingStore => {
   const applied: BillingSnapshot[] = [];
+  const appliedRefs: (BillingSubscriptionRef | undefined)[] = [];
   const base: BillingStore = {
     snapshot: async () => ({
       workspaceId: WORKSPACE,
@@ -104,20 +105,23 @@ const storeStub = (overrides: Partial<BillingStore> = {}): BillingStore => {
       billingCustomerRef: null,
       memberCount: 3,
     }),
-    applyBillingState: async ({ workspaceId, state }) => {
+    subscriptionRef: async () => ({ subscriptionRef: null, itemRef: null }),
+    applyBillingState: async ({ workspaceId, state, subscription }) => {
       const snapshot = { workspaceId, ...state, memberCount: 3 };
       applied.push(snapshot);
+      appliedRefs.push(subscription);
       return snapshot;
     },
     ...overrides,
   };
-  return Object.assign(base, { applied });
+  return Object.assign(base, { applied, appliedRefs });
 };
 
 const statefulStoreStub = (initial: BillingSnapshot): BillingStore => {
   let snapshot = initial;
   const base: BillingStore = {
     snapshot: async () => snapshot,
+    subscriptionRef: async () => ({ subscriptionRef: null, itemRef: null }),
     applyBillingState: async ({ workspaceId, state }) => {
       snapshot = { workspaceId, ...state, memberCount: snapshot.memberCount };
       return snapshot;
@@ -468,6 +472,7 @@ describe('decodeSubscription', () => {
       quantity: 6,
       customerId: 'cus_1',
       priceId: 'price_1',
+      itemId: null,
     });
   });
 
@@ -512,7 +517,7 @@ describe('StripeClient', () => {
             id: 'sub_1',
             status: 'past_due',
             customer: 'cus_1',
-            items: { data: [{ quantity: 2, price: { id: 'price_1' } }] },
+            items: { data: [{ id: 'si_live', quantity: 2, price: { id: 'price_1' } }] },
           }),
           { status: 200 },
         ),
@@ -526,6 +531,7 @@ describe('StripeClient', () => {
       quantity: 2,
       customerId: 'cus_1',
       priceId: 'price_1',
+      itemId: 'si_live',
     });
 
     const [url, init] = (fetchImpl as unknown as { mock: { calls: [string, RequestInit][] } }).mock
@@ -932,6 +938,7 @@ describe('handleStripeWebhook', () => {
         quantity: 4,
         customerId: 'cus_1',
         priceId: 'price_1',
+        itemId: 'si_1',
       }),
     });
 
@@ -1006,6 +1013,42 @@ describe('handleStripeWebhook', () => {
     expect(outcome.reason).toContain('price_mystery');
     expect(outcome.reason).toContain('STRIPE_PRICE_ID');
     expect((store as unknown as { applied: unknown[] }).applied).toHaveLength(0);
+  });
+
+  it('records the subscription and item ids from the live object, so seats can be pushed back', async () => {
+    const store = storeStub();
+    const payload = subscriptionEvent();
+
+    await deliver({
+      payload,
+      signatureHeader: signed(payload),
+      store,
+      // The event body says si_1. Stripe says si_live. The stored address must be what
+      // Stripe says, or updateSeats addresses an item that no longer exists.
+      readSubscription: async () => ({
+        id: 'sub_live',
+        status: 'active',
+        quantity: 4,
+        customerId: 'cus_1',
+        priceId: 'price_1',
+        itemId: 'si_live',
+      }),
+    });
+
+    const refs = (store as unknown as { appliedRefs: (BillingSubscriptionRef | undefined)[] })
+      .appliedRefs;
+    expect(refs[0]).toEqual({ subscriptionRef: 'sub_live', itemRef: 'si_live' });
+  });
+
+  it('clears the recorded subscription on cancellation, so no later change addresses it', async () => {
+    const store = storeStub();
+    const payload = subscriptionEvent({}, 'customer.subscription.deleted');
+
+    await deliver({ payload, signatureHeader: signed(payload), store });
+
+    const refs = (store as unknown as { appliedRefs: (BillingSubscriptionRef | undefined)[] })
+      .appliedRefs;
+    expect(refs[0]).toEqual({ subscriptionRef: null, itemRef: null });
   });
 
   it('still cancels a subscription on an unrecognised price, so nothing stays entitled', async () => {
