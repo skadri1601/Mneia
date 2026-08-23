@@ -50,4 +50,4 @@ jobs:
           show_full_output: true
           claude_args: |
             --model claude-sonnet-5
-            --max-turns 15
+            --max-turns 1500
