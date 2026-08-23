@@ -10,6 +10,23 @@ export interface ExistingItemRef {
 export interface ExtractionPromptInput {
   readonly turns: readonly TrajectoryTurn[];
   readonly existingItems: readonly ExistingItemRef[];
+  /**
+   * What the person said this session was about, from `mneia checkpoint -m`.
+   *
+   * The highest-signal input available and, until MNE-100, the only one thrown away: it was
+   * stored on the checkpoint record and never shown to the model. A long session is split
+   * across many requests, so without it each chunk guesses at the point of the session from
+   * a window of a few thousand tokens.
+   */
+  readonly summary?: string | null | undefined;
+  /**
+   * Titles already proposed from earlier chunks of this same session.
+   *
+   * A decision opened in chunk 3 and settled in chunk 40 is invisible to both when the
+   * chunks are judged as strangers. This is what lets the later chunk recognise it is
+   * finishing something rather than starting it.
+   */
+  readonly foundSoFar?: readonly string[] | undefined;
 }
 
 export interface ExtractionPrompt {
@@ -18,6 +35,8 @@ export interface ExtractionPrompt {
 }
 
 export const EXISTING_ITEMS_HEADING = '## Already in project memory';
+export const SUMMARY_HEADING = '## What this session was about';
+export const FOUND_SO_FAR_HEADING = '## Already proposed from earlier in this session';
 export const TRANSCRIPT_HEADING = '## Session transcript';
 
 export const EXTRACTION_SYSTEM_PROMPT = `You extract durable project memory from a working session between people and AI coding agents.
@@ -46,17 +65,19 @@ A "decision" candidate MUST have a non-null "rationale" naming why the choice wa
 
 "rationale" on the other kinds is optional but valuable: for a constraint it is what breaks if the rule is broken.
 
-## Precision beats recall — this is the rule that matters most
+## Quality is a filter on kind, not a quota on count
 
-A checkpoint that surfaces forty low-value items trains the reader to stop reviewing them, and a reader who stops reviewing is worse than a reader who never saw the item at all. Missing one real decision costs one item. Flooding the queue costs the review habit, and the habit is the product.
+A checkpoint that surfaces forty pieces of conversational filler trains the reader to stop reviewing, and a reader who stops reviewing is worse than one who never saw the item. So the bar below is about *what kind of thing* is worth keeping.
+
+It is not a reason to stay silent about real work. You are reading one window of a session that may be split across many, and a window holding six settled decisions should return six. Downstream machinery you cannot see already removes duplicates, discards anything under ${DEFAULT_CONFIDENCE_FLOOR} confidence, and decides which items a human is asked to confirm — so a real decision you withhold is not filtered, it is lost, and nothing downstream can recover it.
 
 So:
 
 - Reject conversational filler aggressively. Greetings, thanks, acknowledgements, "sounds good", status narration, restatements of what the agent just did, and summaries of the conversation itself are never candidates.
 - Reject anything that only makes sense with the transcript in front of you. Each title must still read correctly in six weeks with no surrounding context.
 - Reject work log entries. "Fixed the failing test" is not a fact; "The test suite requires a running Postgres" is.
-- When you are unsure whether an item is worth keeping, leave it out. A borderline item omitted is the correct outcome, not a miss.
-- Emit at most ${DEFAULT_MAX_CANDIDATES} candidates from one session, and far fewer from most. Anything below ${DEFAULT_CONFIDENCE_FLOOR} confidence is discarded downstream, so emitting it only costs tokens.
+- When you are unsure whether something is filler, leave it out. When you are sure it is a real decision, constraint, or open question but unsure whether it is already known, emit it with honest confidence — that judgement is made downstream with the whole project in view, and yours is made through one window.
+- Emit at most ${DEFAULT_MAX_CANDIDATES} candidates from this window. Anything below ${DEFAULT_CONFIDENCE_FLOOR} confidence is discarded downstream, so emitting it only costs tokens.
 
 ## Fields
 
@@ -71,7 +92,7 @@ So:
 ## What you do not do
 
 - Do not decide whether a candidate replaces, contradicts, or supersedes anything already in project memory. That arbitration is somebody else's job and it is not yours to pre-empt. Emit the candidate on its own terms.
-- Do not re-extract something the "Already in project memory" list already records. Emit a candidate only when it is genuinely new or when the session materially changed what was recorded.
+- Do not use the "Already in project memory" list to decide what to withhold. It is context, not a prohibition: a candidate matching it is removed downstream by an exact comparison you do not have to perform, whereas one you suppress because it *looked* familiar is gone for good. When this session restates something on that list, emit it — the restatement is how a stale item gets confirmed, refined, or contradicted, and none of that can happen if it never arrives.
 - Do not invent, extrapolate, or smooth over. Every candidate must be supported by what the transcript actually says.
 - Do not copy secrets, credentials, tokens, or connection strings into any field.
 - Do not emit any field not listed above.`;
@@ -88,9 +109,36 @@ function renderExistingItems(items: readonly ExistingItemRef[]): string {
   return [
     EXISTING_ITEMS_HEADING,
     '',
-    'These are already recorded. Do not extract them again, and do not judge whether anything below replaces them.',
+    'These are already recorded, and are here so you can tell what is new. They are not a list of things to avoid: an exact-match pass downstream removes anything that merely repeats one of them, and it cannot recover what you decline to emit. If this session settles, changes, or contradicts one of these, emit it.',
     '',
     ...lines,
+  ].join('\n');
+}
+
+function renderSummary(summary: string | null | undefined): string | null {
+  const stated = summary?.trim() ?? '';
+  if (stated === '') {
+    return null;
+  }
+  return [
+    SUMMARY_HEADING,
+    '',
+    'Written by the person who ran this session. It is what they thought mattered, so treat it as the thesis this window is one part of — but extract only what the transcript below actually supports.',
+    '',
+    stated,
+  ].join('\n');
+}
+
+function renderFoundSoFar(found: readonly string[] | undefined): string | null {
+  if (found === undefined || found.length === 0) {
+    return null;
+  }
+  return [
+    FOUND_SO_FAR_HEADING,
+    '',
+    'Earlier windows of this same session already proposed these. Do not repeat one unchanged; do emit the finished version when this window is where it was settled, and say so in the rationale.',
+    '',
+    ...found.map((title) => `- ${title}`),
   ].join('\n');
 }
 
@@ -114,8 +162,19 @@ function renderTranscript(turns: readonly TrajectoryTurn[]): string {
 }
 
 export function buildExtractionPrompt(input: ExtractionPromptInput): ExtractionPrompt {
+  // Existing items stay first and the transcript stays last. The provider caches on a byte
+  // -stable prefix keyed per project, and that block is the only part identical across every
+  // checkpoint in a project — moving the per-session sections ahead of it would cost the
+  // cache discount on every request.
+  const sections = [
+    renderExistingItems(input.existingItems),
+    renderSummary(input.summary),
+    renderFoundSoFar(input.foundSoFar),
+    renderTranscript(input.turns),
+  ].filter((section): section is string => section !== null);
+
   return {
     system: EXTRACTION_SYSTEM_PROMPT,
-    user: [renderExistingItems(input.existingItems), renderTranscript(input.turns)].join('\n\n'),
+    user: sections.join('\n\n'),
   };
 }

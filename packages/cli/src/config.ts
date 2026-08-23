@@ -69,6 +69,10 @@ const projectConfigSchema = z.object({
   workspace: z.string().min(1),
   project: z.string().min(1),
   endpoint: z.string().url().optional(),
+  // When this repo was bound. Sessions that started before it are never checkpointed:
+  // context from before Mneia was installed is out of scope and is not recoverable.
+  // Optional because bindings written before this field existed do not carry one.
+  boundAt: z.string().datetime().optional(),
 });
 
 export type ProjectConfigFile = z.infer<typeof projectConfigSchema>;
@@ -79,6 +83,7 @@ export interface ProjectConfig {
   readonly endpoint: string;
   readonly configPath: string;
   readonly repoRoot: string;
+  readonly boundAt: Date | null;
 }
 
 export function configPathFor(cwd: string): string {
@@ -150,6 +155,7 @@ export async function loadProjectConfig(
     endpoint: resolveEndpoint(env, result.data.endpoint),
     configPath: path,
     repoRoot: resolve(cwd),
+    boundAt: result.data.boundAt === undefined ? null : new Date(result.data.boundAt),
   };
 }
 
@@ -174,6 +180,7 @@ export async function requireProjectConfig(
     endpoint: resolveEndpoint(env, undefined),
     configPath: localConfigPath(env),
     repoRoot: resolve(cwd),
+    boundAt: null,
   };
 }
 

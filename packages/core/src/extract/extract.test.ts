@@ -423,7 +423,12 @@ describe('buildExtractionPrompt', () => {
   it('carries the instructions the two tickets turn on', () => {
     expect(EXTRACTION_SYSTEM_PROMPT).toContain('"rationale"');
     expect(EXTRACTION_SYSTEM_PROMPT).toContain('supersedes');
-    expect(EXTRACTION_SYSTEM_PROMPT).toContain('Precision beats recall');
+    // Was 'Precision beats recall'. That heading, applied per chunk with no view of the
+    // session, is what turned a 797-turn transcript into one item — precision is enforced
+    // downstream by the confidence floor, reconcile, and needsHuman, none of which the
+    // model can see. The quality bar it introduced is still asserted below.
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('Quality is a filter on kind, not a quota on count');
+    expect(EXTRACTION_SYSTEM_PROMPT).toContain('Reject conversational filler aggressively');
     for (const kind of ['decision', 'constraint', 'open_question', 'fact', 'artifact_ref']) {
       expect(EXTRACTION_SYSTEM_PROMPT).toContain(`"${kind}"`);
     }

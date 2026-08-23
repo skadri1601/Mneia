@@ -173,6 +173,31 @@ const workingDirectories = (database: SqliteDatabase): ReadonlyMap<string, strin
   return latest;
 };
 
+/**
+ * When each conversation began, from the earliest query recorded against it.
+ *
+ * agent_conversations carries only last_modified_at, so a conversation started months ago
+ * and touched today looks new. That matters for the checkpoint eligibility gate, which asks
+ * whether a session began before the repo was bound: without a real start, a pre-binding
+ * Warp conversation would pass the gate and upload its entire pre-binding transcript.
+ */
+const conversationStarts = (database: SqliteDatabase): ReadonlyMap<string, Date> => {
+  const starts = new Map<string, Date>();
+  const rows = database
+    .prepare(
+      'SELECT conversation_id, MIN(start_ts) AS started_at FROM ai_queries WHERE start_ts IS NOT NULL GROUP BY conversation_id',
+    )
+    .all();
+  for (const row of rows) {
+    const conversationId = asString(row.conversation_id);
+    const startedAt = parseDate(row.started_at);
+    if (conversationId !== null && startedAt !== null) {
+      starts.set(conversationId, startedAt);
+    }
+  }
+  return starts;
+};
+
 export function createWarpReader(options: WarpReaderOptions = {}): TrajectoryReader {
   const path = options.databasePath ?? defaultDatabasePath();
 
@@ -186,8 +211,10 @@ export function createWarpReader(options: WarpReaderOptions = {}): TrajectoryRea
 
       try {
         let directories: ReadonlyMap<string, string>;
+        let starts: ReadonlyMap<string, Date>;
         try {
           directories = workingDirectories(database);
+          starts = conversationStarts(database);
         } catch (cause) {
           throw new TrajectoryError(
             'unrecognised_format',
@@ -227,7 +254,7 @@ export function createWarpReader(options: WarpReaderOptions = {}): TrajectoryRea
             source: 'warp',
             sessionRef: conversationId,
             cwd,
-            startedAt: null,
+            startedAt: starts.get(conversationId) ?? null,
             lastActivityAt,
           });
         }

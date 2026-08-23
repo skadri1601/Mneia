@@ -722,3 +722,43 @@ describe('handleProposeCheckpoint', () => {
     });
   });
 });
+
+describe('what each extraction request is told about the session', () => {
+  it('shows the model the summary the person wrote, instead of only storing it', async () => {
+    const { deps, seen } = depsWith();
+
+    await handleProposeCheckpoint(
+      storeStub(),
+      { ...input(['a', 'b']), summary: 'migrating the ledger writes to the v2 schema' },
+      deps,
+    );
+
+    expect(seen.prompts).toHaveLength(1);
+    expect(seen.prompts[0]).toContain('migrating the ledger writes to the v2 schema');
+  });
+
+  it('sends no summary section when the caller stated none', async () => {
+    const { deps, seen } = depsWith();
+
+    await handleProposeCheckpoint(storeStub(), input(['a']), deps);
+
+    expect(seen.prompts[0]).not.toContain('## What this session was about');
+  });
+
+  // A session too large for one request is split, and before this each chunk was judged as
+  // a stranger: a decision opened in chunk 1 and settled in chunk 3 was invisible to both.
+  it('carries earlier chunks findings into later chunks of the same session', async () => {
+    const { deps, seen } = depsWith({ servableContextTokens: 20_000 });
+
+    const fat = (ref: string) =>
+      `Turn ${ref}: ${Array.from({ length: 6_000 }, () => 'settled').join(' ')}`;
+
+    await handleProposeCheckpoint(storeStub(), input(['a', 'b', 'c', 'd'], fat), deps);
+
+    expect(seen.prompts.length).toBeGreaterThan(1);
+    expect(seen.prompts[0]).not.toContain('## Already proposed from earlier in this session');
+
+    const later = seen.prompts.slice(1);
+    expect(later.every((prompt) => prompt.includes('## Already proposed from earlier'))).toBe(true);
+  });
+});

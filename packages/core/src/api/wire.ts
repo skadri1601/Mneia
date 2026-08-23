@@ -851,6 +851,15 @@ export const CheckpointProposeWireSchema = z.object({
   // all, and requiring one made an oversized session impossible to checkpoint (MNE-100).
   turns: z.array(TrajectoryTurnWireSchema).max(MAX_TRAJECTORY_TURNS),
   /**
+   * What the person said this session was about, from `mneia checkpoint -m`.
+   *
+   * Optional because not every caller states one, and because an older client does not
+   * send the field at all. When present it is shown to the extraction model: a long
+   * session is split across many requests, and this is the only thing that tells each of
+   * them what the session as a whole was for.
+   */
+  summary: z.string().max(MAX_REVIEW_SUMMARY_LENGTH).optional(),
+  /**
    * The client is knowingly re-sending from the start of the transcript.
    *
    * Normally an upload that does not contain the server's watermark means turns went
