@@ -64,6 +64,12 @@ const PROFILES = {
     clientInfo: { name: 'codex-mcp-client', title: 'Codex', version: '0.149.0' },
     capabilities: { elicitation: { form: {}, url: {} } },
   },
+  cursor: {
+    capturedFrom: 'Cursor Agent 2026.08.11-e8db854, docs/handshakes/cursor.jsonl',
+    protocolVersion: '2025-11-25',
+    clientInfo: { name: 'Cursor', version: '1.0.0' },
+    capabilities: { elicitation: { form: {} } },
+  },
   legacy: {
     capturedFrom: null,
     protocolVersion: '2024-11-05',

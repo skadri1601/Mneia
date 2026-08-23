@@ -19,12 +19,15 @@ wrong with the checking — it just could not be repeated cheaply, so it was not
 pnpm verify:mcp                              # workspace build, baseline handshake
 pnpm verify:mcp -- --as claude-code          # replay a captured client handshake
 pnpm verify:mcp -- --as codex
+pnpm verify:mcp -- --as cursor
 pnpm verify:mcp -- --published --version 0.12.0
+pnpm verify:mcp -- --url https://app.mneia.dev/api/mcp   # the remote transport
 pnpm verify:mcp -- --protocol 2024-11-05     # pin the negotiation
 pnpm verify:mcp -- --json                    # machine-readable report
 ```
 
-`scripts/mcp-conformance.mjs` speaks real stdio JSON-RPC to the server the way a client does, and
+`scripts/mcp-conformance.mjs` speaks real JSON-RPC to the server the way a client does — over stdio
+to a local binary, or over Streamable HTTP with `--url` — and
 reports what a client would see: the negotiated protocol, the declared capabilities, the tools
 actually discoverable, and the error returned for the methods we do not implement. Run it before
 citing anything below.
@@ -46,24 +49,26 @@ to close the Cursor row without guessing at what Cursor sends.
 Writing a profile by hand is how the previous matrix got the Claude Code protocol version wrong.
 Capture it.
 
-## What the two clients actually send
+## What the three clients actually send
 
-| | **Claude Code** 2.1.239 | **Codex CLI** 0.149.0 |
-|---|---|---|
-| `protocolVersion` requested | `2025-11-25` | `2025-06-18` |
-| `roots` | `{listChanged: true}` | — |
-| `elicitation` | `{}` | `{form: {}, url: {}}` |
-| `clientInfo` | `name`, `title`, `version`, `description`, `websiteUrl` | `name`, `title`, `version` |
-| `clientInfo.name` | `claude-code` | `codex-mcp-client` |
-| `tools/list` `_meta` | — | `{progressToken: 0}` |
+| | **Claude Code** 2.1.239 | **Codex CLI** 0.149.0 | **Cursor Agent** 2026.08.11 |
+|---|---|---|---|
+| `protocolVersion` requested | `2025-11-25` | `2025-06-18` | `2025-11-25` |
+| `roots` | `{listChanged: true}` | — | — |
+| `elicitation` | `{}` | `{form: {}, url: {}}` | `{form: {}}` |
+| `clientInfo` | `name`, `title`, `version`, `description`, `websiteUrl` | `name`, `title`, `version` | `name`, `version` |
+| `clientInfo.name` | `claude-code` | `codex-mcp-client` | `Cursor` |
+| `tools/list` `_meta` | — | `{progressToken: 0}` | — |
 
 Two things worth carrying:
 
 - **Claude Code requests `2025-11-25`**, not the `2025-06-18` this file claimed for three releases.
   The old figure was the version the hand-driven probe happened to ask for, recorded as though it
   were the client's.
-- **Both clients declare `elicitation`, and we advertise nothing that uses it.** Not a defect — but
-  it is the capability both clients have and we do not, so it is where a richer integration would go.
+- **All three declare `elicitation`, and we advertise nothing that uses it.** Not a defect — but it
+  is the one capability every client has and we do not, so it is where a richer integration would go.
+- **Two of the three now ask for `2025-11-25`.** Codex is the laggard at `2025-06-18`. Nothing
+  degrades either way, but a change gated on the newer revision would reach Codex last.
 
 ## Protocol negotiation
 
@@ -144,17 +149,63 @@ claude mcp add --scope user mneia -- mneia-mcp
 `~/.codex/config.toml`, so a slow server is a configuration problem there rather than a failure.
 Claude Code's 30s ceiling is not configurable.
 
+## Remote MCP, for clients that cannot spawn a process
+
+`POST /api/mcp` serves Streamable HTTP. This is the only way a web client reaches us at all: none of
+claude.ai, ChatGPT, Grok or Gemini Enterprise can run a local binary, so stdio is unreachable from
+any of them regardless of configuration.
+
+One transport covers all four. **Gemini Enterprise accepts Streamable HTTP and explicitly refuses
+SSE**, and SSE is deprecated as of the 2026-07-28 revision, so there is nothing to gain by serving it.
+
+| Probe, driven with `--url` against a local instance | Result |
+|---|---|
+| `initialize` | `2025-06-18` negotiated, `serverInfo: {name: "mneia", version: "0.12.0"}` **359ms** |
+| `tools/list` | Eleven — the same eleven, from the same registry | 
+| `resources/list`, `prompts/list` | `-32601`, as over stdio |
+| `tools/call` → `mneia_sessions` | **95ms** |
+| `tools/call` → `mneia_assert` | Wrote an item and a checkpoint, `human_confirmed` true |
+| No `Authorization` header | `401` with `WWW-Authenticate` carrying `resource_metadata` |
+
+**It is faster than stdio** — 359ms to initialize against ~1.4s — because there is no process to
+spawn and no npx resolve. The cold-start problem above is a property of launching a binary, and the
+remote transport does not have it.
+
+**Authentication is the existing bearer token**, the one `mneia login` writes. No OAuth is required
+to connect: claude.ai accepts allowlisted request headers and ChatGPT developer mode accepts an API
+key. OAuth 2.1 is a *publication* requirement — the Anthropic Connectors Directory and the OpenAI
+Plugin Directory both mandate it, and the latter mandates dynamic client registration — so it is
+tracked as its own work rather than folded into a transport change.
+
+RFC 9728 metadata is published at `/.well-known/oauth-protected-resource` so a 401 tells a client
+where to authenticate instead of being opaque.
+
+### What stateless costs
+
+The endpoint issues no session id and keeps no per-connection state, so any container may answer and
+a deploy cannot strand a client. Two consequences worth knowing before relying on it:
+
+- **Client attribution degrades.** `clientInfo` arrives on `initialize`, which in stateless mode is
+  a different HTTP request from the `tools/call` that follows, so a `session` row written over the
+  remote transport records an empty `client_name`. Over stdio it records `claude-code` or `Cursor`.
+  This is the one place the remote surface is genuinely worse, and it is worth fixing before the
+  matrix leans on remote sessions as evidence of which clients are in use.
+- **Server-initiated messages have nowhere to go.** Nothing we ship uses them — all eleven tools are
+  request/response — but sampling or elicitation would need a session.
+
 ## Per client
 
 | Client | Config format | Registers | Handshake captured | Tools discovered | Tool call driven | Verified how |
 |---|---|---|---|---|---|---|
 | **Claude Code** 2.1.239 | JSON, `mcpServers` key | **Yes** | **Yes** — `docs/handshakes/claude-code.jsonl` | **Yes — 11** | **Yes** | `claude mcp add-json` pointed at the recorder to capture the handshake, then `claude -p` to drive it. Tool calls driven throughout this session against the hosted store |
 | **Codex CLI** 0.149.0 | **TOML**, `[mcp_servers.<name>]` | **Yes** — `enabled`, `transport: stdio` | **Yes** — `docs/handshakes/codex.jsonl` | **Yes — Codex issues `tools/list` itself**, before it reaches the model | **Not run** | `codex mcp add` into an isolated `CODEX_HOME`, then `codex exec`. Codex launched the server, initialized and requested `tools/list` before failing at the model on a usage limit |
-| **Cursor** | JSON, `mcpServers` key | **Not run** | **No** | **Not run** | **Not run** | **Cursor is not installed on this machine.** No executable under Program Files or LocalAppData, no uninstall registry entry, no Start Menu shortcut — only an orphaned `~/.cursor/mcp.json` and `%APPDATA%/Cursor` left by a previous install |
+| **Cursor Agent** 2026.08.11 | JSON, `mcpServers` key | **Yes** — `mneia: ready` | **Yes** — `docs/handshakes/cursor.jsonl` | **Yes — 11, with argument names** | **Not run** | Installed during this check. `cursor-agent mcp enable`, then `cursor-agent mcp list-tools mneia`, which enumerates tools without needing the model. `cursor-agent -p` stops at *"Authentication required. Please run 'agent login'"* — an interactive browser flow |
 
-The 2026-08-19 check did register Cursor and enumerate all four tools of the day through
-`cursor-agent`. **That result is not carried forward as current** — it describes 0.5.0 on an install
-that no longer exists here.
+All three clients now register, hand shake, and enumerate the full eleven. The one thing no client
+but Claude Code has done is take an agent turn: Codex is blocked on an OpenAI usage limit that
+resets 2026-08-23 11:20, and Cursor on `agent login`, which needs a browser. **Both are account
+limits on this machine, not defects in the server** — every one of them reached `tools/list` and got
+the same eleven tools back.
 
 ### Production has only ever seen one client
 
