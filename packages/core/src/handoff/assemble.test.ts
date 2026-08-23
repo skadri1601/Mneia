@@ -165,7 +165,6 @@ describe('assembleHandoff', () => {
       expect.objectContaining({
         projectId: PROJECT_ID,
         statuses: ['superseded'],
-        limit: HANDOFF_SUPERSEDED_LIMIT,
       }),
     );
   });
@@ -304,6 +303,29 @@ describe('assembleHandoff', () => {
     ).rejects.toThrow(/leave the recipient unset to create an open handoff/);
   });
 
+  it('still assembles when an item was asserted by an actor who has since been deleted', async () => {
+    const orphan = contextItem({
+      id: id('0rphan00'),
+      title: 'No downtime window',
+      loadBearing: true,
+      assertedBy: id('deleted0'),
+    });
+    const { store, created } = storeStub({}, [orphan]);
+
+    const { handoff, itemIds } = await assembleHandoff(store, {
+      projectId: PROJECT_ID,
+      nextAction: NEXT_ACTION,
+      now: NOW,
+    });
+
+    expect(itemIds).toEqual([orphan.id]);
+    expect(handoff.rendered).toContain('No downtime window');
+    expect(created[0]?.items).toContainEqual({
+      itemId: orphan.id,
+      section: 'Constraints (do not violate)',
+    });
+  });
+
   it('refuses when the scoped actor no longer exists, rather than writing an unattributed handoff', async () => {
     const { store } = storeStub({ getActor: vi.fn(async () => null) });
 
@@ -427,5 +449,45 @@ describe('assembleHandoff', () => {
     });
 
     expect(created[0]?.items).toHaveLength(HANDOFF_SUPERSEDED_LIMIT);
+  });
+
+  const newestFirst = (items: readonly ContextItem[]): readonly ContextItem[] =>
+    [...items].sort((a, b) => b.assertedAt.getTime() - a.assertedAt.getTime());
+
+  it('windows the superseded block before it bounds it, so a recent supersede is not hidden by older ones', async () => {
+    const day = 24 * 60 * 60 * 1000;
+    const noisy = Array.from({ length: HANDOFF_SUPERSEDED_LIMIT }, (_unused, index) =>
+      contextItem({
+        id: id(`n01sy${String(index).padStart(3, '0')}`),
+        kind: 'decision',
+        status: 'superseded',
+        title: `Long-abandoned approach ${index}`,
+        assertedAt: new Date(NOW.getTime() - day),
+        validTo: new Date(NOW.getTime() - 60 * day),
+        loadBearing: false,
+      }),
+    );
+    const recent = contextItem({
+      id: id('recent00'),
+      kind: 'decision',
+      status: 'superseded',
+      title: 'Redis-based cutover lock',
+      assertedAt: new Date(NOW.getTime() - 100 * day),
+      validTo: new Date(NOW.getTime() - day),
+      loadBearing: false,
+    });
+    const { store, created } = filteredStore(newestFirst([...noisy, recent]));
+
+    const { handoff } = await assembleHandoff(store, {
+      projectId: PROJECT_ID,
+      nextAction: NEXT_ACTION,
+      now: NOW,
+    });
+
+    expect(handoff.rendered).toContain('~~Redis-based cutover lock~~');
+    expect(created[0]?.items).toContainEqual({
+      itemId: recent.id,
+      section: 'Superseded recently (do not re-propose)',
+    });
   });
 });

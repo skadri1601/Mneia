@@ -140,6 +140,35 @@ describe('createExtractionRunner', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('falls back when the primary vendor refuses the key rather than the request', async () => {
+    // A revoked key, a suspended account or a spent balance is not retryable against the
+    // same vendor, but it is not evidence about the other one. Treating it as terminal
+    // took every checkpoint down between a key rotation and the deploy carrying the new
+    // one, while a plain 429 on the same key degraded to Haiku.
+    for (const status of [401, 402, 403]) {
+      const calls: string[] = [];
+      const fetchImpl = vi.fn(async (url: RequestInfo | URL) => {
+        calls.push(String(url));
+        return String(url).includes('openai') ? failure(status) : ok(ANTHROPIC_BODY);
+      }) as unknown as typeof globalThis.fetch;
+
+      const result = await runnerWith(fetchImpl).run(request);
+
+      expect(result.model).toBe('claude-haiku-4-5');
+      expect(calls[1]).toContain('api.anthropic.com');
+      expect(result.attempts.map((attempt) => attempt.outcome)).toEqual(['fell_back', 'succeeded']);
+    }
+  });
+
+  it('still fails terminally when the key is refused and there is no fallback', async () => {
+    const fetchImpl = vi.fn(async () => failure(401)) as unknown as typeof globalThis.fetch;
+
+    await expect(runnerWith(fetchImpl, { fallbackModel: null }).run(request)).rejects.toThrow(
+      ExtractionRunError,
+    );
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('records both attempts when the fallback also fails, so the ledger shows what was spent', async () => {
     const fetchImpl = vi.fn(async () => failure(500)) as unknown as typeof globalThis.fetch;
     const runner = runnerWith(fetchImpl);
@@ -253,14 +282,31 @@ describe('cost controls on the OpenAI request body', () => {
   });
 
   it('sends prompt_cache_key when the caller supplies one, and omits it otherwise', async () => {
+    // The real caller passes `workspaceId:projectId`, which is two UUIDs and a separator -
+    // 73 characters, and OpenAI 400s anything over 64. Stripping the punctuation leaves
+    // exactly the 64 hex characters of the two ids, so the key stays traceable back to a
+    // project instead of becoming a hash.
+    const workspaceId = '019229b4-6f1a-7c3d-8e5f-2a1b3c4d5e6f';
+    const projectId = '7f3e2d1c-4b5a-4968-9d0e-1f2a3b4c5d6e';
     const { bodies, fetchImpl } = capture([ok(OPENAI_BODY), ok(OPENAI_BODY)]);
     const runner = runnerWith(fetchImpl);
 
-    await runner.run({ ...request, cacheKey: 'workspace-1:project-2' });
+    await runner.run({ ...request, cacheKey: `${workspaceId}:${projectId}` });
     await runner.run(request);
 
-    expect(bodies[0]?.prompt_cache_key).toBe('workspace-1:project-2');
+    expect(bodies[0]?.prompt_cache_key).toBe(
+      '019229b46f1a7c3d8e5f2a1b3c4d5e6f7f3e2d1c4b5a49689d0e1f2a3b4c5d6e',
+    );
+    expect(String(bodies[0]?.prompt_cache_key)).toHaveLength(64);
     expect(bodies[1]).not.toHaveProperty('prompt_cache_key');
+  });
+
+  it('truncates a cache key that is still too long after punctuation is stripped', async () => {
+    const { bodies, fetchImpl } = capture([ok(OPENAI_BODY)]);
+
+    await runnerWith(fetchImpl).run({ ...request, cacheKey: `${'a-'.repeat(80)}tail` });
+
+    expect(String(bodies[0]?.prompt_cache_key)).toHaveLength(64);
   });
 
   it('retries on the standard tier when flex has no capacity', async () => {

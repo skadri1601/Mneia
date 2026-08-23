@@ -155,6 +155,7 @@ class FakeApi implements CheckpointApi {
   sessions: readonly DiscoveredSession[] = [NEWEST_SESSION];
   failOn: string | null = null;
   discoveries = 0;
+  perSession: Readonly<Record<string, CheckpointProposal>> = {};
 
   constructor(private readonly proposal: CheckpointProposal) {}
 
@@ -168,12 +169,19 @@ class FakeApi implements CheckpointApi {
     if (this.failOn !== null && request.sessionRef === this.failOn) {
       return Promise.reject(new CliError('network', 'the API could not be reached', 'retry'));
     }
-    return Promise.resolve(this.proposal);
+    return Promise.resolve(this.proposalFor(request.sessionRef));
   }
 
   commit(request: CommitRequest): Promise<CheckpointReceipt> {
     this.commits.push(request);
-    return Promise.resolve(receiptFor(this.proposal.candidates));
+    return Promise.resolve(receiptFor(this.proposalFor(request.sourceSessionRef).candidates));
+  }
+
+  private proposalFor(sessionRef: string | undefined): CheckpointProposal {
+    if (sessionRef === undefined) {
+      return this.proposal;
+    }
+    return this.perSession[sessionRef] ?? this.proposal;
   }
 }
 

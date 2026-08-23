@@ -96,10 +96,20 @@ const NEGATION_MARKERS: readonly string[] = [
 
 const NEGATION_SET: ReadonlySet<string> = new Set(NEGATION_MARKERS);
 
+/**
+ * Keeps letters and digits in every script, not only ASCII.
+ *
+ * The ASCII form erased anything written outside a-z0-9: a Chinese, Japanese, Korean,
+ * Cyrillic, Greek or Arabic title normalised to the empty string, and applyPrecisionFilter
+ * rejects an empty normalisation as "carries nothing a reader could act on" — so every
+ * candidate a non-English team produced was discarded. Accented Latin fared no better:
+ * "déploiement" became "d ploiement", two mangled tokens that match the wrong things.
+ */
 export function normalizeText(text: string): string {
   return text
+    .normalize('NFKC')
     .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -123,7 +133,7 @@ export function jaccard(left: ReadonlySet<string>, right: ReadonlySet<string>): 
   return shared / (left.size + right.size - shared);
 }
 
-const startsWithDigit = (token: string): boolean => /^\d/.test(token);
+const startsWithDigit = (token: string): boolean => /^\p{N}/u.test(token);
 
 export function subjectTokens(text: string): ReadonlySet<string> {
   const tokens = new Set<string>();
