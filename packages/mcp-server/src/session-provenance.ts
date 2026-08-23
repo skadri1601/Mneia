@@ -1,4 +1,5 @@
-import type { ScopedStore, SessionClientProvenance, Uuid } from '@mneia/core';
+import type { ScopedStore, SessionClientProvenance, TrajectorySource, Uuid } from '@mneia/core';
+import { TRAJECTORY_SOURCES } from '@mneia/core';
 import type { SourceSession } from './source-session.js';
 
 export interface McpClientInfo {
@@ -29,6 +30,53 @@ export interface WriteSessionResolverOptions {
 }
 
 const SESSION_TOOL = 'mcp';
+
+/**
+ * Maps the client identity from the MCP initialize handshake onto a TrajectorySource.
+ *
+ * The hosted API validates checkpoint.source against TRAJECTORY_SOURCES, and the names clients
+ * actually send do not match it. Only Claude Code did, by coincidence — it calls itself
+ * `claude-code`, which is already a source. Cursor sends `Cursor` and Codex sends
+ * `codex-mcp-client`, so **every write from either was rejected outright** with
+ * `checkpoint.source: Invalid input`. That is why production had only ever seen claude-code write:
+ * not because nobody tried, but because nobody else could.
+ *
+ * Found on 2026-08-23 by driving mneia_assert from Cursor (MNE-79).
+ *
+ * Lower-casing alone is not enough — it fixes Cursor and leaves Codex broken — so the aliases are
+ * explicit. An unrecognised client yields null rather than a guess: losing attribution is a smaller
+ * harm than recording a source that is wrong, and null is what the column already allows.
+ */
+const CLIENT_SOURCE_ALIASES: ReadonlyMap<string, TrajectorySource> = new Map([
+  ['claude-code', 'claude-code'],
+  ['claude-desktop', 'claude-desktop'],
+  ['claude', 'claude-desktop'],
+  ['codex', 'codex'],
+  ['codex-mcp-client', 'codex'],
+  ['codex-cli', 'codex'],
+  ['cursor', 'cursor'],
+  ['cursor-agent', 'cursor'],
+  ['cursor-vscode', 'cursor'],
+  ['gemini', 'gemini'],
+  ['gemini-cli', 'gemini'],
+  ['warp', 'warp'],
+]);
+
+export function checkpointSourceFor(client: McpClientInfo | undefined): TrajectorySource | null {
+  if (client === undefined) {
+    return null;
+  }
+  const normalized = client.name.trim().toLowerCase().replace(/\s+/g, '-');
+  const aliased = CLIENT_SOURCE_ALIASES.get(normalized);
+  if (aliased !== undefined) {
+    return aliased;
+  }
+  // A client whose name is already a source needs no alias, and this keeps the map from having to
+  // list every value of TRAJECTORY_SOURCES twice.
+  return TRAJECTORY_SOURCES.includes(normalized as TrajectorySource)
+    ? (normalized as TrajectorySource)
+    : null;
+}
 
 function keyFor(
   projectId: Uuid,
@@ -85,7 +133,7 @@ export function createWriteSessionResolver(
     try {
       return {
         sessionId: await pending,
-        checkpointSource: client?.name ?? null,
+        checkpointSource: checkpointSourceFor(client),
         sourceSessionRef: sourceSession?.ref ?? null,
       };
     } catch (cause) {
@@ -97,7 +145,7 @@ export function createWriteSessionResolver(
       );
       return {
         sessionId: legacySessionId,
-        checkpointSource: client?.name ?? null,
+        checkpointSource: checkpointSourceFor(client),
         sourceSessionRef: sourceSession?.ref ?? null,
       };
     }

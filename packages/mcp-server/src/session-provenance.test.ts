@@ -1,6 +1,6 @@
 import type { ScopedStore, Session, SessionClientProvenance, Uuid } from '@mneia/core';
 import { describe, expect, it } from 'vitest';
-import { createWriteSessionResolver } from './session-provenance.js';
+import { checkpointSourceFor, createWriteSessionResolver } from './session-provenance.js';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const LEGACY_ID = '22222222-2222-4222-8222-222222222222';
@@ -116,5 +116,39 @@ describe('write session provenance', () => {
     await resolver.close(store);
 
     expect(ended).toHaveLength(2);
+  });
+});
+
+// TRAJECTORY_SOURCES is what the hosted API validates checkpoint.source against, and the names
+// clients actually put in the MCP initialize handshake do not match it. Only Claude Code matched,
+// by coincidence. Every write from Cursor or Codex was rejected outright — which is why production
+// had only ever seen claude-code write. Found 2026-08-23 by driving mneia_assert from Cursor.
+describe('checkpointSourceFor', () => {
+  it('accepts the name Claude Code sends, which already is a source', () => {
+    expect(checkpointSourceFor({ name: 'claude-code', version: '2.1.239' })).toBe('claude-code');
+  });
+
+  it('maps the capitalised name Cursor sends', () => {
+    // Captured from Cursor Agent 2026.08.11: clientInfo.name is "Cursor".
+    expect(checkpointSourceFor({ name: 'Cursor', version: '1.0.0' })).toBe('cursor');
+  });
+
+  it('maps the name Codex sends, which lower-casing alone does not fix', () => {
+    // Captured from Codex CLI 0.149.0: clientInfo.name is "codex-mcp-client". This is the case a
+    // naive toLowerCase() misses, leaving Codex writes unattributed.
+    expect(checkpointSourceFor({ name: 'codex-mcp-client', version: '0.149.0' })).toBe('codex');
+  });
+
+  it('normalizes whitespace and case together', () => {
+    expect(checkpointSourceFor({ name: '  Gemini CLI  ', version: '1' })).toBe('gemini');
+  });
+
+  it('returns null for an unknown client rather than guessing', () => {
+    // Recording a wrong source is worse than recording none, and the column is nullable.
+    expect(checkpointSourceFor({ name: 'some-new-editor', version: '1' })).toBeNull();
+  });
+
+  it('returns null when no client identified itself', () => {
+    expect(checkpointSourceFor(undefined)).toBeNull();
   });
 });
