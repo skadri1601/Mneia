@@ -9,6 +9,7 @@ import {
   TELEMETRY_EVENT_TABLE,
 } from '@mneia/core';
 import { database } from './database.js';
+import { type SentryDelivery, sentryDelivery, sentryDropDetail } from './error-reporting.js';
 import type {
   EnvLike as TelemetryEnvLike,
   TelemetryDelivery,
@@ -87,7 +88,7 @@ export type CapabilityStates = Pick<HealthReport, CapabilityName>;
 
 export type BillingHealth = 'configured' | 'not_configured';
 
-export type ErrorReportingHealth = 'configured' | 'no_dsn';
+export type ErrorReportingHealth = 'delivering' | 'unproven' | 'dropped' | 'no_dsn';
 
 const isReady = (name: CapabilityName, states: CapabilityStates): boolean => {
   switch (name) {
@@ -106,7 +107,7 @@ const isReady = (name: CapabilityName, states: CapabilityStates): boolean => {
     case 'billing':
       return states.billing === 'configured';
     case 'errorReporting':
-      return states.errorReporting === 'configured';
+      return states.errorReporting === 'delivering' || states.errorReporting === 'unproven';
   }
 };
 
@@ -150,15 +151,28 @@ export const inspectBillingPosture = (env: EnvLike = process.env): BillingHealth
     ? 'configured'
     : 'not_configured';
 
-export const inspectErrorReportingPosture = (env: EnvLike = process.env): ErrorReportingHealth =>
-  env.SENTRY_DSN !== undefined && env.SENTRY_DSN.trim().length > 0 ? 'configured' : 'no_dsn';
+export const inspectErrorReportingPosture = (
+  env: EnvLike = process.env,
+  delivery: SentryDelivery = sentryDelivery(),
+): ErrorReportingHealth => {
+  if (env.SENTRY_DSN === undefined || env.SENTRY_DSN.trim().length === 0) {
+    return 'no_dsn';
+  }
+  return delivery;
+};
 
 export const describeErrorReportingPosture = (
   errorReporting: ErrorReportingHealth,
-): string | null =>
-  errorReporting === 'configured'
-    ? null
-    : 'SENTRY_DSN is unset, so every unhandled error on this deployment is lost silently and nothing reports that it happened';
+  dropDetail: string | null = sentryDropDetail(),
+): string | null => {
+  if (errorReporting === 'no_dsn') {
+    return 'SENTRY_DSN is unset, so every unhandled error on this deployment is lost silently and nothing reports that it happened';
+  }
+  if (errorReporting === 'dropped') {
+    return `Sentry accepted the connection and discarded the event${dropDetail === null ? '' : ` (${dropDetail})`}; errors raised here are not reaching the project, so treat the absence of issues as no evidence at all. Check the organisation's error quota`;
+  }
+  return null;
+};
 
 export const describeBillingPosture = (billing: BillingHealth): string | null =>
   billing === 'configured'

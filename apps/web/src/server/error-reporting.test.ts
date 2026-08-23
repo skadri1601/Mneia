@@ -1,10 +1,16 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   describeRouteFailure,
   NO_USER_CONTENT,
+  observeSentryDelivery,
+  RATE_LIMIT_HEADER,
+  recordSentryDelivery,
   REDACTED,
+  resetSentryDelivery,
   routeOf,
   scrubRequestData,
+  sentryDelivery,
+  sentryDropDetail,
 } from './error-reporting.js';
 
 describe('scrubRequestData', () => {
@@ -76,5 +82,66 @@ describe('describeRouteFailure', () => {
 
     expect(describeRouteFailure(request, 'a string').errorClass).toBe('string');
     expect(routeOf(request)).toBe('/api/v1/checkpoint');
+  });
+});
+
+describe('sentry delivery observation', () => {
+  beforeEach(() => {
+    resetSentryDelivery();
+  });
+
+  it('starts unproven, because a deployment that has raised no errors has sent nothing', () => {
+    expect(sentryDelivery()).toBe('unproven');
+    expect(sentryDropDetail()).toBeNull();
+  });
+
+  it('reports delivering once Sentry accepts an envelope', () => {
+    expect(recordSentryDelivery({ statusCode: 200 })).toBe('delivering');
+    expect(sentryDropDetail()).toBeNull();
+  });
+
+  it('reports dropped on the 429 an exhausted org quota returns', () => {
+    expect(
+      recordSentryDelivery({
+        statusCode: 429,
+        headers: { [RATE_LIMIT_HEADER]: '60:default;error:organization:error_usage_exceeded' },
+      }),
+    ).toBe('dropped');
+    expect(sentryDropDetail()).toContain('error_usage_exceeded');
+  });
+
+  it('reports dropped when a 200 still carries a rate-limit header', () => {
+    expect(
+      recordSentryDelivery({
+        statusCode: 200,
+        headers: { [RATE_LIMIT_HEADER]: '60:error:organization' },
+      }),
+    ).toBe('dropped');
+  });
+
+  it('reports dropped when Sentry refuses the envelope outright', () => {
+    expect(recordSentryDelivery({ statusCode: 401 })).toBe('dropped');
+    expect(sentryDropDetail()).toContain('401');
+  });
+
+  it('keeps the drop sticky, because a rate-limited SDK stops sending and goes quiet', () => {
+    recordSentryDelivery({ statusCode: 429 });
+    expect(sentryDelivery()).toBe('dropped');
+    expect(recordSentryDelivery(undefined)).toBe('delivering');
+  });
+
+  it('records what the client reports through afterSendEvent', () => {
+    const handlers: ((event: unknown, response: unknown) => void)[] = [];
+    observeSentryDelivery({
+      on: (_hook, registered) => {
+        handlers.push(registered);
+      },
+    });
+
+    expect(handlers).toHaveLength(1);
+    for (const handler of handlers) {
+      handler({}, { statusCode: 429 });
+    }
+    expect(sentryDelivery()).toBe('dropped');
   });
 });
