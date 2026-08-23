@@ -8,6 +8,12 @@ const isPublicRoute = createRouteMatcher([
   '/api/device/token',
   '/api/me',
   '/api/v1(.*)',
+  // The MCP endpoint authenticates with a bearer token it verifies itself, the same way /api/v1
+  // does. Without this Clerk answers an unauthenticated MCP client with a 302 to /sign-in, which
+  // a client reports as a malformed response rather than as an auth failure it could act on.
+  '/api/mcp',
+  // RFC 9728 discovery has to be readable before anyone is authenticated — that is its whole job.
+  '/.well-known/(.*)',
 ]);
 
 export default clerkMiddleware(async (auth, request) => {

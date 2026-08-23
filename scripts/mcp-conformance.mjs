@@ -14,6 +14,9 @@ const USAGE = `usage: node scripts/mcp-conformance.mjs [options]
   --json             emit the report as JSON on stdout and nothing else
   --record <file>    run as a shim server instead: record the launching client's
                      initialize request to <file>, answer it, and exit
+  --url <endpoint>   drive a remote Streamable HTTP endpoint instead of a local
+                     binary, e.g. http://localhost:3000/api/mcp
+  --token <token>    bearer token for --url (default: MNEIA_TOKEN)
 
 Drives the Mneia MCP server over real stdio JSON-RPC the way a client does, and
 reports what a client would see: the negotiated protocol version, the declared
@@ -78,6 +81,8 @@ const parseArgs = (argv) => {
     timeout: 45000,
     json: false,
     record: null,
+    url: null,
+    token: process.env.MNEIA_TOKEN ?? null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -95,6 +100,8 @@ const parseArgs = (argv) => {
     else if (arg === '--timeout') options.timeout = Number.parseInt(value(), 10);
     else if (arg === '--json') options.json = true;
     else if (arg === '--record') options.record = value();
+    else if (arg === '--url') options.url = value();
+    else if (arg === '--token') options.token = value();
     else if (arg === '--help' || arg === '-h') {
       process.stdout.write(`${USAGE}\n`);
       process.exit(0);
@@ -256,6 +263,71 @@ const createSession = (child, timeout) => {
   return { request, notify, stderrText: () => stderr, exitCode: () => exited };
 };
 
+// Streamable HTTP speaks the same JSON-RPC, so this exposes the identical {request, notify}
+// shape the stdio session does and main() does not care which it got. Notifications are POSTed
+// and their 202 discarded, which is what the spec prescribes for a request with no id.
+const createHttpSession = (endpoint, token, timeout) => {
+  let nextId = 1;
+  let stderr = '';
+
+  const post = async (body) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      return await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          // Both are required by the spec even when the server answers with plain JSON: a server
+          // is free to upgrade any response to a stream, so a client must declare it can read one.
+          accept: 'application/json, text/event-stream',
+          ...(token === null ? {} : { authorization: `Bearer ${token}` }),
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  const request = async (method, params) => {
+    const id = nextId;
+    nextId += 1;
+    const started = performance.now();
+    const response = await post({ jsonrpc: '2.0', id, method, params });
+    const text = await response.text();
+
+    if (!response.ok) {
+      // A 401 carries WWW-Authenticate, which is the whole point of RFC 9728 discovery — surface
+      // it rather than reporting a bare status a reader cannot act on.
+      const auth = response.headers.get('www-authenticate');
+      if (auth !== null) stderr += `${auth}\n`;
+      throw new Error(`HTTP ${response.status} ${response.statusText}: ${text.slice(0, 400)}`);
+    }
+
+    // With enableJsonResponse the body is a JSON-RPC message. Without it the server may answer
+    // with an SSE stream, whose data: frames carry the same messages.
+    const payload = text.startsWith('data:')
+      ? JSON.parse(
+          text
+            .split('\n')
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trim())
+            .join(''),
+        )
+      : JSON.parse(text);
+
+    return { message: payload, ms: performance.now() - started };
+  };
+
+  const notify = (method, params) => {
+    void post({ jsonrpc: '2.0', method, params }).catch(() => undefined);
+  };
+
+  return { request, notify, stderrText: () => stderr, exitCode: () => null };
+};
+
 const attempt = async (label, run) => {
   try {
     const outcome = await run();
@@ -286,8 +358,13 @@ const main = async () => {
   const profile = PROFILES[options.profile];
   const requested = options.protocol ?? profile.protocolVersion;
 
-  const { child, described } = startServer(options);
-  const session = createSession(child, options.timeout);
+  const remote = options.url !== null;
+  const { child, described } = remote
+    ? { child: null, described: options.url }
+    : startServer(options);
+  const session = remote
+    ? createHttpSession(options.url, options.token, options.timeout)
+    : createSession(child, options.timeout);
   const report = {
     target: described,
     source: options.source,
@@ -371,8 +448,10 @@ const main = async () => {
     report.steps.push(call);
   }
 
-  child.stdin.end();
-  child.kill();
+  if (child !== null) {
+    child.stdin.end();
+    child.kill();
+  }
 
   const stderrText = session.stderrText().trim();
   if (stderrText.length > 0) report.stderr = stderrText;
