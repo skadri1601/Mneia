@@ -171,12 +171,17 @@ export class CheckpointSourceStore {
       // the meter and the ledger cannot disagree about what happened. checkpoints_used is
       // still maintained alongside the new dials: it is unread now, but keeping it correct
       // for a release means a rollback does not land on a counter frozen at the cutover.
+      // The month boundary is pinned to UTC, not to the session's TimeZone. quota.ts
+      // computes the period with Date.UTC and reads the row back on that exact date, so a
+      // bare date_trunc('month', now()) on a non-UTC session would write one month and
+      // read another for the width of the offset either side of the boundary — restoring
+      // a spent allowance, or charging usage to a period nobody is looking at.
       await session.execute(
         `INSERT INTO workspace_usage_period (
            workspace_id, period_start, checkpoints_used,
            turns_used, extractions_used
          )
-         VALUES ($1, date_trunc('month', now())::date, 1, $2, 1)
+         VALUES ($1, date_trunc('month', now() AT TIME ZONE 'UTC')::date, 1, $2, 1)
          ON CONFLICT (workspace_id, period_start)
          DO UPDATE SET checkpoints_used = workspace_usage_period.checkpoints_used + 1,
                        turns_used = workspace_usage_period.turns_used + $2,

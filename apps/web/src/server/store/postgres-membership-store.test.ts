@@ -264,6 +264,17 @@ const storeWithMembers = (rows: readonly SqlRow[], revokedTokenIds: readonly str
   storeWith((sql) => {
     if (sql.includes('active_tokens')) return rows;
     if (sql.includes('UPDATE api_token')) return revokedTokenIds.map((id) => ({ id }));
+    // The owner count is read from the locked workspace_member rows, and that table is
+    // keyed (workspace_id, identity_id) — one row per person however many teams they are
+    // in. The fake dedupes by identity for the same reason: serving one row per member
+    // row would make an owner in two teams look like two owners, which is exactly the
+    // bug this stands in for.
+    if (sql.includes('FOR UPDATE')) {
+      const owners = new Set(
+        rows.filter((row) => row.workspace_role === 'owner').map((row) => String(row.identity_id)),
+      );
+      return [...owners].map((identity_id) => ({ identity_id }));
+    }
     return [];
   });
 
@@ -388,6 +399,26 @@ describe('removeMember', () => {
     expect(params[5]).toBe(OTHER_ACTOR_ID);
     expect(String(params[6])).toContain('"tokensRevoked":2');
     expect(String(params[6])).not.toContain('token_hash');
+  });
+
+  it('counts a sole owner once even when they belong to two teams, and still refuses', async () => {
+    // MEMBERS_SQL is expanded over team_member, so one person in two teams is two rows.
+    // Counting owners from that list read this workspace as having two, let the last-owner
+    // guard through, and deleted the only owner — leaving nobody who could administer the
+    // workspace and no way back.
+    const { session, store } = storeWithMembers([
+      memberRow({ actorId: ACTOR_ID, workspaceRole: 'owner', teamRole: 'lead' }),
+      memberRow({ actorId: ACTOR_ID, workspaceRole: 'owner', teamRole: 'member' }),
+    ]);
+
+    const result = await store.removeMember(SCOPE, { actorId: ACTOR_ID });
+
+    expect(result.removed).toBe(false);
+    if (result.removed) return;
+    expect(result.code).toBe('last_owner');
+    expect(session.allMatching('DELETE FROM team_member')).toHaveLength(0);
+    expect(session.allMatching('DELETE FROM workspace_member')).toHaveLength(0);
+    expect(session.allMatching('UPDATE api_token')).toHaveLength(0);
   });
 
   it('refuses to remove the last owner, and writes nothing at all', async () => {
@@ -637,6 +668,20 @@ class StatefulSession extends FakeSession {
     if (sql.includes('active_tokens')) {
       await super.execute(sql, params);
       return { rows: [...this.members] as unknown as readonly TRow[] };
+    }
+    // The owner count is read from the locked workspace_member rows, which are one per
+    // identity. Served from the same state the writes above mutate, so a promotion is
+    // visible to the very next call — which is the whole point of this fake.
+    if (sql.includes('FOR UPDATE')) {
+      await super.execute(sql, params);
+      const owners = new Set(
+        this.members
+          .filter((row) => row.workspace_role === 'owner')
+          .map((row) => String(row.identity_id)),
+      );
+      return {
+        rows: [...owners].map((identity_id) => ({ identity_id })) as unknown as readonly TRow[],
+      };
     }
     if (sql.includes('UPDATE workspace_member SET role')) {
       const identityId = params[1];

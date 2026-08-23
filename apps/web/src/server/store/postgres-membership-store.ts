@@ -340,17 +340,22 @@ export class PostgresMembershipStore implements MembershipStore, SeatPositionSto
     }
 
     return this.withWorkspace(scope.workspaceId, async (session) => {
-      // Lock the owner rows first, so the count taken below cannot change under us.
-      await session.execute(
-        `SELECT 1 FROM workspace_member
+      // Lock the owner rows first, so the count taken below cannot change under us — and
+      // take the count from these rows rather than from MEMBERS_SQL. That query is
+      // expanded over team_member, so an owner who belongs to two teams comes back twice;
+      // counting owners there reads a sole owner as two, passes the last-owner guard, and
+      // deletes the only owner the workspace has. workspace_member is keyed
+      // (workspace_id, identity_id), so one row is one owner.
+      const { rows: owners } = await session.execute<{ readonly identity_id: string }>(
+        `SELECT identity_id FROM workspace_member
           WHERE workspace_id = $1 AND role = 'owner'::workspace_role
           FOR UPDATE`,
         [scope.workspaceId],
       );
+      const ownerCount = owners.length;
 
       const { rows } = await session.execute<SqlRow>(MEMBERS_SQL, [scope.workspaceId]);
       const members = rows.map(toMember);
-      const ownerCount = members.filter((member) => member.workspaceRole === 'owner').length;
       const target = members.find((member) => member.actorId === input.actorId);
       const remover = members.find((member) => member.actorId === scope.actorId);
 
@@ -482,16 +487,19 @@ export class PostgresMembershipStore implements MembershipStore, SeatPositionSto
     const newRole = input.role as WorkspaceRole;
 
     return this.withWorkspace(scope.workspaceId, async (session) => {
-      await session.execute(
-        `SELECT 1 FROM workspace_member
+      // Counted from the locked workspace_member rows, not from MEMBERS_SQL — see the
+      // same lock in removeMember. A team-expanded list double-counts an owner who
+      // belongs to two teams, which would let this demote the last one.
+      const { rows: owners } = await session.execute<{ readonly identity_id: string }>(
+        `SELECT identity_id FROM workspace_member
           WHERE workspace_id = $1 AND role = 'owner'::workspace_role
           FOR UPDATE`,
         [scope.workspaceId],
       );
+      const ownerCount = owners.length;
 
       const { rows } = await session.execute<SqlRow>(MEMBERS_SQL, [scope.workspaceId]);
       const members = rows.map(toMember);
-      const ownerCount = members.filter((member) => member.workspaceRole === 'owner').length;
       const target = members.find((member) => member.actorId === input.actorId);
       const actor = members.find((member) => member.actorId === scope.actorId);
 

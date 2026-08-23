@@ -8,7 +8,9 @@ import {
   stripeHostedRedirectUrl,
 } from '../../server/billing/checkout.js';
 import { billingRuntime } from '../../server/billing/runtime.js';
+import { seatsCommitted } from '../../server/billing/seats.js';
 import { getCurrentAccount } from '../../server/current-account.js';
+import { seats } from '../../server/membership-runtime.js';
 
 const attemptToken = (formData: FormData): string => {
   const value = formData.get('attemptToken');
@@ -96,20 +98,36 @@ export async function purchaseSeatsAction(formData: FormData): Promise<void> {
     throw new Error('expected the authenticated workspace to have a billing snapshot; found none');
   }
 
-  const seats = seatsFrom(formData);
+  const seatCount = seatsFrom(formData);
 
-  // Re-checked against the server's own member count, never the form's. Dropping below the
-  // people already in the workspace would leave every checkpoint refused with
-  // `seats_exceeded` (quota.ts) until someone noticed, so it is refused here instead.
-  if (seats < snapshot.memberCount) {
+  // Re-checked against the server's own count, never the form's, and against members plus
+  // live invitations rather than members alone. A seat promised to a named person is spent
+  // even before they accept, so shrinking to the accepted count lets the next acceptance
+  // push memberCount past seatsPurchased and leave every member refused with
+  // `seats_exceeded` (quota.ts). The invitation and removal paths already reckon with
+  // `seatsCommitted`; this one did not.
+  const position = await seats().seatPosition({
+    workspaceId: account.workspace.id,
+    actorId: account.actor.id,
+  });
+  if (position === null) {
+    throw new Error('expected the authenticated workspace to have a seat position; found none');
+  }
+
+  const floor = seatsCommitted(position);
+  if (seatCount < floor) {
+    const waiting =
+      position.pendingInvitations === 0
+        ? ''
+        : ` and ${position.pendingInvitations} invitation${position.pendingInvitations === 1 ? '' : 's'} still waiting to be accepted`;
     throw new BillingControlError(
-      `expected at least ${snapshot.memberCount} seats, one for each accepted member; received ${seats} — remove members first if you mean to pay for fewer seats`,
+      `expected at least ${floor} seats, one for each of the ${position.memberCount} accepted member${position.memberCount === 1 ? '' : 's'}${waiting}; received ${seatCount} — remove members, or revoke an invitation, if you mean to pay for fewer seats`,
     );
   }
 
   const outcome = await runtime.seatSync.purchaseSeats({
     workspaceId: account.workspace.id,
-    seats,
+    seats: seatCount,
   });
 
   redirect(`/billing?seats=${outcome.synced ? 'updated' : 'unchanged'}`);

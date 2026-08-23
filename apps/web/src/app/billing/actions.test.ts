@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   createCheckoutSession: vi.fn(),
   createPortalSession: vi.fn(),
   purchaseSeats: vi.fn(),
+  seatPosition: vi.fn(),
   redirect: vi.fn(),
 }));
 
@@ -22,6 +23,9 @@ vi.mock('../../server/billing/runtime.js', () => ({
     origin: 'https://app.mneia.dev',
     seatSync: { purchaseSeats: mocks.purchaseSeats },
   }),
+}));
+vi.mock('../../server/membership-runtime.js', () => ({
+  seats: () => ({ seatPosition: mocks.seatPosition }),
 }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 
@@ -157,6 +161,13 @@ describe('purchaseSeatsAction', () => {
       membership: { ...ACCOUNT.membership, role: 'lead' },
     });
     mocks.snapshot.mockResolvedValue(teamSnapshot());
+    mocks.seatPosition.mockResolvedValue({
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 3,
+      memberCount: 3,
+      pendingInvitations: 0,
+    });
     mocks.purchaseSeats.mockResolvedValue({ synced: true, reason: 'set to 5', seats: 5 });
   });
 
@@ -196,6 +207,24 @@ describe('purchaseSeatsAction', () => {
     // quota.ts returns seats_exceeded when seats < memberCount, so allowing this would
     // silently stop the whole workspace checkpointing.
     await expect(purchaseSeatsAction(form(2))).rejects.toThrow(/at least 3 seats/);
+    expect(mocks.purchaseSeats).not.toHaveBeenCalled();
+  });
+
+  it('counts live invitations as seats already spent, so shrinking cannot strand an acceptance', async () => {
+    // A seat promised to a named person is spent before they accept. Guarding on accepted
+    // members alone let three members with two invitations outstanding shrink to three
+    // seats; the next acceptance then pushed memberCount past seatsPurchased and quota.ts
+    // refused every member's checkpoint until somebody worked out why.
+    mocks.seatPosition.mockResolvedValue({
+      plan: 'team',
+      billingStatus: 'active',
+      seatsPurchased: 5,
+      memberCount: 3,
+      pendingInvitations: 2,
+    });
+
+    await expect(purchaseSeatsAction(form(3))).rejects.toThrow(/at least 5 seats/);
+    await expect(purchaseSeatsAction(form(3))).rejects.toThrow(/2 invitations still waiting/);
     expect(mocks.purchaseSeats).not.toHaveBeenCalled();
   });
 
