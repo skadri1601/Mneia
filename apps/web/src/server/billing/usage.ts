@@ -1,4 +1,4 @@
-import type { WorkspacePlan } from '@mneia/core';
+import type { UsageWire, WorkspacePlan } from '@mneia/core';
 import { planLimits } from './limits.js';
 import { allowanceFor, type QuotaState } from './quota.js';
 
@@ -95,7 +95,7 @@ export function usageReport(state: QuotaState, checkpoints: number): UsageReport
  */
 export type ClientUsageReport = Omit<UsageReport, 'embeddingTokens'>;
 
-export const clientVisibleUsage = (report: UsageReport): ClientUsageReport => ({
+export const clientVisibleUsage = (report: UsageReport): ClientUsageReport & UsageWire => ({
   plan: report.plan,
   periodStart: report.periodStart,
   periodEnd: report.periodEnd,

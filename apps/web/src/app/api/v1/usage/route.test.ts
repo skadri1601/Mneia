@@ -89,12 +89,21 @@ describe('GET /api/v1/usage', () => {
     });
   });
 
-  it('answers not_found rather than a zeroed report when there is no workspace row', async () => {
+  // Never 404. A client cannot tell that apart from "this deployment predates the route",
+  // which it must treat as benign, so a 404 here throws the actionable message away.
+  it('answers forbidden rather than a zeroed report when there is no workspace row', async () => {
     shared.report = null;
 
     const response = await GET(request());
 
-    expect(response.status).toBe(404);
-    expect(await response.json()).toMatchObject({ error: { code: 'not_found' } });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({ error: { code: 'forbidden' } });
+  });
+
+  it('never answers 404, so a 404 keeps meaning the route is absent', async () => {
+    for (const report of [REPORT, null]) {
+      shared.report = report;
+      expect((await GET(request())).status).not.toBe(404);
+    }
   });
 });
