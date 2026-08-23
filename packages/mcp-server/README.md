@@ -17,7 +17,7 @@ Nothing to install: point your MCP client at it with `npx`. Node 20.11 or newer.
 claude mcp add mneia --env MNEIA_TOKEN=<your token> -- npx -y @mneia/mcp-server
 ```
 
-**Any client that reads a JSON config** — Cursor, Codex, Claude Desktop:
+**Cursor, Claude Desktop, and other clients that read a JSON config:**
 
 ```json
 {
@@ -31,10 +31,17 @@ claude mcp add mneia --env MNEIA_TOKEN=<your token> -- npx -y @mneia/mcp-server
 }
 ```
 
+**Codex CLI reads TOML, not JSON** — a pasted JSON block silently does nothing there. Let the CLI
+write it:
+
+```
+codex mcp add mneia --env MNEIA_TOKEN=<your token> -- npx -y @mneia/mcp-server
+```
+
 Get the token by installing [`@mneia/cli`](https://www.npmjs.com/package/@mneia/cli) and running
 `mneia login`; it is written to `~/.mneia/credentials`.
 
-Confirm the client picked it up — in Claude Code, `/mcp` should list `mneia` as connected with seven
+Confirm the client picked it up — in Claude Code, `/mcp` should list `mneia` as connected with eleven
 tools. Then ask the agent to rehydrate; on a fresh project it will say there is nothing stored yet
 rather than erroring, which is how you tell "connected and empty" from "not connected".
 

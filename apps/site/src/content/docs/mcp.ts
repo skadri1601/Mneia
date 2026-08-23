@@ -5,7 +5,7 @@ export const MCP: DocPage = {
   name: 'MCP server reference',
   title: 'MCP server reference',
   description:
-    'The Mneia MCP tools — mneia_rehydrate, mneia_assert, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, and mneia_conflicts — how to configure the server, and when to call each one.',
+    'The Mneia MCP tools — mneia_rehydrate, mneia_assert, mneia_retire, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, mneia_handoff_inbox, mneia_team, mneia_sessions, and mneia_review_queue — how to configure the server, and when to call each one.',
   eyebrow: 'Reference',
   heading: 'The tools your agent can call.',
   lead: 'The MCP server is client-neutral by design. It speaks stdio, it works in Claude Code, Cursor, Codex, or anything else that speaks MCP, and it exposes no vendor-specific behaviour.',
@@ -60,7 +60,14 @@ export const MCP: DocPage = {
               '`mneia_handoff_receive`',
               'Picking work up — fetch the artifact and mark it received',
             ],
-            ['`mneia_conflicts`', 'Checking what disagreements are unresolved on this project'],
+            [
+              '`mneia_retire`',
+              'An item was never right, or stopped being true, and nothing replaces it',
+            ],
+            ['`mneia_handoff_inbox`', 'Checking whether work was handed to you before you start'],
+            ['`mneia_team`', 'Resolving the names and ids a handoff can be addressed to'],
+            ['`mneia_sessions`', 'Finding out who has worked in this repository before you'],
+            ['`mneia_review_queue`', 'Surfacing the items still waiting on a human to confirm'],
           ],
         },
         {
@@ -151,14 +158,14 @@ export const MCP: DocPage = {
       ],
     },
     {
-      id: 'conflicts',
-      heading: 'mneia_conflicts',
+      id: 'review-queue',
+      heading: 'mneia_review_queue',
       blocks: [
         {
           kind: 'text',
           paragraphs: [
-            'Lists the unresolved disagreements on the project, each with both items and their full provenance.',
-            'An agent may read this and must not settle it. Where the disagreement is between two people, resolution is theirs to make — the useful thing an agent can do is surface it and stop, rather than picking the newer row and continuing.',
+            'Lists the items waiting on a human to confirm. An agent assertion that would overrule a human-confirmed item is never applied silently — it queues here instead, and stays queued until a person rules on it.',
+            'Surfacing unresolved disagreement is a tool an agent may read and must not settle. Where the disagreement is between two people, resolution is theirs to make; the useful thing an agent can do is surface it and stop, rather than picking the newer row and continuing. A dedicated mneia_conflicts tool is deferred to M4.',
           ],
         },
       ],

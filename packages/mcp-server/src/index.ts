@@ -37,6 +37,11 @@ export {
   TELEMETRY_ON_VALUES,
   TOKEN_ENV_VAR,
 } from './config.js';
+// The shipped tool set, exported so a surface other than the stdio binary can build a
+// registry from the same list rather than restating it. The hosted remote-MCP endpoint in
+// apps/web is the first such caller; keeping one list is what makes MNE-104 — every surface
+// answering identically for the same input — checkable rather than aspirational.
+export { LINKED_TOOLS } from './linked-tools.js';
 export type { ErasedToolDefinition, ShippedToolName, ToolListing } from './registry.js';
 export {
   DEFERRED_TOOL_MILESTONES,
