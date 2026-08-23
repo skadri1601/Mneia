@@ -17,6 +17,9 @@ FROM base AS build
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/packages/core/node_modules ./packages/core/node_modules
+# mcp-server's own node_modules carries its link to @mneia/core and its external deps.
+# **/node_modules is dockerignored, so without this its tsc cannot resolve them.
+COPY --from=deps /repo/packages/mcp-server/node_modules ./packages/mcp-server/node_modules
 COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
 COPY . .
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
