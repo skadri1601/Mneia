@@ -3,6 +3,7 @@ import type { ReviewQueue } from '../review-queue.js';
 import type { ResolvedWriteSession } from '../session-provenance.js';
 import type { SliceLog } from '../slices.js';
 import type { SourceSession } from '../source-session.js';
+import type { UsageProbe } from './usage.js';
 
 export interface ToolContext {
   readonly store: ScopedStore;
@@ -17,6 +18,11 @@ export interface ToolContext {
     legacySessionId: Uuid | null,
   ) => Promise<ResolvedWriteSession>;
   readonly defaultProject?: string | null;
+  /**
+   * Reads the usage meter for this workspace, or is absent when the surface has no billing
+   * layer behind it. Tools call it after the write it should reflect — see readUsage.
+   */
+  readonly usage?: UsageProbe | undefined;
 }
 
 export interface ToolResult {

@@ -104,4 +104,8 @@ export type {
   ToolDefinition,
   ToolResult,
 } from './tools/types.js';
+// Exported so a surface that owns its own store — the hosted remote-MCP endpoint in apps/web —
+// can supply the meter from the transaction it already holds rather than a second round trip.
+export type { UsageBlock, UsageProbe } from './tools/usage.js';
+export { readUsage, usageBlock, usageWarningBlock } from './tools/usage.js';
 export { VERSION };

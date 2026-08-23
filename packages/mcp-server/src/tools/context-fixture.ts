@@ -6,6 +6,7 @@ import type { SliceLog } from '../slices.js';
 import { createSliceLog } from '../slices.js';
 import type { SourceSession } from '../source-session.js';
 import type { ToolContext } from './types.js';
+import type { UsageProbe } from './usage.js';
 
 export interface ToolContextFixtureOptions {
   readonly now?: Date | undefined;
@@ -20,6 +21,7 @@ export interface ToolContextFixtureOptions {
       ) => Promise<ResolvedWriteSession>)
     | undefined;
   readonly defaultProject?: string | null | undefined;
+  readonly usage?: UsageProbe | undefined;
 }
 
 export function createToolContextFixture(
@@ -45,5 +47,6 @@ export function createToolContextFixture(
           sourceSessionRef: sourceSession?.ref ?? null,
         })),
     defaultProject: options.defaultProject ?? null,
+    usage: options.usage,
   };
 }

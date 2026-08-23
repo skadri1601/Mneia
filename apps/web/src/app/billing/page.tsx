@@ -2,9 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { WorkspaceSwitcher } from '../../components/WorkspaceSwitcher.js';
 import { canOpenPortal, canStartCheckout } from '../../server/billing/checkout.js';
 import { billingStore } from '../../server/billing/runtime.js';
+import { loadUsageReport } from '../../server/billing/usage-store.js';
 import { getCurrentAccount } from '../../server/current-account.js';
 import { checkoutAction, portalAction } from './actions.js';
 import styles from './Billing.module.css';
+import { UsageMeter } from './usage-meter.js';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -20,8 +22,9 @@ const title = (value: string): string => value.slice(0, 1).toUpperCase() + value
 
 export default async function BillingPage({ searchParams }: BillingPageProps) {
   const account = await getCurrentAccount();
-  const [snapshot, query] = await Promise.all([
+  const [snapshot, usage, query] = await Promise.all([
     billingStore().snapshot(account.workspace.id),
+    loadUsageReport(account.workspace.id),
     searchParams,
   ]);
   if (snapshot === null) {
@@ -77,6 +80,8 @@ export default async function BillingPage({ searchParams }: BillingPageProps) {
           </div>
         </dl>
       </section>
+
+      <UsageMeter report={usage} />
 
       {account.membership.role !== 'lead' ? (
         <p className={styles.access}>Only a workspace lead can manage billing.</p>

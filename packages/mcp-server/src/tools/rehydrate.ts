@@ -12,6 +12,7 @@ import { assembleSlice, candidateLimitFor as coreCandidateLimitFor } from '@mnei
 import { z } from 'zod';
 import { closedInputSchema } from './input-schema.js';
 import type { ToolContext, ToolDefinition, ToolResult } from './types.js';
+import { readUsage, usageWarningBlock } from './usage.js';
 
 export const DEFAULT_TOKEN_BUDGET = 4000;
 export const MIN_TOKEN_BUDGET = 500;
@@ -124,7 +125,7 @@ function toolError(code: string, summary: string, remedy: string): ToolResult {
   return {
     content: [{ type: 'text', text: `${summary} ${remedy}` }],
     isError: true,
-    structuredContent: { error: { code, summary, remedy } },
+    structuredContent: { error: { code, summary, remedy }, usage: null },
   };
 }
 
@@ -187,6 +188,11 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
       );
     }
 
+    // Raced against the slice rather than awaited after it. Rehydrate changes no dial, so the
+    // meter is as true before the slice as after, and §12.1 holds this path to a 300ms p95 —
+    // a serial probe would spend that budget on a number nobody waited for.
+    const meter = readUsage(context);
+
     const { slice, mandatoryItemIds, droppedItemIds } = await assembleSlice({
       store: context.store,
       project,
@@ -216,8 +222,14 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
       durationMs: Math.round(performance.now() - startedAt),
     });
 
+    const usage = await meter;
+    const warning = usageWarningBlock(usage);
+
     return {
-      content: [{ type: 'text', text: slice.renderedMarkdown }],
+      content: [
+        { type: 'text', text: slice.renderedMarkdown },
+        ...(warning === null ? [] : [warning]),
+      ],
       structuredContent: {
         sliceId: slice.id,
         projectId: project.id,
@@ -226,6 +238,7 @@ async function runRehydrate(input: RehydrateInput, context: ToolContext): Promis
         droppedItemIds,
         tokenBudget: slice.tokenBudget,
         tokensUsed: slice.tokensUsed,
+        usage,
       },
     };
   } catch (error) {

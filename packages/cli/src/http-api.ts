@@ -75,6 +75,7 @@ import type {
 } from './commands/verify.js';
 import { resolveToken } from './config.js';
 import { MAX_CHAIN_REVISIONS, matchItemIds } from './item-ids.js';
+import { USAGE_ROUTE, type UsageSnapshot, UsageWireSchema } from './usage.js';
 
 const STATUS_ITEM_LIMIT = 500;
 
@@ -446,6 +447,31 @@ export const httpStatusApi: StatusApi = {
       projectId: project.id,
       items: await store.listContextItems({ projectId: project.id, limit: STATUS_ITEM_LIMIT }),
     };
+  },
+
+  async usage(request: StatusRequest): Promise<UsageSnapshot | null> {
+    // Deliberately not connect(): the route meters the workspace the token belongs to, so
+    // resolving an identity and a project first would cost two round trips to learn nothing.
+    const token = await resolveToken(process.env);
+    const transport = createHttpTransport({ endpoint: request.config.endpoint, token });
+
+    try {
+      const { usage } = await transport.request(USAGE_ROUTE, UsageWireSchema);
+      return usage;
+    } catch (error) {
+      // A deployment older than the meter answers 404 for a route it has never heard of, and
+      // 501 for one it knows and does not serve. Neither is a fault the customer can act on,
+      // so both read as "this workspace has no meter" rather than as a failure.
+      //
+      // This does swallow one deliberate 404: the route answers not_found when the token's
+      // workspace has no row to meter. That message is actionable and this client hides it,
+      // because nothing in an ApiError distinguishes "no such route" from "no such row". The
+      // route needs a different code for that case before the client can tell them apart.
+      if (error instanceof ApiError && (error.status === 404 || error.code === 'unsupported')) {
+        return null;
+      }
+      throw error;
+    }
   },
 };
 

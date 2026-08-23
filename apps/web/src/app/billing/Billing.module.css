@@ -106,3 +106,55 @@
     grid-template-columns: 1fr;
   }
 }
+
+.meter {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.card .meterValue {
+  color: var(--tile-ink);
+}
+
+.meterValue strong {
+  font-family: var(--font-display);
+  font-size: var(--size-tagline);
+  line-height: var(--leading-tagline);
+  font-weight: var(--weight-semibold);
+}
+
+.track {
+  block-size: 10px;
+  border: 1px solid var(--tile-hairline);
+  border-radius: var(--rounded-pill);
+  background: var(--surface-pearl);
+  overflow: hidden;
+}
+
+.fill {
+  block-size: 100%;
+  background: var(--primary);
+}
+
+/* The hatch is a second, non-colour channel for the same state the note states in words. */
+.fill[data-state="warn"] {
+  background: repeating-linear-gradient(135deg, var(--primary) 0 6px, var(--canvas) 6px 10px);
+}
+
+.fill[data-state="exhausted"] {
+  background: repeating-linear-gradient(135deg, var(--ink) 0 3px, var(--canvas) 3px 6px);
+}
+
+.track[data-state="exhausted"] {
+  border-color: var(--ink);
+}
+
+.card .meterNote {
+  color: var(--tile-ink);
+  font-size: var(--size-fine-print);
+  font-weight: var(--weight-semibold);
+}
+
+.card .meterExplainer {
+  font-size: var(--size-fine-print);
+}

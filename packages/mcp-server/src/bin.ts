@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import type {
   HostedIdentity,
+  HttpTransport,
   RemoteStore,
   ScopedStore,
   TelemetryEmitter,
   TelemetrySink,
+  UsageWire,
   Uuid,
 } from '@mneia/core';
 import {
@@ -17,6 +19,7 @@ import {
   PostgresStoreAdapter,
   remoteSinkFromEnv,
   resolveProject,
+  UsageWireSchema,
   VERSION,
 } from '@mneia/core';
 import type { HostedServerConfig, LocalBinding, ProjectBinding, ServerConfig } from './config.js';
@@ -40,6 +43,38 @@ import type { SliceLog } from './slices.js';
 import { createSliceLog } from './slices.js';
 import { PoolConnectionSource } from './store.js';
 import type { ToolContext } from './tools/types.js';
+import type { UsageProbe } from './tools/usage.js';
+
+export const USAGE_PATH = '/api/v1/usage';
+
+/**
+ * How long a tool call will wait for the meter before answering without it.
+ *
+ * Usage is advisory and mneia_rehydrate is held to a 300ms p95 (§12.1), so a billing query
+ * having a bad day must degrade to "no usage reported" rather than spending that budget.
+ */
+export const USAGE_TIMEOUT_MS = 250;
+
+/**
+ * Reads the hosted meter over the same transport the tools already write through.
+ *
+ * A second round trip rather than a field on the write response: the hosted API does not
+ * carry usage on /api/v1/checkpoints today. It is called after the write, so the number is
+ * the one that write produced. Every failure — unreachable, unauthorised, an older server
+ * with no such route — resolves null, which the tools render as "not reported".
+ */
+function createUsageProbe(transport: HttpTransport): UsageProbe {
+  return async (): Promise<UsageWire | null> => {
+    const timed = new Promise<null>((resolve) => {
+      setTimeout(() => {
+        resolve(null);
+      }, USAGE_TIMEOUT_MS).unref();
+    });
+    // GET /api/v1/usage answers with the meter as the whole body, not wrapped in an envelope.
+    const fetched = transport.request(USAGE_PATH, UsageWireSchema).catch(() => null);
+    return Promise.race([fetched, timed]);
+  };
+}
 
 interface PendingTool {
   readonly toolName: string;
@@ -339,6 +374,8 @@ function createHostedRuntime(
     return store;
   };
 
+  const usage = createUsageProbe(transport);
+
   const scope: ToolContextScope = async <T>(
     run: (context: ToolContext) => Promise<T>,
   ): Promise<T> => {
@@ -349,6 +386,7 @@ function createHostedRuntime(
       now: () => new Date(),
       slices,
       reviewQueue,
+      usage,
       sessionIdFor: sessions.sessionIdFor,
       resolveWriteSession: (projectId, sourceSession, legacySessionId) =>
         sessions.resolve(connected, projectId, sourceSession, legacySessionId),
