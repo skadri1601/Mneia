@@ -1,6 +1,6 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { ApiAuthError, resolveBearerIdentity } from '../../../server/api-auth.js';
-import { createRemoteMcpSession } from '../../../server/mcp/runtime.js';
+import { clientFromUserAgent, createRemoteMcpSession } from '../../../server/mcp/runtime.js';
 import { deviceStore } from '../../../server/device-runtime.js';
 
 export const dynamic = 'force-dynamic';
@@ -51,7 +51,10 @@ export async function POST(request: Request): Promise<Response> {
     throw error;
   }
 
-  const session = createRemoteMcpSession(identity);
+  const session = createRemoteMcpSession(
+    identity,
+    clientFromUserAgent(request.headers.get('user-agent')),
+  );
   // Omitting sessionIdGenerator is what puts the transport in stateless mode. Supplying one would
   // make it issue and then demand Mcp-Session-Id, which needs shared storage we deliberately do
   // not have. It is omitted rather than passed as undefined because exactOptionalPropertyTypes

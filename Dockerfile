@@ -22,6 +22,11 @@ COPY . .
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 RUN pnpm --filter @mneia/core build
+# apps/web imports the MCP tool registry to serve /api/mcp, so mcp-server must be built before it:
+# the dependency resolves to packages/mcp-server/dist, which does not exist in a clean checkout.
+# CI does not catch this — ci.yml runs `pnpm -r --if-present build`, which builds every member, so a
+# missing filter here goes green there and fails only in the image build.
+RUN pnpm --filter @mneia/mcp-server build
 RUN pnpm --filter @mneia/web build
 
 FROM node:22-bookworm-slim AS runtime
