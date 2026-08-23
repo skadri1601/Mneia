@@ -1082,3 +1082,54 @@ describe('sessions that predate the binding', () => {
     ).toThrow(/--session session-older names cursor session-older, which started before/);
   });
 });
+
+describe('naming a session with --source does not skip the binding gate', () => {
+  const BOUND = new Date('2026-08-20T12:00:00.000Z');
+  const gatedConfig = { ...CONFIG, boundAt: BOUND } as ProjectConfig;
+
+  // --source with --session skips discovery on purpose. The synthetic entry it builds has no
+  // timestamps, so before this it walked past the gate and uploaded a pre-binding transcript
+  // that the same session named without --source would have been refused.
+  it('refuses a pre-binding session even on the discovery-skipping fast path', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [OLDER_SESSION];
+    const sink = capture();
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => gatedConfig,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    await expect(
+      command.run({
+        args: [],
+        flags: { session: OLDER_SESSION.sessionRef, source: OLDER_SESSION.source },
+        json: false,
+        io: sink.io,
+      }),
+    ).rejects.toThrow(/started before this repo was bound/);
+
+    expect(api.proposals).toHaveLength(0);
+  });
+
+  it('still checkpoints a session that started after the binding', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION];
+    const sink = capture();
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => gatedConfig,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    const code = await command.run({
+      args: [],
+      flags: { session: NEWEST_SESSION.sessionRef, source: NEWEST_SESSION.source },
+      json: false,
+      io: sink.io,
+    });
+
+    expect(code).toBe(0);
+    expect(api.proposals).toHaveLength(1);
+  });
+});

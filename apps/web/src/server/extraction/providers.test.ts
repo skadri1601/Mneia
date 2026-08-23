@@ -96,3 +96,51 @@ describe('an openai response that ran out of output budget', () => {
     });
   });
 });
+
+describe('a truncated response that managed to write something', () => {
+  const respondWith = (body: unknown) =>
+    createOpenAiExtractionProvider({
+      apiKey: 'sk-test',
+      model: 'gpt-5.6-luna',
+      serviceTier: 'auto',
+      fetch: (async () =>
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        })) as typeof globalThis.fetch,
+    });
+
+  const request = { system: 'system', user: 'user', maxOutputTokens: 8192 };
+
+  // Returning the partial text marks the attempt successful and defers the failure to
+  // parseExtractionOutput, which runs outside the runner's catch — reproducing exactly the
+  // no-fallback path this change exists to remove.
+  it('is refused even though partial output arrived, because partial JSON cannot be parsed', async () => {
+    const provider = respondWith({
+      status: 'incomplete',
+      incomplete_details: { reason: 'max_output_tokens' },
+      output_text: '{"candidates":[{"kind":"decision","title":"half a t',
+      usage: { input_tokens: 41_000, output_tokens: 8192 },
+    });
+
+    await expect(provider.extract(request)).rejects.toMatchObject({
+      retryable: true,
+      code: 'max_output_tokens',
+    });
+    await expect(provider.extract(request)).rejects.toThrow(/only 51 characters arrived/);
+  });
+
+  it('carries what the truncated call was billed, so it is not costed as free', async () => {
+    const provider = respondWith({
+      status: 'incomplete',
+      incomplete_details: { reason: 'max_output_tokens' },
+      output_text: '',
+      usage: { input_tokens: 41_000, output_tokens: 8192 },
+    });
+
+    await expect(provider.extract(request)).rejects.toMatchObject({
+      inputTokens: 41_000,
+      outputTokens: 8192,
+    });
+  });
+});

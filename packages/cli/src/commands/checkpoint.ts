@@ -1063,17 +1063,35 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
             } satisfies DiscoveredSession)
           : null;
 
+      // --source with --session skips discovery on purpose: the caller has named exactly one
+      // session, and listing every harness to find it is wasted work. But the synthetic entry
+      // that shortcut builds carries no timestamps, so on its own it would walk straight past
+      // the binding gate — the one path by which a pre-binding transcript could still be
+      // uploaded. Resolve the real timestamps only when a gate exists to enforce.
+      // Deliberately loose: a config loaded from an older path, or a caller that omits the
+      // field entirely, yields undefined rather than null, and `undefined !== null` would
+      // have sent every fast-path checkpoint through a discovery it does not need.
+      const gated = config.boundAt instanceof Date;
+      const dated =
+        named !== null && gated
+          ? ((await callApi(config.endpoint, 'checkpoint', () =>
+              deps.api.discover({ config, cwd: invocation.io.cwd, source: named.source }),
+            ).then((found) =>
+              found.sessions.find((session) => session.sessionRef === named.sessionRef),
+            )) ?? named)
+          : named;
+
       const discovery: SessionDiscovery =
-        named === null
+        dated === null
           ? await callApi(config.endpoint, 'checkpoint', () =>
               deps.api.discover({ config, cwd: invocation.io.cwd }),
             )
-          : { sessions: [named], blocked: [] };
+          : { sessions: [dated], blocked: [] };
 
       const chosen =
-        named === null
+        dated === null
           ? selectSessions(discovery, sessionRef, invocation.io.cwd, config.boundAt)
-          : [named];
+          : selectSessions(discovery, dated.sessionRef, invocation.io.cwd, config.boundAt);
       const context = { config, trigger, summary };
       const canPrompt = deps.prompter.interactive && !invocation.json;
 

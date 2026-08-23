@@ -356,14 +356,32 @@ function renderJson(outcome: InitOutcome): string {
 function configFileFor(
   attach: AttachResult,
   endpoint: string | null,
-  boundAt: Date,
+  boundAt: Date | null,
 ): ProjectConfigFile {
-  const base = {
-    workspace: attach.workspace,
-    project: attach.project,
-    boundAt: boundAt.toISOString(),
-  };
-  return endpoint === null ? base : { ...base, endpoint };
+  const base = { workspace: attach.workspace, project: attach.project };
+  const dated = boundAt === null ? base : { ...base, boundAt: boundAt.toISOString() };
+  return endpoint === null ? dated : { ...dated, endpoint };
+}
+
+/**
+ * When this binding says it began, or null to leave that unrecorded.
+ *
+ * Three cases, and conflating the last two is what makes the gate dangerous:
+ *
+ * - No config yet — this is a new binding, so stamp it now.
+ * - A config that already carries boundAt — keep it. Restamping on a re-init would move
+ *   the eligibility line forward and drop every session run since the repo was first bound,
+ *   including the ones a --force rebind is meant to preserve.
+ * - A config written before boundAt existed — leave it absent. Stamping one now would tell
+ *   the gate that every session this long-standing user has ever run predates the binding,
+ *   silently excluding all of them. Absent means "sweep as before", which is the compatible
+ *   answer; they opt in by binding a new repo.
+ */
+function boundAtFor(existing: ProjectConfig | null, now: () => Date): Date | null {
+  if (existing === null) {
+    return now();
+  }
+  return existing.boundAt;
 }
 
 export function createInitCommand(deps: InitDeps): CommandDefinition {
@@ -419,15 +437,12 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
         }),
       );
 
-      // Keep the original binding date across a re-init. Restamping it would move the
-      // eligibility line forward and silently exclude every session run since the repo was
-      // first bound — including, on a --force rebind, the ones the user is trying to keep.
       await writeProjectConfig(
         invocation.io.cwd,
         configFileFor(
           attach,
           persistedEndpoint,
-          existing?.boundAt ?? (deps.now ?? (() => new Date()))(),
+          boundAtFor(existing ?? null, deps.now ?? (() => new Date())),
         ),
       );
 

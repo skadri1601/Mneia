@@ -11,6 +11,7 @@ import type {
 import {
   applyPrecisionFilter,
   buildExtractionPrompt,
+  MAX_TITLE_LENGTH,
   chunkTurns,
   defaultTokenCounter,
   ExtractionError,
@@ -40,12 +41,31 @@ const MIN_CHUNK_TOKENS = 1024;
  */
 const LONG_CONTEXT_THRESHOLD_TOKENS = 272_000;
 
+/**
+ * Everything in a request that is not transcript.
+ *
+ * Sized against the widest prompt any chunk of this checkpoint will send, not the narrowest.
+ * The summary rides on every chunk, and foundSoFar grows until it hits its cap — so a
+ * measurement taken from the first chunk would under-bill every one after it, and the quota
+ * gate would approve a wallet balance that does not cover what is actually sent.
+ */
 const promptOverheadTokens = (
   existingItems: readonly { readonly id: string; readonly title: string }[],
+  summary: string | null,
+  foundSoFar: readonly string[],
 ): number => {
-  const empty = buildExtractionPrompt({ turns: [], existingItems });
+  const empty = buildExtractionPrompt({ turns: [], existingItems, summary, foundSoFar });
   return defaultTokenCounter.count(empty.system) + defaultTokenCounter.count(empty.user);
 };
+
+/**
+ * The largest foundSoFar block this checkpoint could send, for costing only.
+ *
+ * Titles are capped at MAX_TITLE_LENGTH and the block at FOUND_SO_FAR_LIMIT entries, so the
+ * worst case is knowable up front even though the real titles are not.
+ */
+const widestFoundSoFar = (): readonly string[] =>
+  Array.from({ length: FOUND_SO_FAR_LIMIT }, () => 'x'.repeat(MAX_TITLE_LENGTH));
 
 export interface ExtractionAttemptRecord {
   readonly model: string;
@@ -180,7 +200,7 @@ export const handleProposeCheckpoint = async (
   });
 
   const existingItems = existing.map((item) => ({ id: item.id, title: item.title }));
-  const overhead = promptOverheadTokens(existingItems);
+  const overhead = promptOverheadTokens(existingItems, input.summary ?? null, widestFoundSoFar());
 
   // Cap the window we are willing to fill, independently of what the model can hold.
   // Past LONG_CONTEXT_THRESHOLD_TOKENS the provider charges 2x input and 1.5x output on

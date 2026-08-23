@@ -29,16 +29,35 @@ export class ExtractionProviderError extends Error {
    * tier. See isFlexCapacityExhausted.
    */
   readonly code: string | null;
+  /**
+   * What the failed call cost, when the vendor billed for one.
+   *
+   * A request that fails before the vendor answers costs nothing and leaves these at zero.
+   * A truncated response is the opposite: it spends the entire output ceiling and is
+   * charged in full. Recording zero for those hides the most expensive calls we make from
+   * `checkpoint_usage` whenever the fallback then succeeds.
+   */
+  readonly inputTokens: number;
+  readonly outputTokens: number;
 
   constructor(
     message: string,
-    options: { retryable: boolean; status?: number | null; code?: string | null; cause?: unknown },
+    options: {
+      retryable: boolean;
+      status?: number | null;
+      code?: string | null;
+      cause?: unknown;
+      inputTokens?: number | undefined;
+      outputTokens?: number | undefined;
+    },
   ) {
     super(message, { cause: options.cause });
     this.name = 'ExtractionProviderError';
     this.retryable = options.retryable;
     this.status = options.status ?? null;
     this.code = options.code ?? null;
+    this.inputTokens = options.inputTokens ?? 0;
+    this.outputTokens = options.outputTokens ?? 0;
   }
 }
 
@@ -292,15 +311,29 @@ export function createOpenAiExtractionProvider(options: HttpExtractionOptions): 
 
       // A reasoning model bills its thinking against max_output_tokens, so it can spend the
       // whole ceiling before emitting one message token. The Responses API reports that as
-      // status "incomplete" and returns an empty output_text. Left unread, the empty string
-      // reaches parseExtractionOutput and surfaces as "not valid JSON" — which is thrown
-      // outside the run-level catch, so the fallback vendor is never tried and the log blames
-      // the model for malformed output it never had the budget to write.
-      if (text === '' && asString(record?.status) === 'incomplete') {
+      // status "incomplete". Left unread, what it did write reaches parseExtractionOutput and
+      // surfaces as "not valid JSON" — which is thrown outside the run-level catch, so the
+      // fallback vendor is never tried and the log blames the model for malformed output it
+      // never had the budget to finish.
+      //
+      // The text is not part of the test. A truncated answer can carry a partial JSON prefix,
+      // and returning that marks the attempt successful and defers the same failure to a place
+      // that cannot fall back. "incomplete" means unusable however much of it arrived.
+      if (asString(record?.status) === 'incomplete') {
         const reason = asString(asRecord(record?.incomplete_details)?.reason) ?? 'reason not given';
+        const wrote =
+          text === '' ? 'nothing was written to parse' : `only ${text.length} characters arrived`;
         throw new ExtractionProviderError(
-          `openai returned no output: the response stopped at status "incomplete" (${reason}) after ${asNumber(usage?.output_tokens)} output tokens against a ${request.maxOutputTokens} token ceiling, so nothing was written to parse`,
-          { retryable: true, code: reason },
+          `openai stopped at status "incomplete" (${reason}) after ${asNumber(usage?.output_tokens)} output tokens against a ${request.maxOutputTokens} token ceiling, so ${wrote}`,
+          {
+            retryable: true,
+            code: reason,
+            // Carried so the failed attempt records what the call actually cost. A truncated
+            // call spends the whole output ceiling, and these are exactly the calls that
+            // vanished from checkpoint_usage when the fallback then succeeded.
+            inputTokens: asNumber(usage?.input_tokens),
+            outputTokens: asNumber(usage?.output_tokens),
+          },
         );
       }
 

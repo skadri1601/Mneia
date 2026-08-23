@@ -19,6 +19,19 @@ import {
   type ServiceTier,
 } from './providers.js';
 
+/**
+ * What a failed call was billed, when the vendor answered before failing.
+ *
+ * Most failures cost nothing — a timeout, a refused connection, a 4xx. A truncated response
+ * is the exception and the expensive one, so the tokens ride on the error rather than being
+ * assumed away.
+ */
+const billedInputTokens = (error: unknown): number =>
+  error instanceof ExtractionProviderError ? error.inputTokens : 0;
+
+const billedOutputTokens = (error: unknown): number =>
+  error instanceof ExtractionProviderError ? error.outputTokens : 0;
+
 export interface ExtractionAttempt {
   readonly model: string;
   readonly outcome: 'succeeded' | 'failed' | 'fell_back';
@@ -145,11 +158,14 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
         // on a second attempt, or this vendor is refusing everything we send it.
         const worthFallingBack = retryable || isVendorFatal(error);
         const fits = fallback === null ? false : fitsWindow(request, fallback);
+        // Not always zero: a truncated response is billed in full, and those are the calls
+        // that spent the whole output ceiling. Zeroing them here hid the most expensive
+        // requests we make from checkpoint_usage whenever the fallback then succeeded.
         attempts.push({
           model: primary.id,
           outcome: worthFallingBack && fallback !== null && fits ? 'fell_back' : 'failed',
-          inputTokens: 0,
-          outputTokens: 0,
+          inputTokens: billedInputTokens(error),
+          outputTokens: billedOutputTokens(error),
           durationMs: now() - startedAt,
         });
 
@@ -182,8 +198,8 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
           attempts.push({
             model: fallback.id,
             outcome: 'failed',
-            inputTokens: 0,
-            outputTokens: 0,
+            inputTokens: billedInputTokens(fallbackError),
+            outputTokens: billedOutputTokens(fallbackError),
             durationMs: now() - fallbackStartedAt,
           });
           throw new ExtractionRunError(fallbackError, attempts);
