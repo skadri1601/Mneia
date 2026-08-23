@@ -49,6 +49,8 @@ export interface CheckpointProposal {
   readonly sourceSessionRef: string;
   readonly watermark: string | null;
   readonly candidates: readonly CheckpointCandidate[];
+  /** Turns the server actually extracted. Zero means nothing new was read at all. */
+  readonly consumedTurns: number;
   readonly pendingTurns: number;
   readonly incompleteReason: string | null;
   readonly droppedBeforeUpload: number;
@@ -720,6 +722,28 @@ async function runSession(
   reportTurnGaps(invocation, proposal, prefix);
 
   if (proposal.candidates.length === 0) {
+    // Extraction that read turns and kept nothing still has to bank how far it got.
+    // Returning here without committing left the watermark where it was, so the next run
+    // re-uploaded and re-extracted the same turns and paid for them again — and a session
+    // too large for one request never advanced past its first upload (MNE-100). Guarded on
+    // consumedTurns so the far commoner "nothing new to read" case, which reaches the
+    // model not at all, does not write a fresh empty checkpoint on every invocation.
+    if (proposal.watermark !== null && proposal.consumedTurns > 0) {
+      await callApi(config.endpoint, 'checkpoint', () =>
+        deps.api.commit({
+          config,
+          projectId: proposal.projectId,
+          sessionId: proposal.sessionId,
+          source: proposal.source,
+          sourceSessionRef: proposal.sourceSessionRef,
+          watermark: proposal.watermark,
+          trigger,
+          summary,
+          automatic: [],
+          reviewed: [],
+        }),
+      );
+    }
     return { session, proposal, outcome: null, automatic: [], pending: [], error: null };
   }
 

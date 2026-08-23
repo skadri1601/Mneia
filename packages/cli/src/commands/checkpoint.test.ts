@@ -120,6 +120,7 @@ function proposalOf(candidates: readonly CheckpointCandidate[]): CheckpointPropo
     sourceSessionRef: 'session-newest',
     watermark: null,
     candidates,
+    consumedTurns: candidates.length === 0 ? 0 : 12,
     pendingTurns: 0,
     incompleteReason: null,
     droppedBeforeUpload: 0,
@@ -742,6 +743,45 @@ describe('mneia checkpoint', () => {
     expect(code).toBe(0);
     expect(api.commits).toHaveLength(0);
     expect(sink.out.join('')).toContain('Nothing to checkpoint');
+  });
+
+  it('banks the watermark when extraction read turns and kept nothing', async () => {
+    const api = new FakeApi({ ...proposalOf([]), watermark: 't41', consumedTurns: 42 });
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    const code = await command.run({ args: [], flags: {}, json: false, io: sink.io });
+
+    // Without this commit the watermark stays where it was, so the next run re-uploads
+    // and re-extracts the same 42 turns and is billed for them again (MNE-100).
+    expect(code).toBe(0);
+    expect(api.commits).toHaveLength(1);
+    expect(api.commits[0]?.watermark).toBe('t41');
+    expect(api.commits[0]?.automatic).toHaveLength(0);
+    expect(api.commits[0]?.reviewed).toHaveLength(0);
+  });
+
+  it('writes nothing when the session had nothing new to read', async () => {
+    const api = new FakeApi({ ...proposalOf([]), watermark: 't41', consumedTurns: 0 });
+    const sink = capture();
+
+    const command = createCheckpointCommand({
+      api,
+      loadConfig: () => CONFIG,
+      prompter: new ScriptedPrompter([]),
+    });
+
+    const code = await command.run({ args: [], flags: {}, json: false, io: sink.io });
+
+    // The watermark is already at the end, so no model was called and there is nothing to
+    // bank. Committing here would append an empty checkpoint on every single invocation.
+    expect(code).toBe(0);
+    expect(api.commits).toHaveLength(0);
   });
 });
 

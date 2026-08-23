@@ -3,7 +3,7 @@ import type { QuotaRequest, QuotaState } from './quota.js';
 
 vi.mock('server-only', () => ({}));
 
-const { checkpointQuota, monthPeriod } = await import('./quota.js');
+const { checkpointQuota, effectiveAllowances, monthPeriod } = await import('./quota.js');
 const { planLimits } = await import('./limits.js');
 
 const PERIOD = monthPeriod(new Date('2026-08-16T12:00:00.000Z'));
@@ -190,6 +190,86 @@ describe('checkpointQuota', () => {
       const decision = checkpointQuota(exhausted(), request());
 
       expect(decision).toMatchObject({ allowed: false, code: 'allowance_exhausted' });
+    });
+  });
+
+  describe('the refusal names a control that exists', () => {
+    const exhausted = (overrides: Partial<QuotaState> = {}): QuotaState =>
+      state({ extractionsUsed: planLimits('solo').extractions ?? 0, ...overrides });
+
+    // Nothing in the product credits wallet_balance_micros: no `credit` row is ever
+    // written, and the billing page has no top-up control. Sending a refused customer to
+    // a button that does not exist is worse than saying to wait for the reset.
+    it.each(['allowance_exhausted', 'wallet_empty'] as const)(
+      'never tells a %s workspace to top up, because there is no top-up',
+      (code) => {
+        const decision = checkpointQuota(
+          exhausted({ walletBalanceMicros: code === 'wallet_empty' ? 100 : 0 }),
+          request(),
+        );
+
+        expect(decision).toMatchObject({ allowed: false, code });
+        if (!decision.allowed) {
+          expect(decision.message).not.toContain('top up');
+          expect(decision.message).not.toContain('add a balance');
+        }
+      },
+    );
+
+    it('tells solo the ceiling is fixed and Team needs a second member', () => {
+      const decision = checkpointQuota(exhausted(), request());
+
+      expect(decision.allowed).toBe(false);
+      if (!decision.allowed) {
+        expect(decision.message).toContain('second accepted member');
+        expect(decision.message).toContain('reset at 2026-09-01T00:00:00.000Z');
+      }
+    });
+
+    it('tells a team to buy seats, because its allowance is per seat and pooled', () => {
+      const perSeat = planLimits('team').extractions ?? 0;
+      const decision = checkpointQuota(
+        state({
+          plan: 'team',
+          seatsPurchased: 2,
+          memberCount: 2,
+          extractionsUsed: perSeat * 2,
+        }),
+        request(),
+      );
+
+      expect(decision.allowed).toBe(false);
+      if (!decision.allowed) {
+        expect(decision.message).toContain('add seats from the billing page');
+      }
+    });
+  });
+});
+
+describe('effectiveAllowances', () => {
+  it('reports the plan default when nothing overrides it', () => {
+    expect(effectiveAllowances(state())).toEqual({
+      turns: planLimits('solo').turns,
+      extractions: planLimits('solo').extractions,
+      embeddingTokens: planLimits('solo').embeddingTokens,
+    });
+  });
+
+  it('multiplies a team allowance by purchased seats, exactly as the decision does', () => {
+    // The billing page renders these numbers. If it derived them separately it could tell
+    // a customer they have headroom the API is refusing.
+    const perSeat = planLimits('team');
+    const seated = state({ plan: 'team', seatsPurchased: 3, memberCount: 3 });
+
+    expect(effectiveAllowances(seated).extractions).toBe((perSeat.extractions ?? 0) * 3);
+    expect(checkpointQuota(seated, request({ turns: 1 })).allowed).toBe(true);
+  });
+
+  it('keeps an unmetered plan null rather than reporting it as zero', () => {
+    expect(effectiveAllowances(state({ plan: 'enterprise' }))).toEqual({
+      turns: null,
+      extractions: null,
+      embeddingTokens: null,
     });
   });
 });

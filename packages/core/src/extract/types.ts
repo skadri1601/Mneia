@@ -20,6 +20,16 @@ export interface ExtractionProviderResponse {
   readonly text: string;
   readonly inputTokens: number;
   readonly outputTokens: number;
+  /**
+   * The tier that actually served this response, where the provider has one and knows it.
+   *
+   * A flex request that finds no capacity is re-sent on the standard tier, which bills at
+   * twice the rate. Only the provider sees that transition, so a caller stamping the
+   * *configured* tier onto the attempt prices the request at half what it cost. Optional
+   * because a vendor with no tiers has nothing to report; the caller falls back to what it
+   * configured, and reported beats configured.
+   */
+  readonly serviceTier?: string | undefined;
 }
 
 export interface ExtractionProvider {

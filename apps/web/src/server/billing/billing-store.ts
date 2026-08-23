@@ -17,11 +17,46 @@ export interface BillingSnapshot extends BillingState {
   readonly memberCount: number;
 }
 
+/**
+ * Where a workspace's Stripe subscription lives, so its quantity can be changed.
+ *
+ * Kept separate from `BillingSnapshot` rather than folded into it. A snapshot describes
+ * what a workspace is entitled to and is built by hand in several test fixtures across the
+ * app; adding required fields to it would break every one of those. This is the address of
+ * the subscription, which only the seat-sync path needs, so it is read on its own.
+ *
+ * Both halves are needed together: `updateSeats` addresses the subscription *and* the item,
+ * because in the Stripe API quantity lives on the item. Either being null means the
+ * workspace's seats cannot be pushed to Stripe yet — see `subscriptionAddress`.
+ */
+export interface BillingSubscriptionRef {
+  readonly subscriptionRef: string | null;
+  readonly itemRef: string | null;
+}
+
+/** The pair, but only when both halves are present and therefore usable. */
+export interface SubscriptionAddress {
+  readonly subscriptionId: string;
+  readonly subscriptionItemId: string;
+}
+
+export const subscriptionAddress = (ref: BillingSubscriptionRef): SubscriptionAddress | null =>
+  ref.subscriptionRef === null || ref.itemRef === null
+    ? null
+    : { subscriptionId: ref.subscriptionRef, subscriptionItemId: ref.itemRef };
+
 export interface BillingStore {
   readonly snapshot: (workspaceId: string) => Promise<BillingSnapshot | null>;
+  readonly subscriptionRef: (workspaceId: string) => Promise<BillingSubscriptionRef | null>;
   readonly applyBillingState: (input: {
     readonly workspaceId: string;
     readonly state: BillingState;
+    /**
+     * Written only when supplied, so a caller that does not know the subscription cannot
+     * blank one that is already recorded. The webhook always knows, because it re-reads
+     * the live subscription from Stripe before it decides anything.
+     */
+    readonly subscription?: BillingSubscriptionRef;
   }) => Promise<BillingSnapshot>;
 }
 
@@ -116,19 +151,46 @@ export class PostgresBillingStore implements BillingStore {
     });
   }
 
+  async subscriptionRef(workspaceId: string): Promise<BillingSubscriptionRef | null> {
+    return this.withWorkspace(workspaceId, async (session) => {
+      const { rows } = await session.execute<SqlRow>(
+        `SELECT billing_subscription_ref, billing_subscription_item_ref
+           FROM workspace
+          WHERE id = $1`,
+        [workspaceId],
+      );
+      const row = rows[0];
+      return row === undefined
+        ? null
+        : {
+            subscriptionRef: readNullableText(row, 'billing_subscription_ref'),
+            itemRef: readNullableText(row, 'billing_subscription_item_ref'),
+          };
+    });
+  }
+
   async applyBillingState(input: {
     readonly workspaceId: string;
     readonly state: BillingState;
+    readonly subscription?: BillingSubscriptionRef;
   }): Promise<BillingSnapshot> {
-    const { workspaceId, state } = input;
+    const { workspaceId, state, subscription } = input;
 
     return this.withWorkspace(workspaceId, async (session) => {
+      // COALESCE against the parameter rather than the column: passing no subscription
+      // leaves whatever is recorded alone, while passing one with a null half clears only
+      // that half. A caller that does not know the subscription must not be able to erase
+      // the address the seat-sync path depends on.
       const updated = await session.execute<SqlRow>(
         `UPDATE workspace
             SET plan = $2,
                 billing_status = $3,
                 seats_purchased = $4,
-                billing_customer_ref = $5
+                billing_customer_ref = $5,
+                billing_subscription_ref =
+                  CASE WHEN $6::boolean THEN $7 ELSE billing_subscription_ref END,
+                billing_subscription_item_ref =
+                  CASE WHEN $6::boolean THEN $8 ELSE billing_subscription_item_ref END
           WHERE id = $1
           RETURNING id`,
         [
@@ -137,6 +199,9 @@ export class PostgresBillingStore implements BillingStore {
           state.billingStatus,
           state.seatsPurchased,
           state.billingCustomerRef,
+          subscription !== undefined,
+          subscription?.subscriptionRef ?? null,
+          subscription?.itemRef ?? null,
         ],
       );
 

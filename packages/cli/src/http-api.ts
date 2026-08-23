@@ -618,14 +618,14 @@ export function uploadableFrom(
   let used = 0;
 
   for (let index = start; index < turns.length; index += 1) {
-    const turn = turns[index];
-    if (turn === undefined) {
+    // The byte budget is ours; the turn count is the API's, and exceeding it fails the
+    // whole request rather than trimming it. A session of many short turns stays well
+    // inside MAX_UPLOAD_BYTES while going past MAX_TRAJECTORY_TURNS, so both bound this.
+    if (taken.length >= MAX_TRAJECTORY_TURNS) {
       break;
     }
-    // The array cap is as absolute as the byte budget: a chatty session reaches 5000 short
-    // turns long before it reaches 900KB, and the API refuses the request rather than
-    // taking the first 5000.
-    if (taken.length >= MAX_TRAJECTORY_TURNS) {
+    const turn = turns[index];
+    if (turn === undefined) {
       break;
     }
     const cost = Buffer.byteLength(JSON.stringify(wireTurn(turn)), 'utf8') + 1;
@@ -715,6 +715,10 @@ export const httpCheckpointApi: CheckpointApi = {
       source: reduced.trajectory.source,
       sourceSessionRef: reduced.trajectory.sessionRef,
       watermark: proposal.watermark,
+      // Carried so the caller can tell "extraction ran and kept nothing" from "there was
+      // nothing new to extract". Only the first has a watermark worth banking; committing
+      // on the second would write a fresh empty checkpoint on every invocation.
+      consumedTurns: proposal.consumedTurns,
       pendingTurns: proposal.pendingTurns + heldBack,
       incompleteReason: proposal.incompleteReason,
       droppedBeforeUpload: trajectory.turns.length - all.length,
@@ -749,10 +753,13 @@ export const httpCheckpointApi: CheckpointApi = {
         .map((reviewed) => ({ candidate: reviewed.candidate, overrides: reviewed })),
     ];
 
-    if (entries.length === 0) {
+    // An empty commit is legitimate only as a watermark: extraction ran, kept nothing, and
+    // the one thing worth recording is how far it got. Without a watermark there is
+    // genuinely nothing to write, and that stays an error.
+    if (entries.length === 0 && (request.watermark ?? null) === null) {
       throw new CliError(
         'failed',
-        'every candidate was rejected, so there is nothing to write',
+        'every candidate was rejected and no watermark was reached, so there is nothing to write',
         'nothing was recorded; run mneia checkpoint again when there is something to keep',
       );
     }

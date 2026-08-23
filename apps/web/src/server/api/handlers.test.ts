@@ -3,6 +3,7 @@ import type {
   Checkpoint,
   CheckpointWrite,
   CheckpointWriteResult,
+  Conflict,
   ContextItem,
   Project,
   ProjectSessionFilter,
@@ -76,7 +77,11 @@ interface Harness {
   readonly telemetry: TelemetryEmitter;
 }
 
-const harness = (scopedActor: Actor | null, written: readonly ContextItem[]): Harness => {
+const harness = (
+  scopedActor: Actor | null,
+  written: readonly ContextItem[],
+  conflicts: readonly Conflict[] = [],
+): Harness => {
   const writes: CheckpointWrite[] = [];
   const events: TelemetryEvent[] = [];
 
@@ -98,9 +103,12 @@ const harness = (scopedActor: Actor | null, written: readonly ContextItem[]): Ha
         },
         items: [],
         written,
-        conflicts: [],
+        conflicts,
       };
     },
+    // Reached only when a conflict names an item this checkpoint did not write, which is
+    // the normal case: the contradicted item already existed.
+    getContextItem: async () => null,
   } as unknown as ScopedStore;
 
   const telemetry: TelemetryEmitter = {
@@ -130,6 +138,86 @@ const request = (extra: Record<string, unknown> = {}) => ({
       },
     },
   ],
+});
+
+describe('handleWriteCheckpoint conflicts', () => {
+  const CONTRADICTED = '99999999-9999-4999-8999-999999999999';
+
+  it('forwards conflictsWith to the store and emits conflict.detected for what comes back', async () => {
+    // The emit was never missing — it was unreachable. createRemoteStore dropped
+    // conflictsWith on the way out, so the store created no conflict rows, result.conflicts
+    // was always empty, and this loop never ran on a hosted checkpoint (MNE-100).
+    const written = writtenItem();
+    const sink = harness(
+      actor(AGENT, 'agent'),
+      [written],
+      [
+        {
+          id: '12121212-1212-4121-8121-121212121212',
+          workspaceId: WORKSPACE,
+          projectId: PROJECT,
+          itemA: CONTRADICTED,
+          itemB: written.id,
+          detectedAt: new Date('2026-08-07T10:00:00.000Z'),
+          resolvedAt: null,
+          resolvedBy: null,
+          resolution: null,
+          rationale: null,
+        },
+      ],
+    );
+
+    await handleWriteCheckpoint(
+      sink.store,
+      {
+        checkpoint: { projectId: PROJECT, sessionId: null, trigger: 'manual', summary: null },
+        items: [
+          {
+            action: 'superseded' as const,
+            item: { projectId: PROJECT, kind: 'decision' as const, title: 'use Stripe after all' },
+            conflictsWith: CONTRADICTED,
+          },
+        ],
+      } as never,
+      deps(sink.telemetry),
+    );
+
+    expect(sink.writes[0]?.items[0]?.conflictsWith).toBe(CONTRADICTED);
+    const detected = sink.events.filter((event) => event.name === 'conflict.detected');
+    expect(detected).toHaveLength(1);
+  });
+});
+
+describe('handleWriteCheckpoint with no items', () => {
+  it('writes the checkpoint for its watermark alone, and emits no item events', async () => {
+    // The route this serves is how the CLI banks how far extraction got when it kept
+    // nothing. Refusing it left the watermark unmoved and the same turns were re-read and
+    // re-billed on every later run (MNE-100). Nothing was extracted, so §17's item-scoped
+    // checkpoint events have nothing to describe and none are emitted.
+    const sink = harness(actor(AGENT, 'agent'), []);
+
+    await handleWriteCheckpoint(
+      sink.store,
+      {
+        checkpoint: {
+          projectId: PROJECT,
+          sessionId: null,
+          trigger: 'manual' as const,
+          summary: null,
+          source: 'claude-code' as const,
+          sourceSessionRef: 'session-1',
+          sourceWatermark: 't41',
+        },
+        items: [],
+      } as never,
+      deps(sink.telemetry),
+    );
+
+    expect(sink.writes).toHaveLength(1);
+    expect(sink.writes[0]?.checkpoint.sourceWatermark).toBe('t41');
+    expect(sink.writes[0]?.items).toHaveLength(0);
+    expect(sink.events).toHaveLength(0);
+  });
 });
 
 describe('handleWriteCheckpoint provenance', () => {

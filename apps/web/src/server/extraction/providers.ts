@@ -265,6 +265,9 @@ export function createOpenAiExtractionProvider(options: HttpExtractionOptions): 
 
     async extract(request: ExtractionProviderRequest) {
       let payload: unknown;
+      // What actually served the response, which is not always what was configured. The
+      // retry below silently doubles the rate, and only this function can see it happen.
+      let servedTier: ServiceTier = configuredTier;
 
       if (configuredTier === 'flex') {
         try {
@@ -279,6 +282,7 @@ export function createOpenAiExtractionProvider(options: HttpExtractionOptions): 
             throw cause;
           }
           payload = await send(request, 'auto');
+          servedTier = 'auto';
         }
       } else {
         payload = await send(request, configuredTier);
@@ -292,6 +296,7 @@ export function createOpenAiExtractionProvider(options: HttpExtractionOptions): 
         text,
         inputTokens: asNumber(usage?.input_tokens),
         outputTokens: asNumber(usage?.output_tokens),
+        serviceTier: servedTier,
       };
     },
   };

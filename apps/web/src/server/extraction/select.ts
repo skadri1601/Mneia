@@ -16,6 +16,7 @@ import {
   isVendorFatal,
   type ReasoningEffort,
   resolveExtractionModel,
+  SERVICE_TIERS,
   type ServiceTier,
 } from './providers.js';
 
@@ -25,7 +26,26 @@ export interface ExtractionAttempt {
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly durationMs: number;
+  /**
+   * The tier that served this attempt, when the provider reported one.
+   *
+   * Absent for a vendor without tiers, and for a failed attempt that never got a response.
+   * The caller falls back to the configured tier — reported beats configured, because a
+   * flex request with no capacity is re-sent at standard rates and costs twice what the
+   * configuration implies.
+   */
+  readonly serviceTier?: ServiceTier | undefined;
 }
+
+/**
+ * Narrow what a provider reported to a tier we can price.
+ *
+ * A provider is free to report anything; only the tiers in the pricing table may reach the
+ * ledger, and an unrecognised one falls back to the configured tier rather than being
+ * carried through as a value `costMicrosFor` would refuse.
+ */
+const reportedTier = (value: string | undefined): ServiceTier | undefined =>
+  SERVICE_TIERS.find((tier) => tier === value);
 
 export interface ExtractionRunResult {
   readonly text: string;
@@ -137,6 +157,7 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
           inputTokens: response.inputTokens,
           outputTokens: response.outputTokens,
           durationMs: now() - startedAt,
+          serviceTier: reportedTier(response.serviceTier),
         });
         return { text: response.text, model: primary.id, attempts };
       } catch (error) {
@@ -176,6 +197,7 @@ export function createExtractionRunner(options: ExtractionRunnerOptions): Extrac
             inputTokens: response.inputTokens,
             outputTokens: response.outputTokens,
             durationMs: now() - fallbackStartedAt,
+            serviceTier: reportedTier(response.serviceTier),
           });
           return { text: response.text, model: fallback.id, attempts };
         } catch (fallbackError) {
