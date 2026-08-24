@@ -13,6 +13,7 @@ import {
   createCheckpointCommand,
   type DiscoveredSession,
   isRecentlyActive,
+  mostRecentlyActive,
   selectSessions,
   startedBeforeBinding,
   emitReviewEvents,
@@ -815,7 +816,10 @@ describe('mneia checkpoint across sessions', () => {
   const commandFor = (api: FakeApi, prompter = new ScriptedPrompter([])) =>
     createCheckpointCommand({ api, loadConfig: () => CONFIG, prompter, now: () => TEST_NOW });
 
-  it('reads every session active inside the window, not just the newest', async () => {
+  // The default is one session, even when several are inside the window: on a busy repo the
+  // window alone still admitted twenty, and someone typing `mneia checkpoint` means the one
+  // terminal they are typing in.
+  it('reads only the most recently active session, not every one inside the window', async () => {
     const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
     const alsoActive: DiscoveredSession = {
       ...OLDER_SESSION,
@@ -829,10 +833,23 @@ describe('mneia checkpoint across sessions', () => {
     const code = await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
 
     expect(code).toBe(0);
-    expect(api.proposals.map((request) => request.sessionRef)).toEqual([
-      'session-newest',
-      'session-second',
-    ]);
+    expect(api.proposals.map((request) => request.sessionRef)).toEqual(['session-newest']);
+  });
+
+  it('picks by recency rather than by the order discovery happened to return', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    const alsoActive: DiscoveredSession = {
+      ...OLDER_SESSION,
+      sessionRef: 'session-second',
+      lastActivityAt: new Date('2026-08-20T15:00:00.000Z'),
+      startedAt: new Date('2026-08-20T14:00:00.000Z'),
+    };
+    api.sessions = [alsoActive, NEWEST_SESSION];
+    const sink = capture();
+
+    await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
+
+    expect(api.proposals.map((request) => request.sessionRef)).toEqual(['session-newest']);
   });
 
   // The defect this window exists for: discovery is a filesystem scan of every installed
@@ -860,14 +877,57 @@ describe('mneia checkpoint across sessions', () => {
     expect(api.proposals).toHaveLength(0);
   });
 
-  it('no longer points at a flag for behaviour it now has by default', async () => {
+  // Reading one of many is only safe if the user is told the others exist — that visibility
+  // is the objection the sweep default was answering, and it costs no extraction to answer.
+  it('names the sessions it did not read, and the flags that would reach them', async () => {
     const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
     api.sessions = [NEWEST_SESSION, OLDER_SESSION];
     const sink = capture();
 
     await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
 
-    expect(sink.err.join('')).not.toContain('did not read');
+    const errors = sink.err.join('');
+    expect(errors).toContain('1 other agent session on this directory was discovered and not read');
+    expect(errors).toContain('claude-code session-newest');
+    expect(errors).toContain('--all-sessions');
+  });
+
+  it('says nothing about unread sessions when only one was discovered', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION];
+    const sink = capture();
+
+    await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
+
+    expect(sink.err.join('')).not.toContain('not read');
+  });
+
+  it('leaves the note out of --json, which carries the counts in the payload', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    await commandFor(api).run({ args: [], flags: {}, json: true, io: sink.io });
+
+    expect(sink.err.join('')).toBe('');
+    expect(JSON.parse(sink.out.join(''))).toMatchObject({
+      session: { sessionRef: 'session-newest', discovered: 2, unread: 1 },
+    });
+  });
+
+  it('says nothing about unread sessions when the caller named one', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    await commandFor(api).run({
+      args: [],
+      flags: { session: 'session-older' },
+      json: false,
+      io: sink.io,
+    });
+
+    expect(sink.err.join('')).not.toContain('not read');
   });
 
   it('reads the session you name', async () => {
@@ -1136,9 +1196,9 @@ describe('sessions that predate the binding', () => {
     sessions,
     blocked: [],
   });
-  // These cases are about the binding gate alone, so they reach past the activity window
-  // deliberately — otherwise every fixture here would age out and the gate would go untested.
-  const options = { includeIdle: true };
+  // These cases are about the binding gate alone, so they sweep deliberately — otherwise
+  // every fixture here would age out or lose to the newest one, and the gate would go untested.
+  const options = { sweepAll: true };
 
   it('keeps a session that started after the repo was bound', () => {
     expect(startedBeforeBinding(NEWEST_SESSION, BOUND_AT)).toBe(false);
@@ -1205,7 +1265,7 @@ describe('sessions nobody has touched lately', () => {
     expect(
       selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', null, {
         ...options,
-        includeIdle: true,
+        sweepAll: true,
       }),
     ).toEqual([NEWEST_SESSION, OLDER_SESSION]);
   });
@@ -1235,6 +1295,79 @@ describe('sessions nobody has touched lately', () => {
     expect(() => selectSessions(discovery([OLDER_SESSION]), null, '/repo', null, options)).toThrow(
       /none of the 1 agent sessions discovered for \/repo have been active/,
     );
+  });
+});
+
+describe('an unnamed checkpoint chooses one session', () => {
+  const NOW = TEST_NOW;
+  const discovery = (sessions: readonly DiscoveredSession[]): SessionDiscovery => ({
+    sessions,
+    blocked: [],
+  });
+  const options = { now: () => NOW };
+  const active = (sessionRef: string, lastActivityAt: string): DiscoveredSession => ({
+    source: 'codex',
+    sessionRef,
+    lastActivityAt: new Date(lastActivityAt),
+    startedAt: new Date('2026-08-20T08:00:00.000Z'),
+  });
+
+  it('returns the single most recently active session, not the whole window', () => {
+    const sessions = [
+      active('session-a', '2026-08-20T09:00:00.000Z'),
+      active('session-b', '2026-08-20T16:50:00.000Z'),
+      active('session-c', '2026-08-20T13:00:00.000Z'),
+    ];
+
+    expect(selectSessions(discovery(sessions), null, '/repo', null, options)).toEqual([
+      sessions[1],
+    ]);
+  });
+
+  it('sorts a session whose harness reported no times last, without dropping it', () => {
+    const undated: DiscoveredSession = {
+      ...active('session-undated', '2026-08-20T09:00:00.000Z'),
+      lastActivityAt: null,
+      startedAt: null,
+    };
+    const dated = active('session-dated', '2026-08-20T09:00:00.000Z');
+
+    expect(mostRecentlyActive([undated, dated])).toEqual(dated);
+    expect(selectSessions(discovery([undated]), null, '/repo', null, options)).toEqual([undated]);
+  });
+
+  it('falls back to the start time when only that is recorded', () => {
+    const started: DiscoveredSession = {
+      ...active('session-started', '2026-08-20T09:00:00.000Z'),
+      lastActivityAt: null,
+      startedAt: new Date('2026-08-20T16:55:00.000Z'),
+    };
+    const other = active('session-other', '2026-08-20T10:00:00.000Z');
+
+    expect(mostRecentlyActive([other, started])).toEqual(started);
+  });
+
+  it('breaks a tie by ref rather than by whichever harness was scanned first', () => {
+    const first = active('session-b', '2026-08-20T16:00:00.000Z');
+    const second = active('session-a', '2026-08-20T16:00:00.000Z');
+
+    expect(mostRecentlyActive([first, second])).toEqual(second);
+    expect(mostRecentlyActive([second, first])).toEqual(second);
+  });
+
+  it('has nothing to choose from when handed nothing', () => {
+    expect(mostRecentlyActive([])).toBeUndefined();
+  });
+
+  it('still sweeps every eligible session under --all-sessions', () => {
+    const sessions = [
+      active('session-a', '2026-08-20T09:00:00.000Z'),
+      active('session-b', '2026-08-20T16:50:00.000Z'),
+    ];
+
+    expect(
+      selectSessions(discovery(sessions), null, '/repo', null, { ...options, sweepAll: true }),
+    ).toEqual(sessions);
   });
 });
 
