@@ -30,7 +30,7 @@ Supported client ids include `codex`, `claude-code`, `claude-desktop`, `cursor`,
 `vscode`, and `windsurf`. Complete copyable agent prompts and manual fallbacks live in the
 [client setup docs](https://mneia.dev/docs/integrations#mcp-clients).
 
-Confirm the client picked it up - in Claude Code, `/mcp` should list `mneia` as connected with eleven
+Confirm the client picked it up - in Claude Code, `/mcp` should list `mneia` as connected with twelve
 tools. Then ask the agent to rehydrate; on a fresh project it will say there is nothing stored yet
 rather than erroring, which is how you tell "connected and empty" from "not connected".
 
@@ -52,6 +52,7 @@ The server speaks MCP over stdio. Run it from a client, not by hand - `mneia-mcp
 | `mneia_team` | Resolving the names and ids a handoff can be addressed to. |
 | `mneia_sessions` | Seeing which client sessions have worked in the bound repository. |
 | `mneia_review_queue` | Surfacing items that still require a human decision. |
+| `mneia_review_confirm` | Relaying one decision a person gave on a queued item, after they were asked. |
 
 Two rules are enforced by the server, not left to the agent:
 

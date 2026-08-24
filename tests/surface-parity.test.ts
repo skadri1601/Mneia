@@ -433,8 +433,8 @@ const COMMAND_PARITY: Readonly<Record<ShippedCommandName, CommandParity>> = {
   },
   review: {
     kind: 'paired',
-    tools: ['mneia_review_queue'],
-    sharedCore: ['sanitizeActorName'],
+    tools: ['mneia_review_queue', 'mneia_review_confirm'],
+    sharedCore: ['sanitizeActorName', 'reviewPendingItems'],
   },
   verify: {
     kind: 'command-only',
@@ -447,6 +447,11 @@ const TOOL_PARITY: Readonly<Record<ShippedToolName, ToolParity>> = {
     kind: 'paired',
     commands: ['review'],
     sharedCore: ['sanitizeActorName'],
+  },
+  mneia_review_confirm: {
+    kind: 'paired',
+    commands: ['review'],
+    sharedCore: ['reviewPendingItems'],
   },
   mneia_rehydrate: {
     kind: 'paired',
@@ -499,19 +504,26 @@ const TOOL_PARITY: Readonly<Record<ShippedToolName, ToolParity>> = {
 
 const MIN_ONE_SIDED_REASON_LENGTH = 40;
 
+// ReviewCapableStore is read alongside ScopedStore because it is the same store seen through a
+// wider interface: reviewPendingItems is the entry point both review surfaces funnel into, and a
+// pair naming it must resolve rather than looking like an invented counterpart.
+const STORE_INTERFACES: readonly string[] = ['ScopedStore', 'ReviewCapableStore'];
+
 const scopedStoreMethodNames = (): readonly string[] => {
   const source = readFileSync(
     new URL('../packages/core/src/store/adapter/types.ts', import.meta.url),
     'utf8',
   );
-  const block = /export interface ScopedStore\s*\{([\s\S]*?)\n\}/.exec(source);
-  if (block === null) {
-    throw new Error(
-      'expected ScopedStore to be declared in packages/core/src/store/adapter/types.ts',
-    );
-  }
-  const body = block[1] ?? '';
-  return [...body.matchAll(/^\s{2}(\w+)\??\s*[(<]/gm)].map((match) => match[1] ?? '');
+  return STORE_INTERFACES.flatMap((name) => {
+    const block = new RegExp(`export interface ${name}[^{]*\\{([\\s\\S]*?)\\n\\}`).exec(source);
+    if (block === null) {
+      throw new Error(
+        `expected ${name} to be declared in packages/core/src/store/adapter/types.ts`,
+      );
+    }
+    const body = block[1] ?? '';
+    return [...body.matchAll(/^\s{2}(\w+)\??\s*[(<]/gm)].map((match) => match[1] ?? '');
+  });
 };
 
 const STORE_METHODS: ReadonlySet<string> = new Set(scopedStoreMethodNames());

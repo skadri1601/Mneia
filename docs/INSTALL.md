@@ -67,12 +67,13 @@ The public [client setup page](https://mneia.dev/docs/integrations#mcp-clients) 
 Codex, Claude Code, Claude Desktop, Cursor, Gemini CLI, VS Code, Windsurf, and other MCP clients.
 Each tab copies one complete prompt for that client only, plus its native manual fallback.
 
-Restart the client. It should list eleven tools: `mneia_rehydrate`, `mneia_assert`, `mneia_retire`,
+Restart the client. It should list twelve tools: `mneia_rehydrate`, `mneia_assert`, `mneia_retire`,
 `mneia_checkpoint`, `mneia_search`, `mneia_handoff_create`, `mneia_handoff_receive`,
-`mneia_handoff_inbox`, `mneia_team`, `mneia_sessions`, `mneia_review_queue`.
+`mneia_handoff_inbox`, `mneia_team`, `mneia_sessions`, `mneia_review_queue`,
+`mneia_review_confirm`.
 
-Fewer than eleven, or a server that will not start at all, means the build is older than the tool
-list - `@mneia/mcp-server@0.7.0` shipped unable to start. Pin a version at or above `0.12.0`.
+Fewer than twelve, or a server that will not start at all, means the build is older than the tool
+list - `@mneia/mcp-server@0.7.0` shipped unable to start. Pin a version at or above `0.18.0`.
 
 That count is checked, not maintained by hand: `pnpm check:docs` fails when this list and
 `SHIPPED_TOOL_NAMES` disagree.

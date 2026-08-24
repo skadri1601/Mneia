@@ -105,7 +105,7 @@ export const HELP_PATHS = [
   {
     index: '02',
     title: 'Connecting an agent',
-    body: 'The eleven tools the MCP server exposes, what each is for, and how to configure Claude Code, Cursor, or Codex to see them.',
+    body: 'The twelve tools the MCP server exposes, what each is for, and how to configure Claude Code, Cursor, or Codex to see them.',
     href: '/docs/mcp',
     linkLabel: 'MCP server reference',
   },

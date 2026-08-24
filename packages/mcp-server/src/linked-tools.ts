@@ -5,6 +5,7 @@ import { handoffCreateTool, handoffInboxTool, handoffReceiveTool } from './tools
 import { rehydrateTool } from './tools/rehydrate.js';
 import { retireTool } from './tools/retire.js';
 import { reviewQueueTool } from './tools/review.js';
+import { reviewConfirmTool } from './tools/review-confirm.js';
 import { searchTool } from './tools/search.js';
 import { sessionsTool } from './tools/sessions.js';
 import { teamTool } from './tools/team.js';
@@ -21,4 +22,5 @@ export const LINKED_TOOLS: readonly ErasedToolDefinition[] = [
   teamTool,
   sessionsTool,
   reviewQueueTool,
+  reviewConfirmTool,
 ];
