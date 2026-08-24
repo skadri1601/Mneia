@@ -1,4 +1,5 @@
 import type { Intro } from '../pages';
+import { API } from './api';
 import { CHECKPOINT } from './checkpoint';
 import { CLI } from './cli';
 import { CONCEPTS } from './concepts';
@@ -8,10 +9,13 @@ import { GLOSSARY_PAGE } from './glossary';
 import { HANDOFF_DOC } from './handoff';
 import { INTEGRATIONS } from './integrations';
 import { MCP } from './mcp';
+import { METERING } from './metering';
+import { OAUTH } from './oauth';
 import { QUICKSTART } from './quickstart';
 import { REHYDRATE } from './rehydrate';
 import { SCOPE } from './scope';
 import { SECURITY } from './security';
+import { WEB_APP } from './web-app';
 import type { DocPage, DocSlug, DocsNavGroup } from './types';
 
 export { GLOSSARY, glossaryTerm } from './glossary';
@@ -46,13 +50,19 @@ export const DOCS_NAV: readonly DocsNavGroup[] = [
   },
   {
     heading: 'Organisation',
-    items: [{ href: '/docs/scope', label: 'Workspaces, teams, and scope' }],
+    items: [
+      { href: '/docs/scope', label: 'Workspaces, teams, and scope' },
+      { href: '/docs/web-app', label: 'The web app' },
+      { href: '/docs/metering', label: 'Metering and allowances' },
+    ],
   },
   {
     heading: 'Reference',
     items: [
       { href: '/docs/cli', label: 'CLI' },
       { href: '/docs/mcp', label: 'MCP server' },
+      { href: '/docs/api', label: 'HTTP API' },
+      { href: '/docs/oauth', label: 'OAuth for remote MCP' },
       { href: '/docs/data-model', label: 'Data model' },
       { href: '/docs/integrations', label: 'Integrations' },
     ],
@@ -135,8 +145,12 @@ export const DOC_PAGES: readonly DocPage[] = [
   HANDOFF_DOC,
   CONFLICTS,
   SCOPE,
+  WEB_APP,
+  METERING,
   CLI,
   MCP,
+  API,
+  OAUTH,
   DATA_MODEL,
   INTEGRATIONS,
   SECURITY,

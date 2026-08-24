@@ -5,7 +5,7 @@ export const INTEGRATIONS: DocPage = {
   name: 'Integrations',
   title: 'Integrations',
   description:
-    'Where Mneia plugs in: MCP clients like Claude Code, Cursor, and Codex; file interop with AGENTS.md, CLAUDE.md, and .cursor/rules; the web app; CI runners; and what is deliberately not built.',
+    'Where Mneia plugs in: MCP clients like Claude Code, Cursor, and Codex; the six transcript sources a checkpoint can read, including Claude Desktop and Warp; file interop with AGENTS.md, CLAUDE.md, and .cursor/rules; the web app; CI runners; and what is deliberately not built.',
   eyebrow: 'Reference',
   heading: 'Beside your tools, never above them.',
   lead: 'Mneia is not an agent, a runtime, or a framework. It is a context layer that every surface reaches through the same verbs, which is what lets a handoff survive crossing from one tool to another.',
@@ -50,6 +50,63 @@ export const INTEGRATIONS: DocPage = {
       ],
     },
     {
+      id: 'checkpoint-sources',
+      heading: 'Checkpoint sources',
+      blocks: [
+        {
+          kind: 'text',
+          paragraphs: [
+            'Connecting the MCP server is how an agent **calls** Mneia. Reading a transcript is how `mneia checkpoint` finds out what a session actually did, and the two are separate: a harness whose transcript Mneia can read does not have to be one Mneia is connected to.',
+            'The CLI discovers sessions on the machine, works out which of them belong to this directory, and checkpoints from them. Six sources are read today.',
+          ],
+        },
+        {
+          kind: 'table',
+          head: ['Source', 'Read from', 'Notes'],
+          rows: [
+            [
+              '`claude-code`',
+              'The JSONL transcripts under the projects directory',
+              'The reference implementation. Carries a stable session reference',
+            ],
+            [
+              '`claude-desktop`',
+              'The local agent-mode session directories under the Claude application data folder',
+              'Desktop keeps its agent sessions per working directory rather than in one place, so the reader walks for them and reads each with the same parser Claude Code uses. Same transcript format, different location',
+            ],
+            [
+              '`codex`',
+              'The Codex session files',
+              'Recorded with the client name and version the session declared',
+            ],
+            ['`cursor`', 'Cursor’s local store', ''],
+            ['`gemini`', 'The Gemini CLI session files', ''],
+            [
+              '`warp`',
+              'The Warp SQLite database, opened **read-only**',
+              'A terminal rather than an agent harness, so its shape is different: conversations rather than transcripts, and the working directory comes from the queries recorded against a conversation. When a conversation began is derived from its earliest query, because the table only records when it was last touched - and a conversation started months ago but touched today would otherwise look new',
+            ],
+            [
+              '`file`',
+              'A transcript you point at directly',
+              'The escape hatch for a harness with no reader',
+            ],
+          ],
+        },
+        {
+          kind: 'text',
+          paragraphs: [
+            'A source that is not installed is not an error. Discovery reports it as unavailable, with the reason, and carries on with the ones that are - so a machine with two harnesses does not fail because it does not have the other four.',
+            'With no flags, `mneia checkpoint` reads **the single most recently active** session and says how many others it found and did not read. `--all-sessions` sweeps them; `--session <ref>` names one, with `--source <harness>` where two harnesses use the same reference. Each session carries its own watermark, so one you skip today resumes where it was when you do read it.',
+          ],
+        },
+        {
+          kind: 'note',
+          text: 'Discovery reads transcripts that already exist on your machine, at the moment you run a checkpoint. It is not a watcher, there is no background process, and nothing is uploaded until you ask for a checkpoint. A session that began before this repository was bound to a project is out of scope and is not read.',
+        },
+      ],
+    },
+    {
       id: 'file-interop',
       heading: 'File interop',
       blocks: [
@@ -86,31 +143,49 @@ export const INTEGRATIONS: DocPage = {
           rows: [
             [
               '**Account plane**',
-              'Signing up, approving a device from `mneia login`, and managing workspaces, projects, teams, and members',
+              'Signing up, accepting an invitation, and approving a device from `mneia login`',
+            ],
+            [
+              '**Projects**',
+              'Creating, renaming, and archiving the bodies of work a workspace is tracking',
             ],
             [
               '**Decision browser**',
               'Reading the project record - what was decided, by whom, and what it replaced',
             ],
             [
-              '**Review queue**',
-              'Confirming the items a checkpoint held back, away from the terminal',
-            ],
-            [
               '**Timeline**',
               'The bi-temporal view: what the project believed on a given date, rather than only what it believes now',
             ],
             [
-              '**Conflict resolution**',
-              'Two contradicting items side by side with full provenance, and the resolution written with its reasoning',
+              '**Review queue**',
+              'Confirming the items a checkpoint held back, away from the terminal',
             ],
+            [
+              '**Handoffs**',
+              'The project inbox, and the artifact page whose link you paste to a colleague',
+            ],
+            [
+              '**Team**',
+              'Membership, invitations, roles, and the join link. This is where a workspace is actually administered',
+            ],
+            [
+              '**Tokens**',
+              'Every live token in the workspace, and the one control that revokes any of them',
+            ],
+            ['**Billing**', 'The plan, the seats, the prepaid balance, and the usage meter'],
           ],
         },
         {
           kind: 'text',
           paragraphs: [
+            '**/docs/web-app** covers each of those in full, including what the app deliberately does not do.',
             'The web app is deliberately thin. It is a view onto the same verbs rather than a second product - if a surface here needed a verb the CLI and the MCP server do not have, that would be the signal it had started becoming something else.',
           ],
+        },
+        {
+          kind: 'note',
+          text: 'Conflict **detection** runs and is recorded; conflict **resolution** does not yet have a surface in the app, and neither does the CLI. `/docs/conflicts` describes the rules it will follow, and says plainly what is not built.',
         },
       ],
     },
