@@ -1,0 +1,255 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import type { Slice } from '@mneia/core';
+import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
+import { HOOK_CLIENTS, HOOK_TIMEOUT_SECONDS, type HookClient } from '../hooks-config.js';
+import { httpBriefApi } from '../http-api.js';
+import type { BriefApi, ProjectConfigLoader } from './brief.js';
+import { DEFAULT_TOKEN_BUDGET } from './brief.js';
+
+const run = promisify(execFile);
+
+export type StdinReader = () => Promise<string>;
+
+export interface HookDeps {
+  readonly api: BriefApi;
+  readonly loadConfig: ProjectConfigLoader;
+  readonly readStdin: StdinReader;
+  readonly branchOf?: ((cwd: string) => Promise<string>) | undefined;
+}
+
+const USAGE = 'mneia hook session-start --client <claude-code|codex|cursor>';
+
+/**
+ * The payload a harness writes to the hook's stdin.
+ *
+ * Only the working directory is read, and the three clients disagree on where it lives:
+ * Claude Code and Codex send `cwd`, Cursor sends `workspace_roots`. Everything else in the
+ * payload - session ids, model names, prompt text - is deliberately ignored, because a
+ * hook that reads more than it needs breaks when a client adds a field.
+ */
+interface HookPayload {
+  readonly cwd?: unknown;
+  readonly workspace_roots?: unknown;
+}
+
+const asRecord = (value: unknown): Record<string, unknown> | null =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+
+function cwdFrom(payload: HookPayload | null, fallback: string): string {
+  const direct = payload?.cwd;
+  if (typeof direct === 'string' && direct.trim().length > 0) {
+    return direct;
+  }
+  const roots = payload?.workspace_roots;
+  if (Array.isArray(roots)) {
+    const first = roots.find((root) => typeof root === 'string' && root.trim().length > 0);
+    if (typeof first === 'string') {
+      return first;
+    }
+  }
+  return fallback;
+}
+
+function readClient(flags: CommandInvocation['flags']): HookClient {
+  const raw = flags.client;
+  if (typeof raw !== 'string' || raw.trim().length === 0) {
+    throw new CliError(
+      'usage',
+      '--client names which harness is calling, and decides the envelope written back to it',
+      `usage: ${USAGE}`,
+    );
+  }
+  const client = raw.trim();
+  if (!HOOK_CLIENTS.includes(client as HookClient)) {
+    throw new CliError(
+      'usage',
+      `expected --client to be one of ${HOOK_CLIENTS.join(', ')}; received ${client}`,
+      `usage: ${USAGE}`,
+    );
+  }
+  return client as HookClient;
+}
+
+async function currentBranch(cwd: string): Promise<string> {
+  try {
+    const { stdout } = await run('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
+    const branch = stdout.trim();
+    return branch === 'HEAD' ? '' : branch;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * What the slice is asked to be relevant to, when nobody has stated a task.
+ *
+ * A session-start hook fires before the person has said what they are doing, so the branch
+ * name is the only signal available - and on a repo following a ticket-per-branch
+ * convention it is a good one. Ranking is semantic, so a vague task returns a general
+ * slice rather than a wrong one.
+ */
+export function taskFor(branch: string): string {
+  return branch.length > 0
+    ? `continuing work on branch ${branch}`
+    : 'starting a session in this repository';
+}
+
+/**
+ * Wraps the slice in the envelope the calling harness understands.
+ *
+ * Claude Code and Codex share a shape verbatim; Cursor takes a flat, snake_cased field.
+ * Anything not matching a client's schema is dropped silently by that client, which is why
+ * this is keyed on an explicit flag rather than sniffed from the payload.
+ */
+export function envelopeFor(client: HookClient, context: string): string {
+  if (client === 'cursor') {
+    return JSON.stringify({ additional_context: context });
+  }
+  return JSON.stringify({
+    hookSpecificOutput: { hookEventName: 'SessionStart', additionalContext: context },
+  });
+}
+
+export function renderSlice(slice: Slice, task: string): string {
+  const body = slice.renderedMarkdown.trim();
+  if (body.length === 0 || slice.items.length === 0) {
+    return [
+      '## Project memory — empty',
+      '',
+      'Nothing is recorded for this project yet. Record decisions and constraints as they',
+      'are made, with mneia_assert or `mneia checkpoint`, so the next session inherits them.',
+    ].join('\n');
+  }
+
+  return [
+    '## Project memory (loaded at session start)',
+    '',
+    `Task "${task}" · ${slice.items.length} items · ${slice.tokensUsed}/${slice.tokenBudget} tokens.`,
+    '',
+    body,
+    '',
+    '---',
+    '',
+    'This is what the project already decided. Rehydrate again when the task changes, and',
+    'record new decisions as they are made rather than at the end.',
+    '',
+    `Slice id: ${slice.id}`,
+  ].join('\n');
+}
+
+/**
+ * What is injected when the slice could not be fetched.
+ *
+ * Saying nothing would be worse than saying this. The agent cannot tell an empty project
+ * from an unreachable one, so a silent failure reads as "there are no constraints" and the
+ * session proceeds confidently against rules it was never shown.
+ */
+export function unavailableNote(reason: string): string {
+  return [
+    '## Project memory — unavailable',
+    '',
+    `Session-start rehydration did not run: ${reason}`,
+    '',
+    'Work normally, but do not assume the constraints and decisions already recorded are in',
+    'front of you. `mneia brief "<task>"` retries on demand.',
+  ].join('\n');
+}
+
+const describe = (error: unknown): string => {
+  if (error instanceof CliError) return error.message;
+  return error instanceof Error ? error.message : String(error);
+};
+
+async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `the slice did not arrive within ${HOOK_TIMEOUT_SECONDS}s, which is the budget a session start is allowed to spend waiting`,
+              ),
+            ),
+          ms,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+export function createHookCommand(deps: HookDeps): CommandDefinition {
+  const branchOf = deps.branchOf ?? currentBranch;
+
+  return {
+    name: 'hook',
+    summary: 'Run as a harness lifecycle hook. Invoked by the agent, not by hand.',
+    usage: USAGE,
+    async run(invocation: CommandInvocation): Promise<number> {
+      const [event, ...extra] = invocation.args;
+      if (event !== 'session-start' || extra.length > 0) {
+        throw new CliError('usage', 'mneia hook expects exactly one event: session-start', USAGE);
+      }
+      const client = readClient(invocation.flags);
+
+      // Everything past this point exits 0 and writes an envelope, whatever happens. A hook
+      // that fails loudly blocks the session it was meant to improve, and a session-start
+      // hook that can crash is one npm outage away from making the product unusable.
+      let context: string;
+      try {
+        const raw = await deps.readStdin().catch(() => '');
+        const payload = asRecord(safeParse(raw)) as HookPayload | null;
+        const cwd = cwdFrom(payload, invocation.io.cwd);
+        const config = await deps.loadConfig(cwd, invocation.io.env);
+        const task = taskFor(await branchOf(cwd));
+        const slice = await withDeadline(
+          deps.api.rehydrate({ config, task, tokenBudget: DEFAULT_TOKEN_BUDGET }),
+          HOOK_TIMEOUT_SECONDS * 1000,
+        );
+        context = renderSlice(slice, task);
+      } catch (error) {
+        context = unavailableNote(describe(error));
+      }
+
+      invocation.io.stdout(envelopeFor(client, context));
+      return EXIT_OK;
+    },
+  };
+}
+
+function safeParse(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+const defaultReadStdin: StdinReader = async () => {
+  if (process.stdin.isTTY === true) {
+    return '';
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString('utf8');
+};
+
+const defaultLoadConfig: ProjectConfigLoader = async (cwd, env) => {
+  const { requireProjectConfig } = await import('../config.js');
+  return requireProjectConfig(cwd, env);
+};
+
+export const hookCommand: CommandDefinition = createHookCommand({
+  api: httpBriefApi,
+  loadConfig: defaultLoadConfig,
+  readStdin: defaultReadStdin,
+});

@@ -181,6 +181,28 @@ describe('mneia init', () => {
     expect(agents).toContain('mneia brief');
   });
 
+  it('installs the session-start hook for all three harnesses, so nobody has to rehydrate by hand', async () => {
+    await runInit(fakeApi(), ['--project', 'checkout']);
+
+    for (const [file, event, marker] of [
+      ['.claude/settings.json', 'SessionStart', 'claude-code'],
+      ['.codex/hooks.json', 'SessionStart', 'codex'],
+      ['.cursor/hooks.json', 'sessionStart', 'cursor'],
+    ] as const) {
+      const config = JSON.parse(await readFile(join(root, file), 'utf8'));
+      expect(JSON.stringify(config.hooks[event])).toContain(
+        `mneia hook session-start --client ${marker}`,
+      );
+    }
+  });
+
+  it('leaves the hooks alone when --no-hooks is passed', async () => {
+    const result = await runInit(fakeApi(), ['--project', 'checkout', '--no-hooks']);
+
+    expect(result.stdout).toContain('--no-hooks was passed');
+    await expect(readFile(join(root, '.cursor/hooks.json'), 'utf8')).rejects.toThrow();
+  });
+
   it('appends to an existing AGENTS.md without touching a byte of it', async () => {
     const original = '# Our repo\n\nHand written guidance nobody wants rewritten.\n';
     await write('AGENTS.md', original);
@@ -208,7 +230,7 @@ describe('mneia init', () => {
     ]);
     expect(request?.token).toBe('device-flow-token');
     expect(result.stdout).toContain(
-      'imported   3 constraints from AGENTS.md, CLAUDE.md, .cursor/rules/style.mdc',
+      '3 constraints from AGENTS.md, CLAUDE.md, .cursor/rules/style.mdc',
     );
   });
 
