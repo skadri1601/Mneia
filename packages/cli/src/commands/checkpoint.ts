@@ -80,6 +80,8 @@ export interface DiscoverRequest {
 export interface DiscoveredSession {
   readonly source: TrajectorySource;
   readonly sessionRef: string;
+  /** The session that spawned this one, by its ref. Null for a root agent session. */
+  readonly parentSessionRef: string | null;
   readonly lastActivityAt: Date | null;
   readonly startedAt: Date | null;
 }
@@ -142,6 +144,20 @@ const USAGE =
   'mneia checkpoint [-m "<summary>"] [--trigger <trigger>] [--session <ref> [--source <harness>] | --all-sessions] [--json]';
 
 export const MAX_CHECKPOINT_SESSIONS = 20;
+
+/**
+ * Sub-agent sessions get their own budget rather than competing for the one above.
+ *
+ * They share their parent's working directory, so they arrive through exactly the same
+ * discovery, and a single busy root session can spawn dozens. Left in one pool they crowd
+ * the roots out of the cap by recency — a sweep would spend its whole allowance on the
+ * sub-agents of one session and never reach the four other sessions worked that day, which
+ * is the reverse of what the cap is for.
+ *
+ * Larger than the root cap because sub-agents are numerous by nature and individually much
+ * shorter: the cost this bounds is transcripts uploaded, not sessions.
+ */
+export const MAX_CHECKPOINT_CHILD_SESSIONS = 40;
 
 const REVIEW_CHOICES: readonly PromptChoice[] = [
   { key: 'y', label: 'confirm' },
@@ -333,7 +349,25 @@ export function selectSessions(
     );
   }
 
-  return eligible.slice(0, MAX_CHECKPOINT_SESSIONS);
+  return capBySessionKind(eligible);
+}
+
+/**
+ * Take the roots first, then the sub-agents, each against its own cap.
+ *
+ * Root-first is not only about the caps. A sub-agent's session row is linked to its parent's
+ * by ref, and the resolution happens when the row is opened — so covering the parent first in
+ * the same sweep is what gives the child a parent to point at.
+ */
+export function capBySessionKind(
+  sessions: readonly DiscoveredSession[],
+): readonly DiscoveredSession[] {
+  const roots = sessions.filter((session) => session.parentSessionRef === null);
+  const children = sessions.filter((session) => session.parentSessionRef !== null);
+  return [
+    ...roots.slice(0, MAX_CHECKPOINT_SESSIONS),
+    ...children.slice(0, MAX_CHECKPOINT_CHILD_SESSIONS),
+  ];
 }
 
 export function needsHuman(candidate: CheckpointCandidate): boolean {
@@ -871,6 +905,9 @@ async function runSession(
   };
 }
 
+const parentageOf = (session: DiscoveredSession): string =>
+  session.parentSessionRef === null ? '' : ` · sub-agent of ${session.parentSessionRef}`;
+
 const lastActivityOf = (session: DiscoveredSession): string =>
   session.lastActivityAt === null
     ? 'last activity unknown'
@@ -905,14 +942,15 @@ function renderAllSessions(
   const header = [
     `${config.workspace}/${config.project} — checkpointed ${countOf(runs.length, 'agent session')} discovered for this directory`,
     discovery.sessions.length > runs.length
-      ? `${discovery.sessions.length} discovered · capped at ${MAX_CHECKPOINT_SESSIONS} per run · times in UTC`
+      ? `${discovery.sessions.length} discovered · capped at ${MAX_CHECKPOINT_SESSIONS} root and ${MAX_CHECKPOINT_CHILD_SESSIONS} sub-agent sessions per run · times in UTC`
       : 'times in UTC',
   ].join('\n');
 
   const blocks = runs.map((run) =>
-    [`  ${sessionLabel(run.session)} · ${lastActivityOf(run.session)}`, sessionRunLine(run)].join(
-      '\n',
-    ),
+    [
+      `  ${sessionLabel(run.session)}${parentageOf(run.session)} · ${lastActivityOf(run.session)}`,
+      sessionRunLine(run),
+    ].join('\n'),
   );
 
   const tally = [
@@ -941,10 +979,12 @@ function renderAllSessionsJson(
     discovered: discovery.sessions.length,
     processed: runs.length,
     cappedAt: MAX_CHECKPOINT_SESSIONS,
+    childrenCappedAt: MAX_CHECKPOINT_CHILD_SESSIONS,
     blocked: discovery.blocked,
     sessions: runs.map((run) => ({
       source: run.session.source,
       sessionRef: run.session.sessionRef,
+      parentSessionRef: run.session.parentSessionRef,
       lastActivityAt: run.session.lastActivityAt?.toISOString() ?? null,
       checkpointId: run.outcome?.checkpointId ?? null,
       automaticCount: run.automatic.length,
@@ -1082,6 +1122,11 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
           ? ({
               source,
               sessionRef,
+              // Unknown on this path, and the same reasoning as the timestamps below applies:
+              // discovery is what knows a session's parentage, and the fast path skips it.
+              // Root is the safe assumption — it makes the session count against the root cap
+              // rather than escape both caps, and this path selects exactly one session anyway.
+              parentSessionRef: null,
               lastActivityAt: null,
               startedAt: null,
             } satisfies DiscoveredSession)

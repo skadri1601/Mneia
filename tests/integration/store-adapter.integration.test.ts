@@ -956,6 +956,65 @@ describe.skipIf(connectionString === undefined)('postgres store adapter', () => 
     });
   });
 
+  it('links a sub-agent session to the parent named by its client ref', async () => {
+    await withAdapter(async (adapter) => {
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const parent = await store.createSession(PROJECT_A, 'mcp', {
+          clientName: 'claude-code',
+          clientSessionRef: 'root-082a3f76',
+        });
+        expect(parent.parentSessionId).toBeNull();
+
+        const child = await store.createSession(PROJECT_A, 'mcp', {
+          clientName: 'claude-code',
+          clientSessionRef: 'agent-a0ff2275',
+          parentClientSessionRef: 'root-082a3f76',
+        });
+
+        expect(child.parentSessionId).toBe(parent.id);
+        expect(child.id).not.toBe(parent.id);
+
+        const reread = await store.listProjectSessions({ projectId: PROJECT_A });
+        const stored = reread.find((entry) => entry.session.id === child.id);
+        expect(stored?.session.parentSessionId).toBe(parent.id);
+      });
+    });
+  });
+
+  // Parentage is provenance. Refusing the session because the parent has not been recorded
+  // yet would lose the whole session to save the link, and sweeps do not guarantee order.
+  it('opens a root session when the named parent ref matches nothing', async () => {
+    await withAdapter(async (adapter) => {
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const orphan = await store.createSession(PROJECT_A, 'mcp', {
+          clientSessionRef: 'agent-orphaned',
+          parentClientSessionRef: 'a-root-nobody-recorded',
+        });
+        expect(orphan.parentSessionId).toBeNull();
+      });
+    });
+  });
+
+  // The FK is composite on (workspace_id, parent_session_id) precisely so this cannot happen.
+  // A single-column reference would let workspace B name a parent in workspace A, which RLS
+  // cannot see and therefore cannot stop.
+  it('never resolves a parent ref against another workspace', async () => {
+    await withAdapter(async (adapter) => {
+      const foreign = await adapter.withScope(SCOPE_B, (store) =>
+        store.createSession(PROJECT_B, 'mcp', { clientSessionRef: 'shared-ref' }),
+      );
+
+      await adapter.withScope(SCOPE_A, async (store) => {
+        const child = await store.createSession(PROJECT_A, 'mcp', {
+          clientSessionRef: 'agent-in-workspace-a',
+          parentClientSessionRef: 'shared-ref',
+        });
+        expect(child.parentSessionId).toBeNull();
+        expect(child.parentSessionId).not.toBe(foreign.id);
+      });
+    });
+  });
+
   it('does not expose session metadata from another project and actor as item provenance', async () => {
     const foreignProject = 'aaaaaaa1-0000-4000-8000-000000000009';
     const foreignSession = 'aaaaaaa1-0000-4000-8000-000000000010';

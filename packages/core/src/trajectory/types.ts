@@ -27,14 +27,26 @@ export interface TrajectoryTurn {
   readonly at: Date | null;
 }
 
-export interface Trajectory {
+/**
+ * The session that spawned this one, named as that session's own `sessionRef`.
+ *
+ * Absent or null means a root session, which is what every harness that does not fan work
+ * out to sub-agents reports. It is a ref rather than an id because a transcript on disk
+ * knows nothing about the `session` rows Mneia has written; resolving it to one is the
+ * store's job, at the point a session row is opened.
+ */
+export interface TrajectoryParentage {
+  readonly parentSessionRef?: string | null | undefined;
+}
+
+export interface Trajectory extends TrajectoryParentage {
   readonly source: TrajectorySource;
   readonly sessionRef: string;
   readonly cwd: string | null;
   readonly turns: readonly TrajectoryTurn[];
 }
 
-export interface TrajectorySummary {
+export interface TrajectorySummary extends TrajectoryParentage {
   readonly source: TrajectorySource;
   readonly sessionRef: string;
   readonly cwd: string | null;

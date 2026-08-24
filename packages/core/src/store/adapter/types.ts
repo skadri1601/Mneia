@@ -124,6 +124,16 @@ export interface SessionClientProvenance {
   readonly clientSessionRef?: string | null;
   readonly clientSessionName?: string | null;
   readonly clientSessionUrl?: string | null;
+  /** The `session` row that spawned this one, when the caller already knows its id. */
+  readonly parentSessionId?: Uuid | null;
+  /**
+   * The parent named the way the harness knows it — its `client_session_ref`. A sub-agent
+   * transcript records its parent as a transcript id, not as a Mneia session id, so this is
+   * what a client can actually supply; the store resolves it. An unresolvable ref opens a
+   * root session rather than failing: parentage is provenance, and losing it is a smaller
+   * harm than refusing to record the session at all.
+   */
+  readonly parentClientSessionRef?: string | null;
 }
 
 export interface ConfirmContextItemInput {

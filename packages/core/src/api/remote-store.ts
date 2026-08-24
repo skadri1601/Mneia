@@ -212,6 +212,9 @@ export function createRemoteStore(options: RemoteStoreOptions): RemoteStore {
         ...(provenance.clientSessionUrl === undefined
           ? {}
           : { clientSessionUrl: provenance.clientSessionUrl }),
+        ...(provenance.parentClientSessionRef === undefined
+          ? {}
+          : { parentClientSessionRef: provenance.parentClientSessionRef }),
       });
       return decodeSession(session);
     },

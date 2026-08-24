@@ -678,6 +678,7 @@ export const httpCheckpointApi: CheckpointApi = {
         .map((entry) => ({
           source: entry.source,
           sessionRef: entry.sessionRef,
+          parentSessionRef: entry.parentSessionRef ?? null,
           lastActivityAt: entry.lastActivityAt,
           startedAt: entry.startedAt,
         })),

@@ -174,12 +174,12 @@ const DEFAULT_ACCESS_SCOPE = 'project';
 const ACTOR_COLUMNS = 'id, workspace_id, kind, display_name, external_ref, created_at';
 const PROJECT_COLUMNS = 'id, workspace_id, team_id, slug, repo_url, created_at';
 const SESSION_COLUMNS =
-  'id, workspace_id, project_id, actor_id, tool, client_name, client_version, client_session_ref, client_session_name, client_session_url, started_at, ended_at';
+  'id, workspace_id, project_id, actor_id, parent_session_id, tool, client_name, client_version, client_session_ref, client_session_name, client_session_url, started_at, ended_at';
 const CHECKPOINT_COLUMNS =
   'id, workspace_id, project_id, session_id, actor_id, "trigger", created_at, summary';
 const CHECKPOINT_ITEM_COLUMNS = 'workspace_id, checkpoint_id, item_id, action';
 const PROJECT_SESSION_COLUMNS = `session.id, session.workspace_id, session.project_id,
-       session.actor_id, session.tool, session.client_name, session.client_version,
+       session.actor_id, session.parent_session_id, session.tool, session.client_name, session.client_version,
        session.client_session_ref, session.client_session_name, session.client_session_url,
        session.started_at, session.ended_at,
        session_actor.id AS session_actor_id,
@@ -619,17 +619,19 @@ class PostgresScopedStore implements ReviewCapableStore {
       provenance.clientSessionUrl == null
         ? null
         : assertNonEmpty(provenance.clientSessionUrl, 'provenance.clientSessionUrl');
+    const parentSessionId = await this.resolveParentSession(projectId, provenance);
     const rows = await this.rows(
       `INSERT INTO session (
-         id, workspace_id, project_id, actor_id, tool,
+         id, workspace_id, project_id, actor_id, parent_session_id, tool,
          client_name, client_version, client_session_ref, client_session_name, client_session_url,
          started_at)
-       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+       VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
        RETURNING ${SESSION_COLUMNS}`,
       [
         this.scope.workspaceId,
         projectId,
         this.scope.actorId,
+        parentSessionId,
         tool,
         clientName,
         clientVersion,
@@ -639,6 +641,46 @@ class PostgresScopedStore implements ReviewCapableStore {
       ],
     );
     return toSession(expectOne(rows, `opening a session on project ${projectId}`));
+  }
+
+  /**
+   * Which `session` row, if any, spawned the one about to be opened.
+   *
+   * An explicit id wins and is taken as given — the caller read it out of this store. A
+   * client session ref has to be looked up, because a sub-agent transcript names its parent
+   * as a transcript id and knows nothing about our rows; the newest matching session in the
+   * same project wins, since a ref is unique per harness run but a long-lived repository
+   * accumulates many.
+   *
+   * A ref that resolves to nothing yields null rather than an error. The parent is usually
+   * written by the same sweep, and ordering within it is not guaranteed; refusing the child
+   * would lose the session entirely to save a provenance link. The query is workspace-scoped
+   * on top of RLS for the same reason every other read here is: defence in depth, not trust.
+   */
+  private async resolveParentSession(
+    projectId: Uuid,
+    provenance: SessionClientProvenance,
+  ): Promise<Uuid | null> {
+    if (provenance.parentSessionId != null) {
+      return assertUuid(provenance.parentSessionId, 'provenance.parentSessionId');
+    }
+    if (provenance.parentClientSessionRef == null) {
+      return null;
+    }
+    const parentRef = assertNonEmpty(
+      provenance.parentClientSessionRef,
+      'provenance.parentClientSessionRef',
+    );
+    const rows = await this.rows(
+      `SELECT id
+         FROM session
+        WHERE workspace_id = $1 AND project_id = $2 AND client_session_ref = $3
+        ORDER BY started_at DESC
+        LIMIT 1`,
+      [this.scope.workspaceId, projectId, parentRef],
+    );
+    const row = rows[0];
+    return row === undefined ? null : toUuid(row, 'id');
   }
 
   async endSession(id: Uuid): Promise<Session> {
