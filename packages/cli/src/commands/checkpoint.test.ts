@@ -12,6 +12,7 @@ import {
   type CommitRequest,
   createCheckpointCommand,
   type DiscoveredSession,
+  isRecentlyActive,
   selectSessions,
   startedBeforeBinding,
   emitReviewEvents,
@@ -146,6 +147,10 @@ function receiptFor(candidates: readonly CheckpointCandidate[]): CheckpointRecei
     })),
   };
 }
+
+// Every fixture session below is dated against this, so the 24-hour activity window that
+// bounds an unnamed sweep is deterministic rather than a function of when the suite runs.
+const TEST_NOW = new Date('2026-08-20T17:00:00.000Z');
 
 const NEWEST_SESSION: DiscoveredSession = {
   source: 'claude-code',
@@ -459,6 +464,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter,
+      now: () => TEST_NOW,
     });
 
     const code = await command.run({ args: [], flags: {}, json: false, io: sink.io });
@@ -483,6 +489,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter: new ScriptedPrompter([]),
+      now: () => TEST_NOW,
     });
 
     await command.run({ args: [], flags: {}, json: false, io: sink.io });
@@ -507,6 +514,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter: new ScriptedPrompter([]),
+      now: () => TEST_NOW,
     });
 
     await command.run({ args: [], flags: {}, json: true, io: sink.io });
@@ -525,6 +533,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter: new ScriptedPrompter([]),
+      now: () => TEST_NOW,
     });
 
     await command.run({ args: [], flags: {}, json: true, io: sink.io });
@@ -546,6 +555,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter: new ScriptedPrompter([]),
+      now: () => TEST_NOW,
     });
 
     await command.run({ args: [], flags: {}, json: false, io: sink.io });
@@ -565,6 +575,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter: new ScriptedPrompter([]),
+      now: () => TEST_NOW,
     });
 
     await command.run({ args: [], flags: {}, json: false, io: sink.io });
@@ -585,6 +596,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter,
+      now: () => TEST_NOW,
     });
 
     const code = await command.run({ args: [], flags: {}, json: false, io: sink.io });
@@ -609,6 +621,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter: new ScriptedPrompter([], [], false),
+      now: () => TEST_NOW,
     });
 
     await command.run({ args: [], flags: {}, json: false, io: sink.io });
@@ -628,6 +641,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter,
+      now: () => TEST_NOW,
     });
 
     const code = await command.run({ args: [], flags: {}, json: true, io: sink.io });
@@ -655,6 +669,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter: new ScriptedPrompter([], [], false),
+      now: () => TEST_NOW,
     });
 
     const code = await command.run({ args: [], flags: {}, json: true, io: sink.io });
@@ -723,6 +738,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter,
+      now: () => TEST_NOW,
     });
 
     await expect(
@@ -740,6 +756,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter: new ScriptedPrompter([]),
+      now: () => TEST_NOW,
     });
 
     const code = await command.run({ args: [], flags: {}, json: false, io: sink.io });
@@ -757,6 +774,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter: new ScriptedPrompter([]),
+      now: () => TEST_NOW,
     });
 
     const code = await command.run({ args: [], flags: {}, json: false, io: sink.io });
@@ -778,6 +796,7 @@ describe('mneia checkpoint', () => {
       api,
       loadConfig: () => CONFIG,
       prompter: new ScriptedPrompter([]),
+      now: () => TEST_NOW,
     });
 
     const code = await command.run({ args: [], flags: {}, json: false, io: sink.io });
@@ -790,12 +809,21 @@ describe('mneia checkpoint', () => {
 });
 
 describe('mneia checkpoint across sessions', () => {
+  // NEWEST_SESSION was touched 19 minutes before this, OLDER_SESSION 31 hours before it, so
+  // the default activity window separates the two without any test having to say so.
+  const NOW = TEST_NOW;
   const commandFor = (api: FakeApi, prompter = new ScriptedPrompter([])) =>
-    createCheckpointCommand({ api, loadConfig: () => CONFIG, prompter });
+    createCheckpointCommand({ api, loadConfig: () => CONFIG, prompter, now: () => TEST_NOW });
 
-  it('reads every discovered session by default, not just the newest', async () => {
+  it('reads every session active inside the window, not just the newest', async () => {
     const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
-    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const alsoActive: DiscoveredSession = {
+      ...OLDER_SESSION,
+      sessionRef: 'session-second',
+      lastActivityAt: new Date('2026-08-20T15:00:00.000Z'),
+      startedAt: new Date('2026-08-20T14:00:00.000Z'),
+    };
+    api.sessions = [NEWEST_SESSION, alsoActive];
     const sink = capture();
 
     const code = await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
@@ -803,8 +831,33 @@ describe('mneia checkpoint across sessions', () => {
     expect(code).toBe(0);
     expect(api.proposals.map((request) => request.sessionRef)).toEqual([
       'session-newest',
-      'session-older',
+      'session-second',
     ]);
+  });
+
+  // The defect this window exists for: discovery is a filesystem scan of every installed
+  // harness, so without it one checkpoint bought an extraction for a Cursor transcript
+  // nobody had opened in days.
+  it('leaves an idle session out of an unnamed sweep', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [NEWEST_SESSION, OLDER_SESSION];
+    const sink = capture();
+
+    const code = await commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io });
+
+    expect(code).toBe(0);
+    expect(api.proposals.map((request) => request.sessionRef)).toEqual(['session-newest']);
+  });
+
+  it('names the flag rather than sweeping when every session is idle', async () => {
+    const api = new FakeApi(proposalOf([candidate({ index: 0 })]));
+    api.sessions = [OLDER_SESSION];
+    const sink = capture();
+
+    await expect(
+      commandFor(api).run({ args: [], flags: {}, json: false, io: sink.io }),
+    ).rejects.toThrow(/have been active in the last 24 hours/);
+    expect(api.proposals).toHaveLength(0);
   });
 
   it('no longer points at a flag for behaviour it now has by default', async () => {
@@ -1083,10 +1136,13 @@ describe('sessions that predate the binding', () => {
     sessions,
     blocked: [],
   });
+  // These cases are about the binding gate alone, so they reach past the activity window
+  // deliberately — otherwise every fixture here would age out and the gate would go untested.
+  const options = { includeIdle: true };
 
   it('keeps a session that started after the repo was bound', () => {
     expect(startedBeforeBinding(NEWEST_SESSION, BOUND_AT)).toBe(false);
-    expect(selectSessions(discovery([NEWEST_SESSION]), null, '/repo', BOUND_AT)).toEqual([
+    expect(selectSessions(discovery([NEWEST_SESSION]), null, '/repo', BOUND_AT, options)).toEqual([
       NEWEST_SESSION,
     ]);
   });
@@ -1094,7 +1150,7 @@ describe('sessions that predate the binding', () => {
   it('drops a session that started before it, so no model call is bought for it', () => {
     expect(startedBeforeBinding(OLDER_SESSION, BOUND_AT)).toBe(true);
     expect(
-      selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', BOUND_AT),
+      selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', BOUND_AT, options),
     ).toEqual([NEWEST_SESSION]);
   });
 
@@ -1105,21 +1161,80 @@ describe('sessions that predate the binding', () => {
 
   it('sweeps everything when the binding predates boundAt being recorded', () => {
     expect(startedBeforeBinding(OLDER_SESSION, null)).toBe(false);
-    expect(selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', null)).toEqual(
-      [NEWEST_SESSION, OLDER_SESSION],
-    );
+    expect(
+      selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', null, options),
+    ).toEqual([NEWEST_SESSION, OLDER_SESSION]);
   });
 
   it('explains itself when every discovered session predates the binding', () => {
-    expect(() => selectSessions(discovery([OLDER_SESSION]), null, '/repo', BOUND_AT)).toThrow(
-      /started before this repo was bound to Mneia on 2026-08-20 12:00 UTC/,
-    );
+    expect(() =>
+      selectSessions(discovery([OLDER_SESSION]), null, '/repo', BOUND_AT, options),
+    ).toThrow(/started before this repo was bound to Mneia on 2026-08-20 12:00 UTC/);
   });
 
   it('refuses an explicitly named session from before the binding', () => {
     expect(() =>
-      selectSessions(discovery([OLDER_SESSION]), 'session-older', '/repo', BOUND_AT),
+      selectSessions(discovery([OLDER_SESSION]), 'session-older', '/repo', BOUND_AT, options),
     ).toThrow(/--session session-older names cursor session-older, which started before/);
+  });
+});
+
+describe('sessions nobody has touched lately', () => {
+  const NOW = new Date('2026-08-20T17:00:00.000Z');
+  const discovery = (sessions: readonly DiscoveredSession[]): SessionDiscovery => ({
+    sessions,
+    blocked: [],
+  });
+  const options = { now: () => NOW };
+
+  it('keeps a session touched inside the window', () => {
+    expect(isRecentlyActive(NEWEST_SESSION, NOW)).toBe(true);
+    expect(selectSessions(discovery([NEWEST_SESSION]), null, '/repo', null, options)).toEqual([
+      NEWEST_SESSION,
+    ]);
+  });
+
+  it('drops one touched before it, so no extraction is bought for a harness nobody is in', () => {
+    expect(isRecentlyActive(OLDER_SESSION, NOW)).toBe(false);
+    expect(
+      selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', null, options),
+    ).toEqual([NEWEST_SESSION]);
+  });
+
+  it('reaches past the window under --all-sessions, which is what the flag is for', () => {
+    expect(
+      selectSessions(discovery([NEWEST_SESSION, OLDER_SESSION]), null, '/repo', null, {
+        ...options,
+        includeIdle: true,
+      }),
+    ).toEqual([NEWEST_SESSION, OLDER_SESSION]);
+  });
+
+  it('ignores the window entirely when a session is named', () => {
+    expect(
+      selectSessions(discovery([OLDER_SESSION]), 'session-older', '/repo', null, options),
+    ).toEqual([OLDER_SESSION]);
+  });
+
+  it('keeps a session whose harness reported no timestamps at all', () => {
+    const undated: DiscoveredSession = {
+      ...OLDER_SESSION,
+      lastActivityAt: null,
+      startedAt: null,
+    };
+    expect(isRecentlyActive(undated, NOW)).toBe(true);
+    expect(selectSessions(discovery([undated]), null, '/repo', null, options)).toEqual([undated]);
+  });
+
+  it('falls back to the start time when only that is recorded', () => {
+    const started: DiscoveredSession = { ...NEWEST_SESSION, lastActivityAt: null };
+    expect(isRecentlyActive(started, NOW)).toBe(true);
+  });
+
+  it('says which flag reaches further rather than silently sweeping everything', () => {
+    expect(() => selectSessions(discovery([OLDER_SESSION]), null, '/repo', null, options)).toThrow(
+      /none of the 1 agent sessions discovered for \/repo have been active/,
+    );
   });
 });
 
@@ -1138,6 +1253,7 @@ describe('naming a session with --source does not skip the binding gate', () => 
       api,
       loadConfig: () => gatedConfig,
       prompter: new ScriptedPrompter([]),
+      now: () => TEST_NOW,
     });
 
     await expect(
@@ -1160,6 +1276,7 @@ describe('naming a session with --source does not skip the binding gate', () => 
       api,
       loadConfig: () => gatedConfig,
       prompter: new ScriptedPrompter([]),
+      now: () => TEST_NOW,
     });
 
     const code = await command.run({
