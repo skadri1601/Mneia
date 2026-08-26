@@ -24,8 +24,12 @@ export type DocSlug =
   | 'scope'
   | 'cli'
   | 'mcp'
+  | 'api'
+  | 'oauth'
   | 'data-model'
   | 'integrations'
+  | 'web-app'
+  | 'metering'
   | 'security';
 
 export type DocPage = {
