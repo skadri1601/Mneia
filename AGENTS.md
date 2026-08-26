@@ -115,10 +115,17 @@ against the real schema. The `.min(1)` is gone and `wire.test.ts` asserts the sc
 empty upload. **Treat a fake that is more permissive than the schema it stands in for as a defect,
 not a convenience.**
 
-`mneia checkpoint` **sweeps every session discovered for the directory**, up to
-`MAX_CHECKPOINT_SESSIONS`. It probes each one's watermark before uploading, so a session with
-nothing new sends no transcript. `--session <ref>` still names one; `--all-sessions` is now just an
-explicit spelling of the default.
+`mneia checkpoint` with no flags **checkpoints the single most recently active session**, and says
+on stderr how many others it discovered and did not read. Sweeping is `--all-sessions`, which covers
+every session discovered for the directory up to `MAX_CHECKPOINT_SESSIONS` and reaches past the
+24-hour activity window; `--session <ref>` still names one.
+
+**That reverses 09ded60, which made the sweep the default on 2026-08-21.** The objection then was
+that a session nobody checkpoints stays invisible forever, and it still stands — what changed is the
+price of answering it by default. Even bounded to sessions active in the last 24 hours (`f992774`),
+a busy repo puts twenty transcripts across five harnesses inside that window, and each one bought a
+paid extraction the user did not ask for. The visibility argument is answered by naming the unread
+count instead. Each session keeps its own watermark, so one covered later resumes where it was.
 
 **The watermark is monotonic (MNE-100), and this paragraph described the wrong failure.** It said
 `propose.ts` ignored `turnsSince().resolved`; the code in fact *refused* an upload that did not

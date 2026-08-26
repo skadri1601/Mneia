@@ -138,8 +138,8 @@ export interface CheckpointDeps {
   readonly now?: () => Date;
 }
 
-// With no --session this checkpoints the harness sessions active in the last
-// RECENT_ACTIVITY_WINDOW_MS; --all-sessions is what reaches back past that.
+// With no --session this checkpoints the single most recently active harness session;
+// --all-sessions is what sweeps every session discovered for the directory.
 const USAGE =
   'mneia checkpoint [-m "<summary>"] [--trigger <trigger>] [--session <ref> [--source <harness>] | --all-sessions] [--json]';
 
@@ -237,7 +237,7 @@ export function readAllSessions(flags: CommandInvocation['flags']): boolean {
     return true;
   }
   throw usageError(
-    `--all-sessions takes no value; it reaches past the ${RECENT_ACTIVITY_WINDOW_MS / 3_600_000}-hour activity window and checkpoints every agent session discovered for this directory, and got ${raw}`,
+    `--all-sessions takes no value; it checkpoints every agent session discovered for this directory instead of only the one most recently active, and got ${raw}`,
   );
 }
 
@@ -286,18 +286,17 @@ export function startedBeforeBinding(session: DiscoveredSession, boundAt: Date |
 }
 
 /**
- * How far back an unnamed sweep will reach.
+ * How far back an unnamed checkpoint will look for the session you are in.
  *
  * Discovery is a filesystem scan of every installed harness's history store — Claude Code,
  * Claude Desktop, Codex, Cursor, Gemini, Warp — keyed on the working directory and nothing
  * else. It has no idea which of them is running: a transcript last written three weeks ago
- * is indistinguishable from the terminal you are typing in. Left unbounded that meant one
- * `mneia checkpoint` swept 20 unrelated sessions, paid an extraction for each, and printed
- * nothing for minutes.
+ * is indistinguishable from the terminal you are typing in.
  *
- * A session nobody has touched in a day is not the session being checkpointed. Naming one
- * with --session ignores this entirely, and --all-sessions is the escape hatch for the
- * backfill case, where reaching back is the whole point.
+ * A session nobody has touched in a day is not the session being checkpointed, so rather
+ * than fall back to the newest of a stale set, the command refuses and names the flags.
+ * Naming a session with --session ignores this window entirely, and --all-sessions reaches
+ * past it for the backfill case, where covering everything is the whole point.
  */
 export const RECENT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -317,9 +316,34 @@ export function isRecentlyActive(
   return now.getTime() - touched.getTime() <= windowMs;
 }
 
+/**
+ * Newest first, mirroring core's discovery order so the CLI's choice does not depend on the
+ * API having preserved it. A harness that reported no times sorts last: unknown cannot be
+ * shown to be the most recent, but it stays eligible so a reader gap loses no work when it
+ * is the only candidate.
+ */
+export function compareByRecency(left: DiscoveredSession, right: DiscoveredSession): number {
+  const rank = (session: DiscoveredSession): number =>
+    (session.lastActivityAt ?? session.startedAt)?.getTime() ?? Number.NEGATIVE_INFINITY;
+  const difference = rank(right) - rank(left);
+  if (Number.isNaN(difference) || difference === 0) {
+    return left.sessionRef.localeCompare(right.sessionRef);
+  }
+  return difference > 0 ? 1 : -1;
+}
+
+export function mostRecentlyActive(
+  sessions: readonly DiscoveredSession[],
+): DiscoveredSession | undefined {
+  return [...sessions].sort(compareByRecency)[0];
+}
+
 export interface SelectSessionsOptions {
-  /** Reaches past RECENT_ACTIVITY_WINDOW_MS. Set by --all-sessions. */
-  readonly includeIdle?: boolean | undefined;
+  /**
+   * Checkpoint every eligible session rather than only the most recently active one, and
+   * reach past RECENT_ACTIVITY_WINDOW_MS doing it. Set by --all-sessions.
+   */
+  readonly sweepAll?: boolean | undefined;
   readonly now?: (() => Date) | undefined;
 }
 
@@ -374,26 +398,32 @@ export function selectSessions(
     );
   }
 
-  if (options.includeIdle === true) {
+  if (options.sweepAll === true) {
     return eligible.slice(0, MAX_CHECKPOINT_SESSIONS);
   }
 
   const now = (options.now ?? (() => new Date()))();
   const active = eligible.filter((session) => isRecentlyActive(session, now));
 
-  // Nothing has been touched today. Refusing here rather than falling back to the whole
-  // list is the point: the fallback is what made a routine checkpoint extract twenty
-  // stale transcripts across five harnesses, and a fallback nobody asked for is worse
-  // than a message naming the flag that asks for it.
+  // Nothing has been touched today. Refusing here rather than falling back to the newest of
+  // a stale set is the point: on a repo where nobody has run an agent since yesterday, the
+  // "most recent" session is still not the one you are in, and buying an extraction for it
+  // is worse than a message naming the two flags that say what you meant.
   if (active.length === 0) {
     throw new CliError(
       'not_configured',
       `none of the ${eligible.length} agent sessions discovered for ${cwd} have been active in the last ${RECENT_ACTIVITY_WINDOW_MS / 3_600_000} hours, so none of them is the session you are in`,
-      'checkpoint the session you are working in with --session <ref>, or pass --all-sessions to sweep the idle ones as well',
+      'checkpoint the session you are working in with --session <ref>, or pass --all-sessions to sweep every session discovered here',
     );
   }
 
-  return active.slice(0, MAX_CHECKPOINT_SESSIONS);
+  // One session, not the window's worth of them. Founder ruling 2026-08-23 reversing 09ded60:
+  // even bounded to a day, a busy repo puts twenty transcripts inside the window across five
+  // harnesses, and someone typing `mneia checkpoint` means the terminal they are typing in.
+  // Sweeping is still one flag away, and each session keeps its own watermark, so a session
+  // covered later resumes from where it was rather than starting over.
+  const chosen = mostRecentlyActive(active);
+  return chosen === undefined ? [] : [chosen];
 }
 
 export function needsHuman(candidate: CheckpointCandidate): boolean {
@@ -771,6 +801,21 @@ export interface SessionSelection {
   readonly discovered: number;
 }
 
+/**
+ * Say what was left behind. Reading one session is the safe default, but silently reading one
+ * of twenty is how a session nobody named stays invisible — the objection that made the sweep
+ * the default in the first place. Naming the count and the flag answers it without buying an
+ * extraction for nineteen transcripts nobody asked about.
+ */
+export function unreadSessionsNote(selection: SessionSelection): string {
+  const unread = selection.discovered - 1;
+  return [
+    `${countOf(unread, 'other agent session')} on this directory ${verbOf(unread, 'was', 'were')} discovered and not read; mneia checkpoint read only ${sessionLabel(selection.chosen)}.`,
+    'Name one with --session <ref>, or checkpoint every one of them with --all-sessions.',
+    '',
+  ].join('\n');
+}
+
 export interface SessionRun {
   readonly session: DiscoveredSession;
   readonly proposal: CheckpointProposal | null;
@@ -964,8 +1009,10 @@ function renderAllSessions(
 
   const header = [
     `${config.workspace}/${config.project} — checkpointed ${countOf(runs.length, 'agent session')} discovered for this directory`,
+    // Only --all-sessions reaches here, so the gap between discovered and processed is the
+    // per-run cap or the binding gate — never the activity window, which this path ignores.
     discovery.sessions.length > runs.length
-      ? `${discovery.sessions.length} discovered · active in the last ${RECENT_ACTIVITY_WINDOW_MS / 3_600_000}h · capped at ${MAX_CHECKPOINT_SESSIONS} per run · times in UTC`
+      ? `${discovery.sessions.length} discovered · capped at ${MAX_CHECKPOINT_SESSIONS} per run · times in UTC`
       : 'times in UTC',
   ].join('\n');
 
@@ -1173,7 +1220,7 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
           : { sessions: [dated], blocked: [] };
 
       const selectOptions: SelectSessionsOptions = {
-        includeIdle: allSessions,
+        sweepAll: allSessions,
         ...(deps.now === undefined ? {} : { now: deps.now }),
       };
       const chosen =
@@ -1203,6 +1250,12 @@ export function createCheckpointCommand(deps: CheckpointDeps): CommandDefinition
           chosen: only,
           discovered: discovery.sessions.length,
         };
+
+        // Not under --session, where the caller already knows which one they meant, and not
+        // under --json, which carries the same counts in the payload.
+        if (sessionRef === null && !allSessions && selection.discovered > 1 && !invocation.json) {
+          invocation.io.stderr(unreadSessionsNote(selection));
+        }
 
         const run = await runSession(deps, invocation, { ...context, session: only, prefix: '' });
         return renderOneSession(run, invocation, config, selection);
