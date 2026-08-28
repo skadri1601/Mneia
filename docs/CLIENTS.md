@@ -83,7 +83,7 @@ SDK's latest for anything it does not, which is correct behaviour:
 | `2024-11-05` | `2024-11-05` | 11 |
 | `2099-01-01` (unsupported) | `2025-11-25` | 11 |
 
-**No version-gated degradation** - every protocol version sees the same eleven tools. The server
+**No version-gated degradation** - at 0.12.0 every protocol version saw the same eleven tools. The server
 pins nothing itself; `@modelcontextprotocol/sdk` 1.30.0 negotiates.
 
 ## What the server offers
@@ -190,7 +190,7 @@ a deploy cannot strand a client. Two consequences worth knowing before relying o
   remote transport records an empty `client_name`. Over stdio it records `claude-code` or `Cursor`.
   This is the one place the remote surface is genuinely worse, and it is worth fixing before the
   matrix leans on remote sessions as evidence of which clients are in use.
-- **Server-initiated messages have nowhere to go.** Nothing we ship uses them - all eleven tools are
+- **Server-initiated messages have nowhere to go.** Nothing we ship uses them - all twelve tools are
   request/response - but sampling or elicitation would need a session.
 
 ## Per client

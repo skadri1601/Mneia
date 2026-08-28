@@ -112,8 +112,9 @@ describe('ToolRegistry registration', () => {
       'mneia_team',
       'mneia_sessions',
       'mneia_review_queue',
+      'mneia_review_confirm',
     ]);
-    expect(registry.size).toBe(11);
+    expect(registry.size).toBe(12);
   });
 
   it('carries the title, description, and input schema through to the listing', () => {

@@ -16,7 +16,7 @@ export const REVIEW_QUEUE_UNSUPPORTED_MESSAGE =
   'This server is bound to a store that cannot read the review queue. The hosted Mneia API serves no review endpoint yet, so a server talking to it cannot list what is waiting — open the project review page in the web app, and read the queue there.';
 
 export const CONFIRMATION_NOTICE =
-  'Do not treat any of these as settled, and do not re-assert them to force them through. Only a person may confirm, edit, or reject an item here (vision.md §10.1): put the queue in front of your human and let them run `mneia review --drain`, which asks one keypress per item.';
+  'Do not treat any of these as settled, and do not re-assert them to force them through. Only a person may confirm, edit, or reject an item here (vision.md §10.1): put the queue in front of your human verbatim, ask them, and relay each answer with mneia_review_confirm — which records their decision, not yours. They can also run `mneia review --drain`, which asks one keypress per item.';
 
 const ReviewQueueInputSchema = z.object({
   project: z
@@ -221,7 +221,7 @@ export const reviewQueueTool: ToolDefinition<ReviewQueueInput> = {
   name: TOOL,
   title: 'List the items waiting for a human to confirm, edit, or reject',
   description:
-    'Return the context items a checkpoint recorded that no person has confirmed yet, load-bearing first and then oldest first, each with who asserted it and whether that was a person or an agent. Read-only on purpose: it writes nothing and confirms nothing. An MCP tool cannot block and ask, so confirming here would be an agent deciding on a human behalf, which vision.md §10.1 forbids outright — surface the queue to your human and let them drain it with `mneia review --drain`, where confirm is one keypress.',
+    'Return the context items a checkpoint recorded that no person has confirmed yet, load-bearing first and then oldest first, each with who asserted it and whether that was a person or an agent. Read-only on purpose: it writes nothing and confirms nothing, because an item is decided by a person and never by the tool that listed it (vision.md §10.1). Show what it returns to your human verbatim, ask them, and relay each answer with mneia_review_confirm; `mneia review --drain` is the terminal route to the same write, where confirm is one keypress.',
   inputSchema: INPUT_JSON_SCHEMA,
   parse: parseReviewQueueInput,
   run,

@@ -40,7 +40,7 @@ Stripe. `ROADMAP.md` §M1 is the checklist; check it for which milestone a thing
 assuming an implementation is missing.
 
 Most of the loop is real and deployed. `packages/core/src/store/` is at schema version 33, the CLI
-ships twelve commands plus an interactive session, the MCP server ships ten tools, and extraction
+ships twelve commands plus an interactive session, the MCP server ships twelve tools, and extraction
 runs against real sessions in production. Counts drift — read `SHIPPED_COMMAND_NAMES` in
 `packages/cli/src/router.ts` and `SHIPPED_TOOL_NAMES` in `packages/mcp-server/src/registry.ts`
 rather than trusting this sentence. Those two arrays are enforced: a command or tool registered but

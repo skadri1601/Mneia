@@ -5,7 +5,7 @@ export const MCP: DocPage = {
   name: 'MCP server reference',
   title: 'MCP server reference',
   description:
-    'The Mneia MCP tools - mneia_rehydrate, mneia_assert, mneia_retire, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, mneia_handoff_inbox, mneia_team, mneia_sessions, and mneia_review_queue - how to configure the server, every environment variable it reads, and when to call each one.',
+    'The Mneia MCP tools - mneia_rehydrate, mneia_assert, mneia_retire, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, mneia_handoff_inbox, mneia_team, mneia_sessions, mneia_review_queue, and mneia_review_confirm - how to configure the server, every environment variable it reads, and when to call each one.',
   eyebrow: 'Reference',
   heading: 'The tools your agent can call.',
   lead: 'The MCP server is client-neutral by design. It speaks stdio, it works in Claude Code, Cursor, Codex, or anything else that speaks MCP, and it exposes no vendor-specific behaviour.',
@@ -112,6 +112,10 @@ export const MCP: DocPage = {
             ['`mneia_team`', 'Resolving the names and ids a handoff can be addressed to'],
             ['`mneia_sessions`', 'Finding out who has worked in this repository before you'],
             ['`mneia_review_queue`', 'Surfacing the items still waiting on a human to confirm'],
+            [
+              '`mneia_review_confirm`',
+              'Relaying the answer a person just gave you on one of those items',
+            ],
           ],
         },
         {
@@ -211,6 +215,31 @@ export const MCP: DocPage = {
             'Lists the items waiting on a human to confirm. An agent assertion that would overrule a human-confirmed item is never applied silently - it queues here instead, and stays queued until a person rules on it.',
             'Surfacing unresolved disagreement is a tool an agent may read and must not settle. Where the disagreement is between two people, resolution is theirs to make; the useful thing an agent can do is surface it and stop, rather than picking the newer row and continuing. A dedicated mneia_conflicts tool is deferred to M4.',
           ],
+        },
+      ],
+    },
+    {
+      id: 'review-confirm',
+      heading: 'mneia_review_confirm',
+      blocks: [
+        {
+          kind: 'text',
+          paragraphs: [
+            'Records one decision a person just made on one queued item: `approve` marks it human-confirmed, `reject` retires it with the reason they gave. It is the relay for the ask your client already knows how to run - an approval prompt in Claude Code, an inline approval in Cursor, or a plain question in anything else.',
+            '**The decision is never the agent’s to make.** Show the item verbatim, ask, wait for the answer, and only then call this. The tool takes the actor from the token the server is authenticated with and reads its kind from the database, so a server running as an agent is refused outright rather than being trusted to say whose answer it is carrying.',
+          ],
+        },
+        {
+          kind: 'bullets',
+          items: [
+            'A rejection must carry a reason - months later, an unexplained rejection is indistinguishable from a mistake.',
+            'An item a person already confirmed is refused, not overwritten.',
+            'When the write fails, the answer says nothing was recorded, so a decision is never quietly lost.',
+          ],
+        },
+        {
+          kind: 'note',
+          text: '`mneia review --drain` in the CLI is the terminal route to the same write, where confirm is one keypress. Neither surface can decide an item without a person.',
         },
       ],
     },
