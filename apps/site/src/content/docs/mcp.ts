@@ -5,11 +5,11 @@ export const MCP: DocPage = {
   name: 'MCP server reference',
   title: 'MCP server reference',
   description:
-    'The Mneia MCP tools - mneia_rehydrate, mneia_assert, mneia_retire, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, mneia_handoff_inbox, mneia_team, mneia_sessions, mneia_review_queue, and mneia_review_confirm - how to configure the server, and when to call each one.',
+    'The Mneia MCP tools - mneia_rehydrate, mneia_assert, mneia_retire, mneia_checkpoint, mneia_search, mneia_handoff_create, mneia_handoff_receive, mneia_handoff_inbox, mneia_team, mneia_sessions, mneia_review_queue, and mneia_review_confirm - how to configure the server, every environment variable it reads, and when to call each one.',
   eyebrow: 'Reference',
   heading: 'The tools your agent can call.',
   lead: 'The MCP server is client-neutral by design. It speaks stdio, it works in Claude Code, Cursor, Codex, or anything else that speaks MCP, and it exposes no vendor-specific behaviour.',
-  minutes: 9,
+  minutes: 11,
   sections: [
     {
       id: 'configure',
@@ -26,6 +26,60 @@ export const MCP: DocPage = {
             'The installer detects supported clients and writes each native configuration. Use **mneia mcp install --client codex --yes** to target one explicitly. See **/docs/integrations#mcp-clients** for Codex, Claude Code, Claude Desktop, Cursor, Gemini CLI, VS Code, Windsurf, and generic MCP instructions, including a complete prompt to paste into the selected agent.',
             'The server reads the same `~/.mneia/credentials` written by **mneia login**. The project binding comes from `.mneia/config.json` in the working directory, so an agent working in a bound repository needs no further configuration.',
             'Configuration is resolved before the server accepts a connection. A missing token, an empty token, a malformed endpoint, or an unparseable project config stops the server at startup with a message naming the variable at fault.',
+          ],
+        },
+      ],
+    },
+    {
+      id: 'environment',
+      heading: 'Environment variables',
+      blocks: [
+        {
+          kind: 'table',
+          head: ['Variable', 'Default', 'What it does'],
+          rows: [
+            [
+              '`MNEIA_TOKEN`',
+              '-',
+              'The auth token. Wins over the credentials file. Set it in the MCP client’s server config, or leave it unset and let the server read what `mneia login` wrote',
+            ],
+            [
+              '`MNEIA_API_URL`',
+              '`https://app.mneia.dev`',
+              'The API endpoint. Wins over the value in `.mneia/config.json`. Must be an absolute `http` or `https` URL',
+            ],
+            [
+              '`MNEIA_HOME`',
+              '`~/.mneia`',
+              'The directory holding the credentials and the local binding. **Must be absolute**; a relative value is ignored rather than resolved against a working directory the client chose. The CLI reads the same variable',
+            ],
+            [
+              '`MNEIA_CREDENTIALS_PATH`',
+              '`~/.mneia/credentials`',
+              'The credentials file specifically. Also must be absolute, and wins over `MNEIA_HOME`',
+            ],
+            [
+              '`MNEIA_TELEMETRY`',
+              'on',
+              'Set to `off`, `false`, `no`, `none`, or `0` to opt out. `on`, `true`, `yes`, and `1` opt in explicitly',
+            ],
+          ],
+        },
+        {
+          kind: 'text',
+          paragraphs: [
+            'All five are resolved **before the server accepts a connection**. A missing token, an empty token, a token with a `Bearer ` prefix or a trailing newline, a malformed endpoint, or an unparseable project config stops the server at startup with a message naming the variable at fault and what to set it to.',
+            'That is deliberate. A server that starts and then fails every tool call is a much worse failure than one that refuses to start, because the agent has already begun working by the time it finds out.',
+          ],
+        },
+        {
+          kind: 'note',
+          text: 'An unrecognised `MNEIA_TELEMETRY` value is an **error**, not a fallback to the default. A typo in an opt-out must never quietly leave telemetry on, which is the one failure mode that would make the setting worthless. Two further variables, `MNEIA_TELEMETRY_ENDPOINT` and `MNEIA_TELEMETRY_TOKEN`, exist for transmitting events to an endpoint of your own; with the first unset, nothing leaves the machine that way.',
+        },
+        {
+          kind: 'text',
+          paragraphs: [
+            'The CLI reads `MNEIA_TOKEN`, `MNEIA_API_URL`, `MNEIA_HOME`, and `MNEIA_CREDENTIALS_PATH` too, so a machine configured once is configured for both. **`MNEIA_TELEMETRY` is the exception**: the CLI emits no telemetry of its own and there is nothing there for it to switch off - see `/docs/cli#environment`.',
           ],
         },
       ],
