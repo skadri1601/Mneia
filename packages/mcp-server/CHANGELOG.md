@@ -1,5 +1,49 @@
 # @mneia/mcp-server
 
+## 0.19.0
+
+### Minor Changes
+
+- d917e17: Checkpoint sub-agent sessions, and link them to the session that spawned them.
+
+  The Claude Code reader now descends into `subagents/` directories, which a flat `readdir` never
+  saw — 28% of transcripts on the machine this was measured against. A sub-agent session takes its
+  ref from its filename rather than from the parent's `sessionId` recorded inside it, so parent and
+  child stay distinct, and it reports the parent's ref as `parentSessionRef`.
+
+  `session.parent_session_id` records that link. Callers name the parent by its client session ref
+  (`parentClientSessionRef` on session creation, `sourceSession.parentRef` on an MCP write) and the
+  store resolves it within the workspace.
+
+  `mneia checkpoint` gives sub-agents their own budget rather than letting them compete with root
+  sessions for `MAX_CHECKPOINT_SESSIONS` — they share their parent's working directory, so one busy
+  fan-out could previously take every slot and leave the other sessions of the day uncovered.
+
+  Discovery applies its own limit to roots and sub-agents separately, so a directory whose fifty
+  newest transcripts are all sub-agents still yields root sessions to checkpoint, and `mneia
+checkpoint` opens a `session` row for every transcript it commits — naming the parent by ref — so
+  parentage reaches the store on the CLI path and not only through the MCP tools.
+
+- e726d7b: Add `mneia_review_confirm`, so an agent can relay a human decision on a queued item through the
+  approval UI its client already has — Claude Code's ask, Cursor's inline approval, or a plain
+  question — instead of leaving the queue drainable only from a terminal. It records one decision at
+  a time: `approve` marks the item human-confirmed, `reject` retires it with the reason the person
+  gave. The reviewing actor is read from the token and its kind from the database, never from the
+  arguments, so a server authenticated as an agent is refused (vision.md §10.1). `mneia review
+--drain` is unchanged.
+
+  The decision emits its §17 arbitration event — `checkpoint.item_confirmed` or
+  `checkpoint.item_rejected` — from the tool itself, so a confirmation relayed through the hosted
+  `/api/mcp` endpoint, which serves a direct scoped store rather than the REST wrapper that emits,
+  is recorded rather than lost. A transport failure now reports the outcome as unknown and points
+  the caller back at `mneia_review_queue`, instead of claiming nothing was written when the review
+  may already have committed.
+
+### Patch Changes
+
+- Updated dependencies [d917e17]
+  - @mneia/core@0.19.0
+
 ## 0.18.0
 
 ### Patch Changes
