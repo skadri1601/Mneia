@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
+import { VERSION } from '@mneia/core';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import {
   CONFIG_DIR,
@@ -11,6 +12,15 @@ import {
   type ProjectConfigFile,
   resolveToken,
 } from '../config.js';
+import {
+  detectHookRuntime,
+  HOOK_CLIENTS,
+  HOOK_CLIENT_SPECS,
+  type HookClient,
+  type HookInstallOutcome,
+  type HookRuntime,
+  installSessionStartHook,
+} from '../hooks-config.js';
 import { httpInitApi } from '../http-api.js';
 import {
   AGENTS_FILE,
@@ -58,10 +68,12 @@ export interface InitDeps {
   readonly loadConfig: ExistingConfigLoader;
   readonly resolveToken: TokenResolver;
   readonly now?: (() => Date) | undefined;
+  /** How the running CLI will be reachable from a future session. See HookRuntime. */
+  readonly hookRuntime?: HookRuntime | undefined;
 }
 
 const USAGE =
-  'mneia init [--workspace <slug>] [--project <slug>] [--endpoint <url>] [--force] [--json]';
+  'mneia init [--workspace <slug>] [--project <slug>] [--endpoint <url>] [--force] [--no-hooks] [--json]';
 
 const SLUG = /^[a-z0-9]+(?:[-_.][a-z0-9]+)*$/;
 
@@ -294,6 +306,9 @@ interface InitOutcome {
   readonly agentsPath: string;
   readonly writeBack: WriteBackResult;
   readonly sources: readonly string[];
+  readonly hooks: readonly HookInstallOutcome[];
+  readonly hooksSkipped: string | null;
+  readonly hookRuntime: HookRuntime;
 }
 
 const WRITE_BACK_TEXT: Readonly<Record<WriteBackResult, string>> = {
@@ -316,6 +331,30 @@ function describeConstraints(outcome: InitOutcome): string {
   return `${count} ${noun} from ${outcome.sources.join(', ')}`;
 }
 
+/**
+ * Which harnesses will now load project memory on their own, in one line.
+ *
+ * Named rather than counted: the whole promise of this step is that the user does not have
+ * to remember to rehydrate, and a bare "3 clients" does not tell them whether the one they
+ * actually use is among them.
+ */
+function describeHooks(outcome: InitOutcome): string {
+  if (outcome.hooksSkipped !== null) {
+    return `not installed — ${outcome.hooksSkipped}`;
+  }
+  const installed = outcome.hooks.filter((hook) => hook.result !== 'unchanged');
+  const labels = outcome.hooks.map((hook) => HOOK_CLIENT_SPECS[hook.client].label);
+  // Said out loud, because it is the difference between a hook that runs a binary already
+  // on PATH and one that resolves a package first. The user chose npx and can undo it.
+  const via = outcome.hookRuntime.ephemeral
+    ? ` (through npx @mneia/cli@${outcome.hookRuntime.version} — install the CLI to drop that step)`
+    : '';
+  if (installed.length === 0) {
+    return `already configured for ${labels.join(', ')}${via}`;
+  }
+  return `${labels.join(', ')} now rehydrate automatically${via}`;
+}
+
 function renderHuman(outcome: InitOutcome): string {
   const name = `${outcome.attach.workspace}/${outcome.attach.project}`;
   const headline = outcome.attach.created
@@ -330,9 +369,10 @@ function renderHuman(outcome: InitOutcome): string {
       ['endpoint', outcome.endpoint],
       ['imported', describeConstraints(outcome)],
       [AGENTS_FILE, WRITE_BACK_TEXT[outcome.writeBack]],
+      ['session start', describeHooks(outcome)],
     ]),
     '',
-    'Next: mneia brief "<what you are about to work on>"',
+    'Next: just start your agent. It loads this project memory on its own.',
   ];
   return `${lines.join('\n')}\n`;
 }
@@ -349,6 +389,12 @@ function renderJson(outcome: InitOutcome): string {
     constraintsImported: outcome.attach.constraintsImported,
     sources: outcome.sources,
     agentsFile: { path: outcome.agentsPath, result: outcome.writeBack },
+    sessionStartHooks: outcome.hooks.map((hook) => ({
+      client: hook.client,
+      path: hook.path,
+      result: hook.result,
+    })),
+    sessionStartHooksSkipped: outcome.hooksSkipped,
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
 }
@@ -382,6 +428,42 @@ function boundAtFor(existing: ProjectConfig | null, now: () => Date): Date | nul
     return now();
   }
   return existing.boundAt;
+}
+
+/**
+ * Installs the session-start hook for every supported harness, not only the ones detected.
+ *
+ * A config for a harness nobody has installed is inert - the file is read by that harness
+ * or by nothing at all - whereas detecting at init time gets it wrong the moment a
+ * teammate who uses a different agent clones the repo. Writing all three is the option
+ * that does not require anyone to re-run setup.
+ *
+ * A single client failing is reported and the rest still install: a permissions problem on
+ * one dotfile is not a reason to leave the other two harnesses without memory.
+ */
+async function installHooks(
+  repoRoot: string,
+  flags: CommandInvocation['flags'],
+  runtime: HookRuntime,
+): Promise<{ hooks: readonly HookInstallOutcome[]; hooksSkipped: string | null }> {
+  if (flags['no-hooks'] === true || flags['no-hooks'] === 'true') {
+    return { hooks: [], hooksSkipped: '--no-hooks was passed' };
+  }
+
+  const installed: HookInstallOutcome[] = [];
+  const failures: string[] = [];
+  for (const client of HOOK_CLIENTS) {
+    try {
+      installed.push(await installSessionStartHook(repoRoot, client as HookClient, runtime));
+    } catch (cause) {
+      failures.push(`${client}: ${describeError(cause)}`);
+    }
+  }
+
+  return {
+    hooks: installed,
+    hooksSkipped: failures.length === 0 ? null : failures.join('; '),
+  };
 }
 
 export function createInitCommand(deps: InitDeps): CommandDefinition {
@@ -446,6 +528,14 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
         ),
       );
 
+      // Installed before the section is written, not after, because the section now states
+      // whether rehydration is automatic here. Rendering that from an intention rather than
+      // from an outcome is what told every agent in a --no-hooks repository that there was
+      // nothing to run by hand.
+      const hookRuntime =
+        deps.hookRuntime ?? detectHookRuntime(process.argv[1], VERSION, invocation.io.env);
+      const { hooks, hooksSkipped } = await installHooks(repoRoot, invocation.flags, hookRuntime);
+
       const writeBack = await writeGeneratedSection(
         agentsPath,
         renderGeneratedSection({
@@ -454,6 +544,7 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
           endpoint,
           constraintsImported: attach.constraintsImported,
           sources: imported.sources,
+          sessionStartHooks: hooks.map((hook) => HOOK_CLIENT_SPECS[hook.client].label),
         }),
       );
 
@@ -465,6 +556,9 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
         agentsPath,
         writeBack,
         sources: imported.sources,
+        hooks,
+        hooksSkipped,
+        hookRuntime,
       };
 
       invocation.io.stdout(invocation.json ? renderJson(outcome) : renderHuman(outcome));

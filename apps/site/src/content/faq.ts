@@ -38,12 +38,12 @@ export const FAQ_GETTING_STARTED: readonly Faq[] = [
   {
     question: 'What does mneia init actually do to my repository?',
     answer:
-      'Three things. It writes .mneia/config.json binding the directory to a workspace and a project. It reads the AGENTS.md, CLAUDE.md, and .cursor/rules files you already keep and imports the constraints it finds in them, so the project does not start empty. And it writes a generated section into AGENTS.md, inside a fence it owns, so the agent sees the binding without you configuring anything twice. Nothing outside that fence is touched.',
+      'Four things. It writes .mneia/config.json binding the directory to a workspace and a project. It reads the AGENTS.md, CLAUDE.md, and .cursor/rules files you already keep and imports the constraints it finds in them, so the project does not start empty. It writes a generated section into AGENTS.md, inside a fence it owns, so the agent sees the binding without you configuring anything twice. And it installs a session-start hook for Claude Code, Codex, and Cursor, so those agents load the project memory themselves when a session opens. Existing config in those files is merged, never replaced, and nothing outside the AGENTS.md fence is touched. Pass --no-hooks to skip that last step.',
   },
   {
     question: 'Do I have to change how I work?',
     answer:
-      'The inner loop stays in your terminal and your editor. In practice you add two habits: call rehydrate at the start of a task, and checkpoint at the end of one. Both can be done by the agent through the MCP server rather than by you, and the CLI exists for the moments you would rather do it yourself.',
+      'Less than it used to be. Rehydration at session start is automatic - mneia init installs a hook that hands your agent the active constraints and decisions before it plans anything, so there is nothing to type and nothing to remember. What is left is checkpointing at the end of a task, which the agent can do itself through the MCP server, and the CLI exists for the moments you would rather do it yourself.',
   },
   {
     question: 'Does Mneia read my session transcript automatically?',

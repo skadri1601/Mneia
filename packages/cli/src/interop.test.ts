@@ -26,6 +26,7 @@ const SECTION: GeneratedSectionInput = {
   endpoint: 'https://api.mneia.dev',
   constraintsImported: 3,
   sources: ['AGENTS.md'],
+  sessionStartHooks: ['Claude Code', 'Codex', 'Cursor'],
 };
 
 let root = '';
@@ -417,6 +418,23 @@ describe('the generated section body', () => {
     const body = renderGeneratedSection({ ...SECTION, constraintsImported: 0, sources: [] });
 
     expect(body).toContain('No constraints were imported');
+  });
+
+  it('tells the agent rehydration is automatic only for the harnesses that got a hook', () => {
+    const body = renderGeneratedSection({ ...SECTION, sessionStartHooks: ['Codex'] });
+
+    expect(body).toContain('Codex has a hook installed');
+    expect(body).not.toContain('Claude Code');
+    expect(body).not.toContain('Cursor');
+  });
+
+  it('keeps the manual rehydration instruction when no hook was installed', () => {
+    const body = renderGeneratedSection({ ...SECTION, sessionStartHooks: [] });
+
+    expect(body).toContain('No session-start hook is installed');
+    expect(body).toContain('mneia brief "<task>"');
+    expect(body).toContain('mneia_rehydrate');
+    expect(body).not.toContain('Nothing to run by hand');
   });
 
   it('strips angle brackets from the binding so a slug can never forge a marker', () => {

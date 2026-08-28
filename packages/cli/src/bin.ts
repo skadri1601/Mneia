@@ -4,6 +4,7 @@ import type { CommandDefinition, CommandIo } from './command.js';
 import { briefCommand } from './commands/brief.js';
 import { checkpointCommand } from './commands/checkpoint.js';
 import { handoffCommand } from './commands/handoff.js';
+import { hookCommand } from './commands/hook.js';
 import { initCommand } from './commands/init.js';
 import { logCommand } from './commands/log.js';
 import { loginCommand } from './commands/login.js';
@@ -48,6 +49,7 @@ const commands: readonly CommandDefinition[] = [
   loginCommand,
   whoamiCommand,
   mcpCommand,
+  hookCommand,
 ];
 
 const dispatch = (argv: readonly string[]): Promise<number> =>

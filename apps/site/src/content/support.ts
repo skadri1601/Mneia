@@ -129,7 +129,7 @@ export const HELP_TASKS: readonly HelpTask[] = [
   {
     question: 'How do I connect a repository to a project?',
     answer:
-      'Run mneia init in the repository root. It writes .mneia/config.json, imports the constraints already sitting in your AGENTS.md, CLAUDE.md, or .cursor/rules, and writes a generated section back into AGENTS.md inside a fence it owns.',
+      'Run mneia init in the repository root. It writes .mneia/config.json, imports the constraints already sitting in your AGENTS.md, CLAUDE.md, or .cursor/rules, writes a generated section back into AGENTS.md inside a fence it owns, and installs the session-start hook so Claude Code, Codex, and Cursor load the project memory on their own.',
     href: '/docs/quickstart',
     linkLabel: 'Quickstart',
   },

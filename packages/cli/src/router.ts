@@ -16,6 +16,7 @@ export const SHIPPED_COMMAND_NAMES = [
   'team',
   'sessions',
   'mcp',
+  'hook',
 ] as const;
 
 export type ShippedCommandName = (typeof SHIPPED_COMMAND_NAMES)[number];

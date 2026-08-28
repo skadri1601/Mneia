@@ -65,6 +65,15 @@ export interface GeneratedSectionInput {
   readonly endpoint: string;
   readonly constraintsImported: number;
   readonly sources: readonly string[];
+  /**
+   * The harnesses that actually came away with a session-start hook, by display name.
+   *
+   * Empty whenever `--no-hooks` was passed or every install failed, and the section then
+   * keeps the manual instruction. This is read from the install outcome and never assumed:
+   * telling an agent that rehydration is automatic in a repository where it is not is how
+   * a session skips it entirely and proceeds against constraints it was never shown.
+   */
+  readonly sessionStartHooks: readonly string[];
 }
 
 export type WriteBackResult = 'created' | 'updated' | 'unchanged';
@@ -351,6 +360,39 @@ function describeImport(count: number, sources: readonly string[]): string {
   return `${count} constraints were imported from ${list}.`;
 }
 
+function joinNames(names: readonly string[]): string {
+  if (names.length <= 1) {
+    return names.join('');
+  }
+  return `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/**
+ * What the section says about rehydration, given what `mneia init` actually installed.
+ *
+ * The two branches are not phrasings of one claim. With a hook the agent is told there is
+ * nothing to run; without one it is told, in the imperative, to run it — and that
+ * instruction is load-bearing, because this file is the only thing a fresh agent reads
+ * before it starts working.
+ */
+function describeSessionStart(hooks: readonly string[]): readonly string[] {
+  if (hooks.length === 0) {
+    return [
+      'No session-start hook is installed in this repository, so nothing loads this memory for',
+      'you. **Run `mneia brief "<task>"` — or call `mneia_rehydrate` — at the start of every',
+      'session, before planning or writing code.** `mneia init` installs the hook that does it',
+      'automatically.',
+    ];
+  }
+  const list = joinNames([...hooks]);
+  const verb = hooks.length === 1 ? 'has a hook' : 'each have a hook';
+  return [
+    `Your agent loads this memory on its own at session start — ${list} ${verb} installed`,
+    'by `mneia init`. Nothing to run by hand. Any other agent should run `mneia brief "<task>"`',
+    'or call `mneia_rehydrate` before planning or writing code.',
+  ];
+}
+
 export function renderGeneratedSection(input: GeneratedSectionInput): string {
   const workspace = sanitizeInline(input.workspace);
   const project = sanitizeInline(input.project);
@@ -364,7 +406,9 @@ export function renderGeneratedSection(input: GeneratedSectionInput): string {
     '',
     `This repository is bound to the Mneia project \`${workspace}/${project}\` on ${endpoint}.`,
     '',
-    '- `mneia brief "<task>"` prints the context slice for the task you are about to start',
+    ...describeSessionStart(input.sessionStartHooks.map(sanitizeInline)),
+    '',
+    '- `mneia brief "<task>"` prints the context slice for a task, when you want it on demand',
     '- `mneia checkpoint` records decisions, constraints, and open questions at a task boundary',
     '- `mneia log` prints the decision timeline for this project',
     '- `mneia status` prints what is stale, disputed, or unanswered',
