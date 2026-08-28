@@ -108,6 +108,46 @@ describe('write session provenance', () => {
     expect(warnings.join(' ')).toContain('continuing the write');
   });
 
+  it('passes a sub-agent parent ref through to the store, for it to resolve', async () => {
+    const { resolver, store, created } = harness({
+      client: { name: 'claude-code', version: '2.1.239' },
+    });
+
+    await resolver.resolve(store, PROJECT_ID, { ref: 'agent-a0ff2275', parentRef: 'root-1' }, null);
+
+    expect(created[0]?.provenance).toMatchObject({
+      clientSessionRef: 'agent-a0ff2275',
+      parentClientSessionRef: 'root-1',
+    });
+  });
+
+  it('opens one session per parent, so two sub-agents are not merged into one row', async () => {
+    // Two sub-agents can agree on client, version and even label; only the parent separates
+    // them. Leaving parentRef out of the cache key attributed the second one's writes to the
+    // first one's parent.
+    const { resolver, store, created } = harness({
+      client: { name: 'claude-code', version: '2.1.239' },
+    });
+
+    const first = await resolver.resolve(store, PROJECT_ID, { parentRef: 'root-1' }, null);
+    const second = await resolver.resolve(store, PROJECT_ID, { parentRef: 'root-2' }, null);
+    const reused = await resolver.resolve(store, PROJECT_ID, { parentRef: 'root-1' }, null);
+
+    expect(second.sessionId).not.toBe(first.sessionId);
+    expect(reused.sessionId).toBe(first.sessionId);
+    expect(created).toHaveLength(2);
+  });
+
+  it('records no parentage for a root session', async () => {
+    const { resolver, store, created } = harness({
+      client: { name: 'claude-code', version: '2.1.239' },
+    });
+
+    await resolver.resolve(store, PROJECT_ID, { ref: 'root-1' }, null);
+
+    expect(created[0]?.provenance.parentClientSessionRef).toBeUndefined();
+  });
+
   it('closes every locally opened session best-effort', async () => {
     const { resolver, store, ended } = harness({ client: { name: 'codex', version: '1.2.3' } });
     await resolver.resolve(store, PROJECT_ID, { ref: 'conversation-a' }, null);

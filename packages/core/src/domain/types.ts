@@ -71,6 +71,8 @@ export interface Session {
   readonly workspaceId: Uuid;
   readonly projectId: Uuid;
   readonly actorId: Uuid;
+  /** The session that spawned this one — a sub-agent's delegator. Null for a root session. */
+  readonly parentSessionId?: Uuid | null;
   readonly tool: string | null;
   readonly clientName?: string | null;
   readonly clientVersion?: string | null;

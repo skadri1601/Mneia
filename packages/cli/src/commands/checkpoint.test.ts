@@ -11,8 +11,11 @@ import {
   type CheckpointReceipt,
   type CommitRequest,
   createCheckpointCommand,
+  capBySessionKind,
   type DiscoveredSession,
   isRecentlyActive,
+  MAX_CHECKPOINT_CHILD_SESSIONS,
+  MAX_CHECKPOINT_SESSIONS,
   selectSessions,
   startedBeforeBinding,
   emitReviewEvents,
@@ -155,6 +158,7 @@ const TEST_NOW = new Date('2026-08-20T17:00:00.000Z');
 const NEWEST_SESSION: DiscoveredSession = {
   source: 'claude-code',
   sessionRef: 'session-newest',
+  parentSessionRef: null,
   lastActivityAt: new Date('2026-08-20T16:41:00.000Z'),
   startedAt: new Date('2026-08-20T16:00:00.000Z'),
 };
@@ -162,6 +166,7 @@ const NEWEST_SESSION: DiscoveredSession = {
 const OLDER_SESSION: DiscoveredSession = {
   source: 'cursor',
   sessionRef: 'session-older',
+  parentSessionRef: null,
   lastActivityAt: new Date('2026-08-19T09:10:00.000Z'),
   startedAt: new Date('2026-08-19T09:00:00.000Z'),
 };
@@ -1176,6 +1181,75 @@ describe('sessions that predate the binding', () => {
     expect(() =>
       selectSessions(discovery([OLDER_SESSION]), 'session-older', '/repo', BOUND_AT, options),
     ).toThrow(/--session session-older names cursor session-older, which started before/);
+  });
+});
+
+describe('sub-agent sessions do not crowd out their parents', () => {
+  const discovery = (sessions: readonly DiscoveredSession[]): SessionDiscovery => ({
+    sessions,
+    blocked: [],
+  });
+
+  // Dated against the fixtures below so the 24-hour activity window main added in MNE-100
+  // does not filter this suite's sessions out before the caps are reached.
+  const NOW = new Date(2026, 7, 20, 17, 0);
+  const options = { now: () => NOW };
+
+  const rootAt = (index: number): DiscoveredSession => ({
+    source: 'claude-code',
+    sessionRef: `root-${index}`,
+    parentSessionRef: null,
+    lastActivityAt: new Date(2026, 7, 20, 12, index),
+    startedAt: new Date(2026, 7, 20, 11, index),
+  });
+
+  const childOf = (parent: string, index: number): DiscoveredSession => ({
+    source: 'claude-code',
+    sessionRef: `agent-${parent}-${index}`,
+    parentSessionRef: parent,
+    lastActivityAt: new Date(2026, 7, 20, 13, index),
+    startedAt: new Date(2026, 7, 20, 13, index),
+  });
+
+  it('caps roots and sub-agents against separate budgets', () => {
+    const roots = Array.from({ length: MAX_CHECKPOINT_SESSIONS + 5 }, (_, index) => rootAt(index));
+    const children = Array.from({ length: MAX_CHECKPOINT_CHILD_SESSIONS + 5 }, (_, index) =>
+      childOf('root-0', index),
+    );
+
+    const chosen = capBySessionKind([...roots, ...children]);
+
+    expect(chosen.filter((entry) => entry.parentSessionRef === null)).toHaveLength(
+      MAX_CHECKPOINT_SESSIONS,
+    );
+    expect(chosen.filter((entry) => entry.parentSessionRef !== null)).toHaveLength(
+      MAX_CHECKPOINT_CHILD_SESSIONS,
+    );
+  });
+
+  it('keeps every root when one session spawned more sub-agents than the whole cap', () => {
+    // The failure this guards: sub-agents share their parent's cwd, so before the split cap
+    // a single fan-out took all 20 slots and the other roots were never checkpointed.
+    const roots = [rootAt(0), rootAt(1), rootAt(2)];
+    const children = Array.from({ length: 50 }, (_, index) => childOf('root-0', index));
+
+    const chosen = selectSessions(discovery([...roots, ...children]), null, '/repo', null, options);
+
+    expect(
+      chosen.filter((entry) => entry.parentSessionRef === null).map((e) => e.sessionRef),
+    ).toEqual(['root-0', 'root-1', 'root-2']);
+  });
+
+  it('puts every root ahead of every sub-agent, so a parent is checkpointed first', () => {
+    const chosen = capBySessionKind([childOf('root-0', 0), rootAt(0), childOf('root-0', 1)]);
+    expect(chosen.map((entry) => entry.parentSessionRef)).toEqual([null, 'root-0', 'root-0']);
+  });
+
+  it('still refuses a sub-agent that predates the binding', () => {
+    const boundAt = new Date(2026, 7, 20, 14, 0);
+    expect(() =>
+      selectSessions(discovery([childOf('root-0', 0)]), null, '/repo', boundAt, options),
+    ).toThrow(/started before this repo was bound to Mneia/);
   });
 });
 

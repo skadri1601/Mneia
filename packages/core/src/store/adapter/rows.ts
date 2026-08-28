@@ -493,6 +493,7 @@ export const toSession = (row: SqlRow): Session => ({
   workspaceId: toUuid(row, 'workspace_id'),
   projectId: toUuid(row, 'project_id'),
   actorId: toUuid(row, 'actor_id'),
+  parentSessionId: toNullableUuid(row, 'parent_session_id'),
   tool: toNullableText(row, 'tool'),
   clientName: toNullableText(row, 'client_name'),
   clientVersion: toNullableText(row, 'client_version'),

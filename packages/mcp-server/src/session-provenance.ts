@@ -88,6 +88,10 @@ function keyFor(
     client?.name ?? null,
     client?.version ?? null,
     sourceSession?.ref ?? null,
+    // In the key because two sub-agents of different parents can share everything else and
+    // must still get one session row each — otherwise the second one's writes are attributed
+    // to the first one's parent.
+    sourceSession?.parentRef ?? null,
   ]);
 }
 
@@ -100,6 +104,9 @@ function provenanceFor(
     ...(sourceSession?.ref === undefined ? {} : { clientSessionRef: sourceSession.ref }),
     ...(sourceSession?.name === undefined ? {} : { clientSessionName: sourceSession.name }),
     ...(sourceSession?.url === undefined ? {} : { clientSessionUrl: sourceSession.url }),
+    ...(sourceSession?.parentRef === undefined
+      ? {}
+      : { parentClientSessionRef: sourceSession.parentRef }),
   };
 }
 

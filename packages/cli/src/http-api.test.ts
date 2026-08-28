@@ -14,6 +14,7 @@ import {
   httpCheckpointApi,
   httpInitApi,
   httpStatusApi,
+  limitBySessionKind,
   MAX_UPLOAD_BYTES,
   uploadableFrom,
 } from './http-api.js';
@@ -528,5 +529,199 @@ describe('httpStatusApi.usage', () => {
     fakeUsageServer(() => jsonResponse({ usage: { ...REPORT, percentUsed: 'lots' } }));
 
     await expect(httpStatusApi.usage?.({ config })).rejects.toThrow(/cannot read/);
+  });
+});
+
+describe('limitBySessionKind', () => {
+  const root = (index: number) => ({
+    source: 'claude-code' as const,
+    sessionRef: `root-${index}`,
+    parentSessionRef: null,
+  });
+
+  const child = (index: number) => ({
+    source: 'claude-code' as const,
+    sessionRef: `agent-${index}`,
+    parentSessionRef: 'root-0',
+  });
+
+  it('keeps every root when the recency-sorted list is all sub-agents', () => {
+    // The defect: discovery sorted by recency and took the first 50. Sub-agents are written
+    // last and share their parent's directory, so one busy session's fan-out filled the
+    // whole list and selectSessions never saw a root to cap. Repeating the run did not help
+    // - the same 50 children are still the newest files on disk.
+    const entries = [
+      ...Array.from({ length: 60 }, (_, index) => child(index)),
+      root(0),
+      root(1),
+      root(2),
+    ];
+
+    const kept = limitBySessionKind(entries, 50);
+
+    expect(
+      kept.filter((entry) => entry.parentSessionRef === null).map((e) => e.sessionRef),
+    ).toEqual(['root-0', 'root-1', 'root-2']);
+    expect(kept.filter((entry) => entry.parentSessionRef !== null)).toHaveLength(50);
+  });
+
+  it('leaves the order alone, so the most recent session is still first', () => {
+    const kept = limitBySessionKind([child(0), root(0), child(1)], 50);
+
+    expect(kept.map((entry) => entry.sessionRef)).toEqual(['agent-0', 'root-0', 'agent-1']);
+  });
+
+  it('treats an absent parent ref as a root rather than as a sub-agent', () => {
+    const kept = limitBySessionKind([{ sessionRef: 'a' }, { sessionRef: 'b' }], 1);
+
+    expect(kept.map((entry) => entry.sessionRef)).toEqual(['a']);
+  });
+});
+
+describe('httpCheckpointApi.commit carries parentage into the session row', () => {
+  const SESSION_ID = '00000000-0000-4000-8000-000000000010';
+  const CHECKPOINT_ID = '00000000-0000-4000-8000-000000000011';
+
+  interface SessionCall {
+    readonly clientSessionRef?: unknown;
+    readonly parentClientSessionRef?: unknown;
+    readonly tool?: unknown;
+  }
+
+  function fakeWriteServer(): {
+    readonly sessions: SessionCall[];
+    readonly writes: { checkpoint: { sessionId: unknown } }[];
+  } {
+    const sessions: SessionCall[] = [];
+    const writes: { checkpoint: { sessionId: unknown } }[] = [];
+
+    vi.stubGlobal('fetch', (url: string, init?: { body?: string }) => {
+      const body = JSON.parse(init?.body ?? '{}');
+
+      if (url.endsWith('/api/me')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              actor: { id: ACTOR_ID, display_name: 'Ada', kind: 'human' },
+              workspace: { id: WORKSPACE_ID, slug: 'acme', display_name: 'Acme' },
+              team: { id: '00000000-0000-4000-8000-000000000004', display_name: 'Core' },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        );
+      }
+
+      if (url.endsWith('/api/v1/sessions')) {
+        sessions.push(body);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              session: {
+                id: SESSION_ID,
+                workspaceId: WORKSPACE_ID,
+                projectId: PROJECT_ID,
+                actorId: ACTOR_ID,
+                parentSessionId: null,
+                tool: body.tool ?? null,
+                clientSessionRef: body.clientSessionRef ?? null,
+                startedAt: '2026-08-20T16:00:00.000Z',
+                endedAt: null,
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        );
+      }
+
+      if (url.endsWith('/api/v1/checkpoints')) {
+        writes.push(body);
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              result: {
+                checkpoint: {
+                  id: CHECKPOINT_ID,
+                  workspaceId: WORKSPACE_ID,
+                  projectId: PROJECT_ID,
+                  sessionId: body.checkpoint.sessionId,
+                  actorId: ACTOR_ID,
+                  trigger: 'manual',
+                  createdAt: '2026-08-20T16:05:00.000Z',
+                  summary: null,
+                },
+                items: [],
+                written: [],
+                conflicts: [],
+              },
+            }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+        );
+      }
+
+      throw new Error(`unexpected request to ${url}`);
+    });
+
+    return { sessions, writes };
+  }
+
+  const commitFor = (sessionRef: string, parentSessionRef: string | null) =>
+    httpCheckpointApi.commit({
+      config,
+      projectId: PROJECT_ID as never,
+      sessionId: null,
+      source: 'claude-code',
+      sourceSessionRef: sessionRef,
+      parentSessionRef,
+      watermark: 'turn-9',
+      trigger: 'manual',
+      summary: null,
+      automatic: [],
+      reviewed: [],
+    });
+
+  it('names the sub-agent transcript as the session and its parent as the parent', async () => {
+    // Before this the CLI never opened a session row at all: propose returned sessionId
+    // null and commit wrote it straight through, so every sub-agent transcript the sweep
+    // extracted was filed as unrelated work that happened to share a directory.
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const server = fakeWriteServer();
+
+    const receipt = await commitFor('agent-a1b2', 'root-9f8e');
+
+    expect(server.sessions).toHaveLength(1);
+    expect(server.sessions[0]).toMatchObject({
+      tool: 'cli',
+      clientSessionRef: 'agent-a1b2',
+      parentClientSessionRef: 'root-9f8e',
+    });
+    expect(server.writes[0]?.checkpoint.sessionId).toBe(SESSION_ID);
+    expect(receipt.checkpointId).toBe(CHECKPOINT_ID);
+  });
+
+  it('sends no parent for a root session rather than a null one', async () => {
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const server = fakeWriteServer();
+
+    await commitFor('root-0000', null);
+
+    expect(server.sessions[0]).not.toHaveProperty('parentClientSessionRef');
+    expect(server.writes[0]?.checkpoint.sessionId).toBe(SESSION_ID);
+  });
+
+  it('opens one row for a session committed twice in the same run', async () => {
+    // The watermark-only commit and the real one are two calls for one transcript.
+    vi.stubEnv('MNEIA_TOKEN', 'test-token');
+    const server = fakeWriteServer();
+
+    await commitFor('agent-twice', 'root-twice');
+    await commitFor('agent-twice', 'root-twice');
+
+    expect(server.sessions).toHaveLength(1);
+    expect(server.writes).toHaveLength(2);
+    expect(server.writes.map((write) => write.checkpoint.sessionId)).toEqual([
+      SESSION_ID,
+      SESSION_ID,
+    ]);
   });
 });

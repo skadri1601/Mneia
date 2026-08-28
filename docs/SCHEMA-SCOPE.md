@@ -139,6 +139,38 @@ identity and deep link. The columns are nullable and have no backfill: older row
 not expose every field are valid, and context-item reads label them `partial` with the missing fields
 instead of fabricating provenance.
 
+### 9. A session names the session that spawned it
+
+`session.parent_session_id` (migration `0038`) records which session delegated the work, so a
+sub-agent's decisions are attributable to the session that asked for them rather than reading as an
+unrelated session that happens to share a working directory.
+
+This one does come from a measurement rather than from re-reading `vision.md`, which is the bar §9
+set after MNE-253. Claude Code writes each sub-agent its own transcript under
+`<parent-session-id>/subagents/agent-<id>.jsonl`, and the reader's flat `readdir` never descended:
+on the machine this was measured against, 264 of 946 transcripts — 28% — were invisible to
+checkpoint. Making them visible without recording their parentage would have been worse than leaving
+them out, because a fan-out of twenty sub-agents would arrive as twenty peer sessions of the root
+that spawned them.
+
+Three properties are load-bearing, and each has a test:
+
+- **Nullable, no backfill.** Every session recorded before this is a root, so NULL is correct for all
+  of them. A NOT NULL would fail on the first insert from the currently deployed code and, because
+  the deploy gate permits only migrate-then-deploy, deadlock every lane.
+- **The foreign key is composite**, on `(workspace_id, parent_session_id)` against the existing
+  `UNIQUE (workspace_id, id)`. A single-column reference would let a row in one workspace name a
+  parent in another, which RLS cannot see and therefore cannot stop.
+- **A child is identified by its filename, never by the `sessionId` inside it.** Every line of a
+  sub-agent transcript carries the *parent's* `sessionId`; reading the ref from the contents gives
+  parent and child one identity, and discovery deduplicates on `(source, sessionRef)` — so one of
+  the two silently disappears.
+
+Callers name the parent by its `client_session_ref`, not by a session id: a client reporting a
+sub-agent transcript knows the parent's transcript id and has no way to know ours. The store resolves
+it, and records a root session when it resolves to nothing — parentage is provenance, and losing the
+link is a smaller harm than refusing to record the session at all.
+
 ---
 
 ## Everything landing
@@ -164,6 +196,7 @@ Ordered by dependency; each is its own migration, all in one PR.
 | 0027 | `api_token.scopes` | MNE-146 |
 | 0028 | `audit_event` | MNE-145 |
 | 0031 | nullable client provenance on `session` | MNE-86, §9/§10 |
+| 0038 | `session.parent_session_id` for sub-agent sessions | MNE-57, §9 |
 
 **The invite reconciliation happens in 0017, not on the MNE-126 branch.** `workspace_invitation`
 shipped keyed on `team_id NOT NULL` and `team_role`, because `workspace_role` did not exist yet.

@@ -17,6 +17,7 @@ import {
   PendingReviewFilterWireSchema,
   PendingReviewItemWireSchema,
   ReviewPendingItemsWireSchema,
+  SessionWireSchema,
 } from './wire.js';
 
 const item: ContextItem = {
@@ -135,6 +136,7 @@ describe('session wire format', () => {
       workspaceId: item.workspaceId,
       projectId: item.projectId,
       actorId: item.assertedBy,
+      parentSessionId: null,
       tool: 'mcp',
       clientName: 'codex',
       clientVersion: '1.2.3',
@@ -146,6 +148,43 @@ describe('session wire format', () => {
     };
 
     expect(decodeSession(encodeSession(session))).toEqual(session);
+  });
+
+  it('carries a sub-agent session s parent across the wire', () => {
+    const parentSessionId = '66666666-6666-4666-8666-666666666666';
+    const session: Session = {
+      id: '55555555-5555-4555-8555-555555555555',
+      workspaceId: item.workspaceId,
+      projectId: item.projectId,
+      actorId: item.assertedBy,
+      parentSessionId,
+      tool: 'mcp',
+      clientName: 'claude-code',
+      clientVersion: '2.1.239',
+      clientSessionRef: 'agent-a0ff2275',
+      clientSessionName: null,
+      clientSessionUrl: null,
+      startedAt: new Date('2026-08-16T10:00:00.000Z'),
+      endedAt: null,
+    };
+
+    expect(encodeSession(session).parentSessionId).toBe(parentSessionId);
+    expect(decodeSession(encodeSession(session))).toEqual(session);
+  });
+
+  // A deployment older than this column omits the field entirely rather than sending null.
+  it('reads a session from a deployment that predates parentage as a root session', () => {
+    const wire = SessionWireSchema.parse({
+      id: '55555555-5555-4555-8555-555555555555',
+      workspaceId: item.workspaceId,
+      projectId: item.projectId,
+      actorId: item.assertedBy,
+      tool: 'mcp',
+      startedAt: '2026-08-16T10:00:00.000Z',
+      endedAt: null,
+    });
+
+    expect(decodeSession(wire).parentSessionId).toBeNull();
   });
 });
 

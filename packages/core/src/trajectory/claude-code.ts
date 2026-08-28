@@ -1,3 +1,4 @@
+import type { Dirent } from 'node:fs';
 import { readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
@@ -84,7 +85,11 @@ const blockKind = (type: string | null): TurnKind | null => {
   }
 };
 
-export function parseClaudeCodeJsonl(text: string, sessionRef: string): Trajectory {
+export function parseClaudeCodeJsonl(
+  text: string,
+  sessionRef: string,
+  parentSessionRef: string | null = null,
+): Trajectory {
   const turns: TrajectoryTurn[] = [];
   const uniqueRef = createRefFactory();
   let cwd: string | null = null;
@@ -162,7 +167,10 @@ export function parseClaudeCodeJsonl(text: string, sessionRef: string): Trajecto
     });
   }
 
-  return { source: 'claude-code', sessionRef, cwd, turns };
+  // sessionRef is the caller's, never `record.sessionId`. In a sub-agent transcript every
+  // line carries the *parent's* sessionId, so trusting the file's contents would give the
+  // child the parent's identity and collapse the two into one session. See listJsonlFiles.
+  return { source: 'claude-code', sessionRef, parentSessionRef, cwd, turns };
 }
 
 export interface ClaudeCodeReaderOptions {
@@ -196,33 +204,86 @@ async function listProjectDirectories(
   return (narrowed.length === 0 ? entries : narrowed).map((entry) => join(root, entry));
 }
 
+/**
+ * The directory a session's sub-agent transcripts are written to, relative to the session's
+ * own transcript. Claude Code lays a project directory out like this:
+ *
+ *     <slug>/<session-id>.jsonl
+ *     <slug>/<session-id>/subagents/agent-<id>.jsonl
+ *     <slug>/<session-id>/tool-results/...
+ *
+ * so the parentage is carried by the path and by nothing else.
+ */
+const SUBAGENTS_DIRECTORY = 'subagents';
+
+export interface TranscriptFile {
+  readonly path: string;
+  /** The `sessionRef` of the session that spawned this one; null for a root transcript. */
+  readonly parentSessionRef: string | null;
+}
+
+/**
+ * A flat readdir of the project directory misses every sub-agent transcript, which on a
+ * machine that uses the Task tool is a large minority of all sessions - 264 of 946 on the
+ * one this was measured against. So the walk descends, but only into `subagents/`: the
+ * sibling `tool-results/` holds unrelated files, and a generic recursive sweep would
+ * eventually claim whatever else Claude Code decides to write beside a transcript.
+ *
+ * Depth is fixed at one for the same reason. A sub-agent that spawns its own sub-agent
+ * still writes into the root session's directory, so nesting the walk buys nothing.
+ */
+async function listSubagentFiles(sessionDirectory: string, ref: string): Promise<TranscriptFile[]> {
+  let files: readonly string[];
+  try {
+    files = await readdir(join(sessionDirectory, SUBAGENTS_DIRECTORY));
+  } catch {
+    return [];
+  }
+  return files
+    .filter((file) => file.endsWith('.jsonl'))
+    .map((file) => ({
+      path: join(sessionDirectory, SUBAGENTS_DIRECTORY, file),
+      parentSessionRef: ref,
+    }));
+}
+
 async function listJsonlFiles(
   root: string,
   cwd: string | undefined = undefined,
-): Promise<readonly string[]> {
-  const found: string[] = [];
+): Promise<readonly TranscriptFile[]> {
+  const found: TranscriptFile[] = [];
+
   for (const directory of await listProjectDirectories(root, cwd)) {
-    let files: readonly string[];
+    let entries: readonly Dirent[];
     try {
-      files = await readdir(directory);
+      entries = await readdir(directory, { withFileTypes: true });
     } catch {
       continue;
     }
-    for (const file of files) {
-      if (file.endsWith('.jsonl')) {
-        found.push(join(directory, file));
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        found.push(...(await listSubagentFiles(join(directory, entry.name), entry.name)));
+      } else if (entry.name.endsWith('.jsonl')) {
+        found.push({ path: join(directory, entry.name), parentSessionRef: null });
       }
     }
   }
+
   return found;
 }
 
 async function summariseTranscript(
-  file: string,
+  transcript: TranscriptFile,
   source: TrajectorySource,
   request: ListTrajectoriesRequest,
   unplaced: string[],
 ): Promise<TrajectorySummary | null> {
+  const file = transcript.path;
+  // The filename, never the sessionId inside. A sub-agent file is named agent-<id> and its
+  // every line reports the parent's sessionId, so reading the ref from the contents would
+  // give parent and child the same identity - and discoverTrajectorySessions deduplicates
+  // on source plus ref, so one of the two would then silently disappear.
   const sessionRef = basename(file, '.jsonl');
 
   let windows: Awaited<ReturnType<typeof readTranscriptWindows>>;
@@ -275,6 +336,7 @@ async function summariseTranscript(
   return {
     source,
     sessionRef,
+    parentSessionRef: transcript.parentSessionRef,
     cwd,
     startedAt: opening.turns[0]?.at ?? null,
     lastActivityAt: lastTurn?.at ?? windows.modified,
@@ -285,9 +347,14 @@ export function createClaudeCodeReader(options: ClaudeCodeReaderOptions = {}): T
   const root = options.projectsRoot ?? defaultProjectsRoot();
   const source = options.source ?? 'claude-code';
 
-  const pathFor = async (sessionRef: string, cwd?: string): Promise<string> => {
+  const pathFor = async (sessionRef: string, cwd?: string): Promise<TranscriptFile> => {
     const files = await listJsonlFiles(root, cwd);
-    const match = files.find((file) => basename(file, '.jsonl') === sessionRef);
+    const matches = files.filter((file) => basename(file.path, '.jsonl') === sessionRef);
+    // A root transcript wins over a sub-agent one of the same name. Refs from the two
+    // namespaces do not overlap today - one is a uuid, the other agent-<hex> - but the
+    // parent's own directory sits beside its transcript, so preferring the root keeps a
+    // parent ref resolving to the parent however the harness names things later.
+    const match = matches.find((file) => file.parentSessionRef === null) ?? matches[0];
     if (match === undefined) {
       throw new TrajectoryError(
         'not_found',
@@ -325,19 +392,19 @@ export function createClaudeCodeReader(options: ClaudeCodeReaderOptions = {}): T
     },
 
     async read(sessionRef: string, cwd?: string) {
-      const file = await pathFor(sessionRef, cwd);
+      const transcript = await pathFor(sessionRef, cwd);
       let raw: string;
       try {
-        raw = await readFile(file, 'utf8');
+        raw = await readFile(transcript.path, 'utf8');
       } catch (cause) {
         throw new TrajectoryError(
           'unreadable',
           source,
-          `expected to read the ${source} transcript at ${file}; the read failed — check the file is not locked by another process`,
+          `expected to read the ${source} transcript at ${transcript.path}; the read failed — check the file is not locked by another process`,
           { cause },
         );
       }
-      return { ...parseClaudeCodeJsonl(raw, sessionRef), source };
+      return { ...parseClaudeCodeJsonl(raw, sessionRef, transcript.parentSessionRef), source };
     },
   };
 }

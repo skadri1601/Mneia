@@ -4,7 +4,7 @@
 -- see the resulting shape rather than replaying every migration, and so CI
 -- can fail when a migration lands without a regenerated snapshot.
 --
--- schema version: 37
+-- schema version: 38
 
 -- extensions
 
@@ -651,11 +651,13 @@ CREATE TABLE session (
   client_version text,
   client_session_ref text,
   client_session_name text,
-  client_session_url text
+  client_session_url text,
+  parent_session_id uuid
 );
 ALTER TABLE session ADD CONSTRAINT session_actor_id_not_null NOT NULL actor_id;
 ALTER TABLE session ADD CONSTRAINT session_client_provenance_fields_are_not_blank CHECK ((((client_name IS NULL) OR (client_name <> ''::text)) AND ((client_version IS NULL) OR (client_version <> ''::text)) AND ((client_session_ref IS NULL) OR (client_session_ref <> ''::text)) AND ((client_session_name IS NULL) OR (client_session_name <> ''::text)) AND ((client_session_url IS NULL) OR (client_session_url <> ''::text))));
 ALTER TABLE session ADD CONSTRAINT session_id_not_null NOT NULL id;
+ALTER TABLE session ADD CONSTRAINT session_parent_session_id_is_not_self CHECK (((parent_session_id IS NULL) OR (parent_session_id <> id)));
 ALTER TABLE session ADD CONSTRAINT session_pkey PRIMARY KEY (id);
 ALTER TABLE session ADD CONSTRAINT session_project_id_not_null NOT NULL project_id;
 ALTER TABLE session ADD CONSTRAINT session_started_at_not_null NOT NULL started_at;
@@ -663,8 +665,11 @@ ALTER TABLE session ADD CONSTRAINT session_workspace_id_actor_id_fkey FOREIGN KE
 ALTER TABLE session ADD CONSTRAINT session_workspace_id_fkey FOREIGN KEY (workspace_id) REFERENCES workspace(id);
 ALTER TABLE session ADD CONSTRAINT session_workspace_id_id_key UNIQUE (workspace_id, id);
 ALTER TABLE session ADD CONSTRAINT session_workspace_id_not_null NOT NULL workspace_id;
+ALTER TABLE session ADD CONSTRAINT session_workspace_id_parent_session_id_fkey FOREIGN KEY (workspace_id, parent_session_id) REFERENCES session(workspace_id, id);
 ALTER TABLE session ADD CONSTRAINT session_workspace_id_project_id_fkey FOREIGN KEY (workspace_id, project_id) REFERENCES project(workspace_id, id);
 CREATE INDEX session_workspace_id_actor_id_idx ON public.session USING btree (workspace_id, actor_id);
+CREATE INDEX session_workspace_id_parent_session_id_idx ON public.session USING btree (workspace_id, parent_session_id) WHERE (parent_session_id IS NOT NULL);
+CREATE INDEX session_workspace_id_project_id_client_session_ref_idx ON public.session USING btree (workspace_id, project_id, client_session_ref, started_at DESC) WHERE (client_session_ref IS NOT NULL);
 CREATE INDEX session_workspace_id_project_id_idx ON public.session USING btree (workspace_id, project_id);
 ALTER TABLE session ENABLE ROW LEVEL SECURITY;
 ALTER TABLE session FORCE ROW LEVEL SECURITY;

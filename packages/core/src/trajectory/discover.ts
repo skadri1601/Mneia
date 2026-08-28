@@ -102,6 +102,7 @@ export async function discoverTrajectories(
   const failures: DiscoveredTrajectory[] = unavailable.map((failure) => ({
     source: failure.source,
     sessionRef: failure.sessionRef ?? '',
+    parentSessionRef: null,
     cwd: null,
     startedAt: null,
     lastActivityAt: null,
