@@ -5,6 +5,8 @@ import type {
   ReviewPendingItemsInput,
   ReviewPendingItemsResult,
   ScopedStore,
+  TelemetryEmitter,
+  TelemetryEvent,
 } from '@mneia/core';
 import { ApiError, isStorableText, NULL_BYTE_ERROR } from '@mneia/core';
 import { z } from 'zod';
@@ -117,6 +119,21 @@ function failure(code: string, message: string, details: Record<string, unknown>
 const messageOf = (cause: unknown): string =>
   cause instanceof Error ? cause.message : String(cause);
 
+/**
+ * A lost §17 event must not lose the person's decision as well.
+ *
+ * The review is already committed by the time this runs, so a sink that is down would otherwise
+ * turn a recorded confirmation into a tool call the agent reads as failed — and prompt it to ask
+ * the person again. Same shape as assert.ts and checkpoint.ts.
+ */
+async function emitQuietly(telemetry: TelemetryEmitter, event: TelemetryEvent): Promise<void> {
+  try {
+    await telemetry.emit(event);
+  } catch {
+    return;
+  }
+}
+
 async function resolveProject(context: ToolContext, project: string): Promise<Project | null> {
   if (UUID_PATTERN.test(project)) {
     return context.store.getProject(project);
@@ -225,10 +242,11 @@ async function run(input: ReviewConfirmInput, context: ToolContext): Promise<Too
       );
     }
 
-    // No §17 emit here, for the reason retire.ts is exempted in coverage.test.ts: this is a
-    // hosted client, and apps/web/src/server/api/review.ts emits item_confirmed, item_edited,
-    // and item_rejected when the API serves the call. Emitting again would double-count the
-    // arbitration signal §17 calls the core dataset.
+    // The §17 emit below is not redundant with apps/web/src/server/api/review.ts. That wrapper
+    // only runs when the decision arrives over REST — the stdio server's RemoteStore path, where
+    // this tool's own emitter has no sink configured. The hosted /api/mcp endpoint hands the tool
+    // a direct scoped Postgres store instead, so nothing else on that path would ever record the
+    // arbitration event, and the arbitration dataset is not retrofittable.
     const result = await store.reviewPendingItems({
       projectId: project.id,
       reviews: [toReview(input)],
@@ -243,6 +261,31 @@ async function run(input: ReviewConfirmInput, context: ToolContext): Promise<Too
         { itemId: input.itemId, checkpointId: result.checkpoint.id },
       );
     }
+
+    await emitQuietly(
+      context.telemetry,
+      outcome.outcome === 'rejected'
+        ? {
+            name: 'checkpoint.item_rejected',
+            workspaceId: store.scope.workspaceId,
+            projectId: project.id,
+            actorId: actor.id,
+            sessionId: context.sessionIdFor(project.id),
+            occurredAt: context.now(),
+            checkpointId: result.checkpoint.id,
+            itemId: outcome.itemId,
+          }
+        : {
+            name: 'checkpoint.item_confirmed',
+            workspaceId: store.scope.workspaceId,
+            projectId: project.id,
+            actorId: actor.id,
+            sessionId: context.sessionIdFor(project.id),
+            occurredAt: context.now(),
+            checkpointId: result.checkpoint.id,
+            itemId: outcome.itemId,
+          },
+    );
 
     const headline =
       outcome.outcome === 'rejected'
@@ -296,10 +339,13 @@ async function run(input: ReviewConfirmInput, context: ToolContext): Promise<Too
         });
       }
     }
+    // Deliberately not "nothing was written". The API can commit the review and still lose the
+    // response on the way back, so this branch cannot tell a refused write from a saved one —
+    // and telling the person their decision was lost when it was recorded is the worse error.
     return failure(
       'store_unavailable',
-      `The decision could not be recorded: ${messageOf(cause)}. Nothing was written — the item is still waiting. Retry once; if it persists, tell the person their decision was not saved rather than treating it as settled.`,
-      { itemId: input.itemId },
+      `Expected the store to say whether the decision was recorded; the call failed first: ${messageOf(cause)}. Whether it was written is unknown — the write can commit and the answer still be lost on the way back — so do not tell the person it was saved, and do not tell them it was lost. Call mneia_review_queue: if the item is still waiting, relay the decision again; if it is no longer listed, it was recorded.`,
+      { itemId: input.itemId, written: 'unknown' },
     );
   }
 }

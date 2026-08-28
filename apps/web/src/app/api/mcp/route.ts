@@ -40,7 +40,7 @@ const unauthorized = (message: string): Response =>
  * may be answered by any container and a deploy cannot strand a session. It is also where the
  * protocol itself is going — 2026-07-28 removes Mcp-Session-Id and the initialize handshake
  * outright. The cost is that server-initiated messages have nowhere to go, which nothing we ship
- * uses: all eleven tools are request/response.
+ * uses: all twelve tools are request/response.
  */
 export async function POST(request: Request): Promise<Response> {
   let identity: Awaited<ReturnType<typeof resolveBearerIdentity>>;

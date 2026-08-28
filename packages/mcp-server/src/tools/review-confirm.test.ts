@@ -1,4 +1,4 @@
-import type { ActorKind, ContextItem, ItemStatus, ScopedStore } from '@mneia/core';
+import type { ActorKind, ContextItem, ItemStatus, ScopedStore, TelemetryEvent } from '@mneia/core';
 import { ApiError } from '@mneia/core';
 import { describe, expect, it, vi } from 'vitest';
 import { LINKED_TOOLS } from '../linked-tools.js';
@@ -14,6 +14,7 @@ const OTHER_PROJECT = '00000000-0000-4000-8000-000000000005';
 const ITEM = '00000000-0000-4000-8000-000000000002';
 const CHECKPOINT = '00000000-0000-4000-8000-000000000003';
 const ASSERTER = '00000000-0000-4000-8000-000000000007';
+const SESSION = '00000000-0000-4000-8000-000000000004';
 
 const project = { id: PROJECT, slug: 'payments-migration' };
 
@@ -48,6 +49,7 @@ interface StoreOverrides {
   readonly reviewPendingItems?: unknown;
   readonly getProjectBySlug?: unknown;
   readonly omitReviewPendingItems?: boolean;
+  readonly emit?: (event: TelemetryEvent) => Promise<void>;
 }
 
 const recordedReview = (outcome: 'confirmed' | 'edited' | 'rejected') =>
@@ -76,12 +78,21 @@ const contextWith = (overrides: StoreOverrides = {}): ToolContext => {
     store.reviewPendingItems = overrides.reviewPendingItems ?? recordedReview('confirmed');
   }
 
+  const emit = vi.fn(overrides.emit ?? (async () => {}));
+
   return {
     store: store as unknown as ScopedStore,
+    telemetry: { emit },
     now: () => new Date('2026-08-23T00:00:00.000Z'),
+    sessionIdFor: vi.fn(() => SESSION),
     defaultProject: 'payments-migration',
   } as unknown as ToolContext;
 };
+
+const emitsOf = (context: ToolContext): readonly TelemetryEvent[] =>
+  (context.telemetry.emit as unknown as { mock: { calls: [TelemetryEvent][] } }).mock.calls.map(
+    ([event]) => event,
+  );
 
 const storeOf = (context: ToolContext): Record<string, ReturnType<typeof vi.fn>> =>
   context.store as unknown as Record<string, ReturnType<typeof vi.fn>>;
@@ -299,7 +310,7 @@ describe('mneia_review_confirm', () => {
     expect(result.structuredContent).toMatchObject({ error: { code: 'not_a_human_actor' } });
   });
 
-  it('tells the caller nothing was written when the store fails, so the decision is not lost silently', async () => {
+  it('calls a failed review unknown rather than unwritten, because the write may have landed', async () => {
     const context = contextWith({
       reviewPendingItems: vi.fn(async () => {
         throw new Error('connection reset');
@@ -312,8 +323,88 @@ describe('mneia_review_confirm', () => {
     );
 
     expect(result.isError).toBe(true);
-    expect(result.structuredContent).toMatchObject({ error: { code: 'store_unavailable' } });
-    expect(result.content[0]?.text).toMatch(/their decision was not saved/);
+    expect(result.structuredContent).toMatchObject({
+      error: { code: 'store_unavailable', written: 'unknown' },
+    });
+    expect(result.content[0]?.text).toMatch(/Whether it was written is unknown/);
+    expect(result.content[0]?.text).toMatch(/mneia_review_queue/);
+    expect(result.content[0]?.text).not.toMatch(/Nothing was written/);
+    expect(result.content[0]?.text).not.toMatch(/still waiting\./);
+  });
+
+  it('GUARD (§17) emits checkpoint.item_confirmed on the direct store path, where nothing else does', async () => {
+    const context = contextWith();
+
+    await reviewConfirmTool.run(
+      reviewConfirmTool.parse({ itemId: ITEM, decision: 'approve' }),
+      context,
+    );
+
+    expect(emitsOf(context)).toEqual([
+      {
+        name: 'checkpoint.item_confirmed',
+        workspaceId: WORKSPACE,
+        projectId: PROJECT,
+        actorId: HUMAN,
+        sessionId: SESSION,
+        occurredAt: new Date('2026-08-23T00:00:00.000Z'),
+        checkpointId: CHECKPOINT,
+        itemId: ITEM,
+      },
+    ]);
+  });
+
+  it('GUARD (§17) emits checkpoint.item_rejected when the person rejected the item', async () => {
+    const context = contextWith({ reviewPendingItems: recordedReview('rejected') });
+
+    await reviewConfirmTool.run(
+      reviewConfirmTool.parse({
+        itemId: ITEM,
+        decision: 'reject',
+        reason: 'it was never a rule',
+      }),
+      context,
+    );
+
+    expect(emitsOf(context)).toEqual([
+      {
+        name: 'checkpoint.item_rejected',
+        workspaceId: WORKSPACE,
+        projectId: PROJECT,
+        actorId: HUMAN,
+        sessionId: SESSION,
+        occurredAt: new Date('2026-08-23T00:00:00.000Z'),
+        checkpointId: CHECKPOINT,
+        itemId: ITEM,
+      },
+    ]);
+  });
+
+  it('emits nothing when the decision was refused, so a rejection cannot look like a review', async () => {
+    const context = contextWith({ actorKind: 'agent' });
+
+    await reviewConfirmTool.run(
+      reviewConfirmTool.parse({ itemId: ITEM, decision: 'approve' }),
+      context,
+    );
+
+    expect(emitsOf(context)).toEqual([]);
+  });
+
+  it('still reports the decision as recorded when the telemetry sink is down', async () => {
+    const context = contextWith({
+      emit: async () => {
+        throw new Error('sink unavailable');
+      },
+    });
+
+    const result = await reviewConfirmTool.run(
+      reviewConfirmTool.parse({ itemId: ITEM, decision: 'approve' }),
+      context,
+    );
+
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({ status: 'recorded', outcome: 'confirmed' });
   });
 
   it('rejects a decision that is neither approve nor reject before reaching the store', () => {

@@ -9,3 +9,10 @@ a time: `approve` marks the item human-confirmed, `reject` retires it with the r
 gave. The reviewing actor is read from the token and its kind from the database, never from the
 arguments, so a server authenticated as an agent is refused (vision.md §10.1). `mneia review
 --drain` is unchanged.
+
+The decision emits its §17 arbitration event — `checkpoint.item_confirmed` or
+`checkpoint.item_rejected` — from the tool itself, so a confirmation relayed through the hosted
+`/api/mcp` endpoint, which serves a direct scoped store rather than the REST wrapper that emits,
+is recorded rather than lost. A transport failure now reports the outcome as unknown and points
+the caller back at `mneia_review_queue`, instead of claiming nothing was written when the review
+may already have committed.
