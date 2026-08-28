@@ -100,6 +100,47 @@ const ProposalEnvelope = z.object({ proposal: CheckpointProposalWireSchema });
 
 export const SESSION_DISCOVERY_LIMIT = 50;
 
+/**
+ * Apply the discovery limit to root and sub-agent sessions separately.
+ *
+ * Discovery sorts every harness's sessions into one list by recency and takes the first
+ * fifty. Sub-agents share their parent's working directory and are written last, so a
+ * directory where one busy session fanned out to fifty sub-agents fills that list entirely
+ * with children: the roots — including the parents of those very children — never reach
+ * `selectSessions`, and the split caps it applies have nothing left to protect. Repeating
+ * the run does not recover them, because the same fifty children are still the newest
+ * things on disk.
+ *
+ * Splitting the budget by kind here is what makes those caps mean anything. Order is left
+ * alone rather than grouped: this is a filter, and callers that pick "the most recent
+ * session" must keep getting the most recent one.
+ */
+export function limitBySessionKind<
+  T extends { readonly parentSessionRef?: string | null | undefined },
+>(entries: readonly T[], limit: number = SESSION_DISCOVERY_LIMIT): readonly T[] {
+  const kept: T[] = [];
+  let roots = 0;
+  let children = 0;
+
+  for (const entry of entries) {
+    const isRoot = (entry.parentSessionRef ?? null) === null;
+    if (isRoot) {
+      if (roots >= limit) {
+        continue;
+      }
+      roots += 1;
+    } else {
+      if (children >= limit) {
+        continue;
+      }
+      children += 1;
+    }
+    kept.push(entry);
+  }
+
+  return kept;
+}
+
 const blockedReasons = (discovered: readonly DiscoveredTrajectory[]): readonly string[] =>
   discovered
     .filter((entry) => entry.unavailable !== null)
@@ -114,11 +155,14 @@ export async function selectTrajectory(
     return readTrajectory(source, sessionRef, createReaders([source]), cwd);
   }
 
+  // Unlimited on the way in, then limited by kind: the global slice would drop the very
+  // root session `mneia checkpoint` had just chosen, and this lookup would then report it
+  // as not found. Readers ignore the limit anyway, so nothing is read that was not before.
   const discovered = await discoverTrajectories(
-    { cwd, limit: SESSION_DISCOVERY_LIMIT },
+    { cwd },
     createReaders(source === undefined ? undefined : [source]),
   );
-  const usable = discovered.filter((entry) => entry.unavailable === null);
+  const usable = limitBySessionKind(discovered.filter((entry) => entry.unavailable === null));
   const chosen =
     sessionRef === undefined ? usable[0] : usable.find((entry) => entry.sessionRef === sessionRef);
 
@@ -665,23 +709,82 @@ export function uploadableFrom(
   return taken;
 }
 
+const CLI_SESSION_TOOL = 'cli';
+
+/**
+ * Session rows opened by this process, keyed by the transcript each one stands for.
+ *
+ * A single `mneia checkpoint` sweep can commit the same session twice — once to bank a
+ * watermark when extraction kept nothing, once for the real items — and both must land on
+ * one row. Process-lifetime, deliberately mirroring the MCP server's write-session
+ * resolver: the two surfaces open provenance sessions the same way, so a session started
+ * in one and checkpointed from the other reads the same. A later run opens a fresh row,
+ * which is what the MCP server does per process too; `resolveParentSession` takes the
+ * newest matching ref, so parentage still resolves across runs.
+ */
+const openedSessions = new Map<string, Promise<Uuid>>();
+
+/**
+ * The `session` row a checkpoint should be attributed to, opening one if this run has not.
+ *
+ * Returns null rather than throwing when the session cannot be opened. The extraction is
+ * already paid for by the time commit runs, and losing the whole checkpoint to a
+ * provenance failure costs more than losing the provenance — the same trade the MCP
+ * resolver makes.
+ */
+async function sessionForCommit(store: RemoteStore, request: CommitRequest): Promise<Uuid | null> {
+  if (request.sessionId !== null) {
+    return request.sessionId;
+  }
+  const sessionRef = request.sourceSessionRef ?? null;
+  if (sessionRef === null || sessionRef.length === 0) {
+    return null;
+  }
+
+  const parentSessionRef = request.parentSessionRef ?? null;
+  const key = JSON.stringify([
+    request.projectId,
+    request.source ?? null,
+    sessionRef,
+    parentSessionRef,
+  ]);
+
+  let pending = openedSessions.get(key);
+  if (pending === undefined) {
+    pending = store
+      .createSession(request.projectId, CLI_SESSION_TOOL, {
+        clientSessionRef: sessionRef,
+        ...(parentSessionRef === null ? {} : { parentClientSessionRef: parentSessionRef }),
+      })
+      .then((session) => session.id);
+    openedSessions.set(key, pending);
+  }
+
+  try {
+    return await pending;
+  } catch {
+    openedSessions.delete(key);
+    return null;
+  }
+}
+
 export const httpCheckpointApi: CheckpointApi = {
   async discover(request: DiscoverRequest): Promise<SessionDiscovery> {
     const discovered = await discoverTrajectories(
-      { cwd: request.cwd, limit: SESSION_DISCOVERY_LIMIT },
+      { cwd: request.cwd },
       createReaders(request.source === undefined ? undefined : [request.source]),
     );
 
     return {
-      sessions: discovered
-        .filter((entry) => entry.unavailable === null)
-        .map((entry) => ({
+      sessions: limitBySessionKind(discovered.filter((entry) => entry.unavailable === null)).map(
+        (entry) => ({
           source: entry.source,
           sessionRef: entry.sessionRef,
           parentSessionRef: entry.parentSessionRef ?? null,
           lastActivityAt: entry.lastActivityAt,
           startedAt: entry.startedAt,
-        })),
+        }),
+      ),
       blocked: blockedReasons(discovered),
     };
   },
@@ -799,10 +902,12 @@ export const httpCheckpointApi: CheckpointApi = {
       );
     }
 
+    const sessionId = await sessionForCommit(store, request);
+
     const result = await store.writeCheckpoint({
       checkpoint: {
         projectId: request.projectId,
-        sessionId: request.sessionId,
+        sessionId,
         actorId: identity.actorId,
         trigger: request.trigger,
         summary: request.summary,

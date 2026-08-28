@@ -18,3 +18,8 @@ store resolves it within the workspace.
 `mneia checkpoint` gives sub-agents their own budget rather than letting them compete with root
 sessions for `MAX_CHECKPOINT_SESSIONS` — they share their parent's working directory, so one busy
 fan-out could previously take every slot and leave the other sessions of the day uncovered.
+
+Discovery applies its own limit to roots and sub-agents separately, so a directory whose fifty
+newest transcripts are all sub-agents still yields root sessions to checkpoint, and `mneia
+checkpoint` opens a `session` row for every transcript it commits — naming the parent by ref — so
+parentage reaches the store on the CLI path and not only through the MCP tools.
