@@ -1,5 +1,58 @@
 # @mneia/cli
 
+## 0.19.0
+
+### Minor Changes
+
+- ba82286: Project memory now loads itself at session start. `mneia init` installs a session-start hook for
+  Claude Code, Codex and Cursor, so an agent opening the repo is handed the active constraints and
+  decisions before it plans anything — with nothing to type and nothing to remember.
+
+  The hook is one new command, `mneia hook session-start --client <harness>`, which reads the payload
+  the harness writes to its stdin and answers with that harness's envelope. It never fails the session:
+  an unreachable API, an unbound repo, or a slice that takes longer than 8 seconds all produce an
+  explicit "memory not loaded, do not assume the recorded constraints are in front of you" note rather
+  than silence, because an agent cannot tell an empty project from an unreachable one. That 8 second
+  deadline sits below the 12 seconds the harness is told to wait, so there is always time left to
+  write the note.
+
+  `npx @mneia/cli init` is supported without installing anything: the hook it persists is pinned to
+  the version that ran it, so it stays runnable once the npx process is gone. `mneia init` reports
+  which form it wrote.
+
+  The generated AGENTS.md section is rendered from what was actually installed. With `--no-hooks`, or
+  when an install fails, it keeps the instruction to run `mneia brief "<task>"` by hand rather than
+  telling the next agent there is nothing to run.
+
+  Existing files are merged, never replaced — `.claude/settings.json` in particular also carries
+  permissions and environment. Re-running `mneia init` updates the entry in place rather than adding a
+  second one. Pass `--no-hooks` to skip it.
+
+- d917e17: Checkpoint sub-agent sessions, and link them to the session that spawned them.
+
+  The Claude Code reader now descends into `subagents/` directories, which a flat `readdir` never
+  saw — 28% of transcripts on the machine this was measured against. A sub-agent session takes its
+  ref from its filename rather than from the parent's `sessionId` recorded inside it, so parent and
+  child stay distinct, and it reports the parent's ref as `parentSessionRef`.
+
+  `session.parent_session_id` records that link. Callers name the parent by its client session ref
+  (`parentClientSessionRef` on session creation, `sourceSession.parentRef` on an MCP write) and the
+  store resolves it within the workspace.
+
+  `mneia checkpoint` gives sub-agents their own budget rather than letting them compete with root
+  sessions for `MAX_CHECKPOINT_SESSIONS` — they share their parent's working directory, so one busy
+  fan-out could previously take every slot and leave the other sessions of the day uncovered.
+
+  Discovery applies its own limit to roots and sub-agents separately, so a directory whose fifty
+  newest transcripts are all sub-agents still yields root sessions to checkpoint, and `mneia
+checkpoint` opens a `session` row for every transcript it commits — naming the parent by ref — so
+  parentage reaches the store on the CLI path and not only through the MCP tools.
+
+### Patch Changes
+
+- Updated dependencies [d917e17]
+  - @mneia/core@0.19.0
+
 ## 0.18.0
 
 ### Minor Changes
