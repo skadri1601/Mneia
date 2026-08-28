@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { Slice } from '@mneia/core';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
-import { HOOK_CLIENTS, HOOK_TIMEOUT_SECONDS, type HookClient } from '../hooks-config.js';
+import { HOOK_CLIENTS, HOOK_DEADLINE_SECONDS, type HookClient } from '../hooks-config.js';
 import { httpBriefApi } from '../http-api.js';
 import type { BriefApi, ProjectConfigLoader } from './brief.js';
 import { DEFAULT_TOKEN_BUDGET } from './brief.js';
@@ -113,7 +113,15 @@ export function envelopeFor(client: HookClient, context: string): string {
   });
 }
 
-export function renderSlice(slice: Slice, task: string): string {
+/**
+ * Frames the slice core already rendered, for injection into a session that has not started.
+ *
+ * Deliberately not a second renderer: the body is `slice.renderedMarkdown` verbatim, and
+ * everything around it is the provenance an injected block needs and an on-demand `mneia
+ * brief` does not - what task it was assembled for, and that it came from project memory
+ * rather than from the person about to type.
+ */
+export function renderInjectedContext(slice: Slice, task: string): string {
   const body = slice.renderedMarkdown.trim();
   if (body.length === 0 || slice.items.length === 0) {
     return [
@@ -173,7 +181,7 @@ async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
           () =>
             reject(
               new Error(
-                `the slice did not arrive within ${HOOK_TIMEOUT_SECONDS}s, which is the budget a session start is allowed to spend waiting`,
+                `the slice did not arrive within ${HOOK_DEADLINE_SECONDS}s, which is the budget a session start is allowed to spend waiting`,
               ),
             ),
           ms,
@@ -211,9 +219,9 @@ export function createHookCommand(deps: HookDeps): CommandDefinition {
         const task = taskFor(await branchOf(cwd));
         const slice = await withDeadline(
           deps.api.rehydrate({ config, task, tokenBudget: DEFAULT_TOKEN_BUDGET }),
-          HOOK_TIMEOUT_SECONDS * 1000,
+          HOOK_DEADLINE_SECONDS * 1000,
         );
-        context = renderSlice(slice, task);
+        context = renderInjectedContext(slice, task);
       } catch (error) {
         context = unavailableNote(describe(error));
       }

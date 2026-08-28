@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { basename, join, relative, resolve } from 'node:path';
+import { VERSION } from '@mneia/core';
 import { CliError, type CommandDefinition, type CommandInvocation, EXIT_OK } from '../command.js';
 import {
   CONFIG_DIR,
@@ -12,10 +13,12 @@ import {
   resolveToken,
 } from '../config.js';
 import {
+  detectHookRuntime,
   HOOK_CLIENTS,
   HOOK_CLIENT_SPECS,
   type HookClient,
   type HookInstallOutcome,
+  type HookRuntime,
   installSessionStartHook,
 } from '../hooks-config.js';
 import { httpInitApi } from '../http-api.js';
@@ -65,6 +68,8 @@ export interface InitDeps {
   readonly loadConfig: ExistingConfigLoader;
   readonly resolveToken: TokenResolver;
   readonly now?: (() => Date) | undefined;
+  /** How the running CLI will be reachable from a future session. See HookRuntime. */
+  readonly hookRuntime?: HookRuntime | undefined;
 }
 
 const USAGE =
@@ -303,6 +308,7 @@ interface InitOutcome {
   readonly sources: readonly string[];
   readonly hooks: readonly HookInstallOutcome[];
   readonly hooksSkipped: string | null;
+  readonly hookRuntime: HookRuntime;
 }
 
 const WRITE_BACK_TEXT: Readonly<Record<WriteBackResult, string>> = {
@@ -338,10 +344,15 @@ function describeHooks(outcome: InitOutcome): string {
   }
   const installed = outcome.hooks.filter((hook) => hook.result !== 'unchanged');
   const labels = outcome.hooks.map((hook) => HOOK_CLIENT_SPECS[hook.client].label);
+  // Said out loud, because it is the difference between a hook that runs a binary already
+  // on PATH and one that resolves a package first. The user chose npx and can undo it.
+  const via = outcome.hookRuntime.ephemeral
+    ? ` (through npx @mneia/cli@${outcome.hookRuntime.version} — install the CLI to drop that step)`
+    : '';
   if (installed.length === 0) {
-    return `already configured for ${labels.join(', ')}`;
+    return `already configured for ${labels.join(', ')}${via}`;
   }
-  return `${labels.join(', ')} now rehydrate automatically`;
+  return `${labels.join(', ')} now rehydrate automatically${via}`;
 }
 
 function renderHuman(outcome: InitOutcome): string {
@@ -433,6 +444,7 @@ function boundAtFor(existing: ProjectConfig | null, now: () => Date): Date | nul
 async function installHooks(
   repoRoot: string,
   flags: CommandInvocation['flags'],
+  runtime: HookRuntime,
 ): Promise<{ hooks: readonly HookInstallOutcome[]; hooksSkipped: string | null }> {
   if (flags['no-hooks'] === true || flags['no-hooks'] === 'true') {
     return { hooks: [], hooksSkipped: '--no-hooks was passed' };
@@ -442,7 +454,7 @@ async function installHooks(
   const failures: string[] = [];
   for (const client of HOOK_CLIENTS) {
     try {
-      installed.push(await installSessionStartHook(repoRoot, client as HookClient));
+      installed.push(await installSessionStartHook(repoRoot, client as HookClient, runtime));
     } catch (cause) {
       failures.push(`${client}: ${describeError(cause)}`);
     }
@@ -516,6 +528,14 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
         ),
       );
 
+      // Installed before the section is written, not after, because the section now states
+      // whether rehydration is automatic here. Rendering that from an intention rather than
+      // from an outcome is what told every agent in a --no-hooks repository that there was
+      // nothing to run by hand.
+      const hookRuntime =
+        deps.hookRuntime ?? detectHookRuntime(process.argv[1], VERSION, invocation.io.env);
+      const { hooks, hooksSkipped } = await installHooks(repoRoot, invocation.flags, hookRuntime);
+
       const writeBack = await writeGeneratedSection(
         agentsPath,
         renderGeneratedSection({
@@ -524,10 +544,9 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
           endpoint,
           constraintsImported: attach.constraintsImported,
           sources: imported.sources,
+          sessionStartHooks: hooks.map((hook) => HOOK_CLIENT_SPECS[hook.client].label),
         }),
       );
-
-      const { hooks, hooksSkipped } = await installHooks(repoRoot, invocation.flags);
 
       const outcome: InitOutcome = {
         attach,
@@ -539,6 +558,7 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
         sources: imported.sources,
         hooks,
         hooksSkipped,
+        hookRuntime,
       };
 
       invocation.io.stdout(invocation.json ? renderJson(outcome) : renderHuman(outcome));

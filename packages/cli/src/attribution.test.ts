@@ -254,7 +254,7 @@ const ATTRIBUTION_SURFACES: Readonly<Record<ShippedCommandName, Surface>> = {
   },
   hook: {
     rendersContextItems: false,
-    why: 'wraps the markdown renderSlice already produced in a harness envelope and formats no item itself, so attribution in that markdown belongs to renderSlice, which brief covers',
+    why: 'wraps the markdown core renderSlice already produced in a harness envelope and formats no item itself, so attribution in that markdown belongs to core, which brief covers',
   },
   brief: {
     rendersContextItems: true,

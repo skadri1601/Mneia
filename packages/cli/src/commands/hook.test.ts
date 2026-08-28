@@ -1,6 +1,7 @@
 import type { Slice } from '@mneia/core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CliError, type CommandInvocation } from '../command.js';
+import { HOOK_DEADLINE_SECONDS, HOOK_TIMEOUT_SECONDS } from '../hooks-config.js';
 import { createHookCommand, type HookDeps } from './hook.js';
 
 const slice = (overrides: Partial<Slice> = {}): Slice =>
@@ -115,6 +116,25 @@ describe('mneia hook session-start', () => {
     });
     await command.run(invocation);
     expect(written.join('')).toContain('empty');
+  });
+
+  it('gives up at its own deadline, leaving the harness time to read the note it writes', async () => {
+    vi.useFakeTimers();
+    try {
+      const { command, invocation, written } = invoke({
+        api: { rehydrate: () => new Promise(() => undefined) },
+      });
+      const run = command.run(invocation);
+      await vi.advanceTimersByTimeAsync(HOOK_DEADLINE_SECONDS * 1000);
+
+      expect(await run).toBe(0);
+      const context = JSON.parse(written.join('')).hookSpecificOutput.additionalContext;
+      expect(context).toContain('unavailable');
+      expect(context).toContain(`${HOOK_DEADLINE_SECONDS}s`);
+      expect(HOOK_DEADLINE_SECONDS).toBeLessThan(HOOK_TIMEOUT_SECONDS);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('rejects an unknown client instead of writing an envelope nothing reads', async () => {

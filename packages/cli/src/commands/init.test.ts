@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { CommandIo } from '../command.js';
 import { EXIT_AUTH, EXIT_FAILED, EXIT_NETWORK, EXIT_OK, EXIT_USAGE } from '../command.js';
 import { loadProjectConfig, resolveToken } from '../config.js';
+import type { HookRuntime } from '../hooks-config.js';
 import { FENCE_BEGIN, FENCE_BEGIN_PREFIX, FENCE_END } from '../interop.js';
 import { route } from '../router.js';
 import { type AttachRequest, createInitCommand, type InitApi } from './init.js';
@@ -66,10 +67,16 @@ function envWithoutCredentials(): Record<string, string | undefined> {
 
 const BOUND_AT = new Date('2026-08-23T12:00:00.000Z');
 
+// Pinned rather than sniffed from process.argv, so the suite does not answer differently
+// when it is itself run through npx.
+const INSTALLED: HookRuntime = { ephemeral: false, version: '0.0.0-test' };
+const EPHEMERAL: HookRuntime = { ephemeral: true, version: '0.0.0-test' };
+
 async function runInit(
   api: InitApi,
   argv: readonly string[] = [],
   env: Record<string, string | undefined> = envWithToken(),
+  hookRuntime: HookRuntime = INSTALLED,
 ): Promise<RunResult> {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -88,6 +95,7 @@ async function runInit(
         loadConfig: loadProjectConfig,
         resolveToken,
         now: () => BOUND_AT,
+        hookRuntime,
       }),
     ],
     io,
@@ -201,6 +209,34 @@ describe('mneia init', () => {
 
     expect(result.stdout).toContain('--no-hooks was passed');
     await expect(readFile(join(root, '.cursor/hooks.json'), 'utf8')).rejects.toThrow();
+  });
+
+  it('keeps the manual rehydration instruction in AGENTS.md when no hook was installed', async () => {
+    await runInit(fakeApi(), ['--project', 'checkout', '--no-hooks']);
+    const agents = await readFile(join(root, 'AGENTS.md'), 'utf8');
+
+    expect(agents).toContain('No session-start hook is installed');
+    expect(agents).toContain('before planning or writing code');
+    expect(agents).not.toContain('Nothing to run by hand');
+  });
+
+  it('claims automatic rehydration in AGENTS.md only once the hooks are on disk', async () => {
+    await runInit(fakeApi(), ['--project', 'checkout']);
+    const agents = await readFile(join(root, 'AGENTS.md'), 'utf8');
+
+    expect(agents).toContain('Nothing to run by hand');
+    expect(agents).toContain('Claude Code, Codex and Cursor');
+    expect(agents).not.toContain('No session-start hook is installed');
+  });
+
+  it('persists an invocation that outlives npx, when init was itself run through npx', async () => {
+    const result = await runInit(fakeApi(), ['--project', 'checkout'], envWithToken(), EPHEMERAL);
+
+    const config = JSON.parse(await readFile(join(root, '.claude/settings.json'), 'utf8'));
+    expect(JSON.stringify(config.hooks.SessionStart)).toContain(
+      'npx -y @mneia/cli@0.0.0-test hook session-start --client claude-code',
+    );
+    expect(result.stdout).toContain('through npx @mneia/cli@0.0.0-test');
   });
 
   it('appends to an existing AGENTS.md without touching a byte of it', async () => {

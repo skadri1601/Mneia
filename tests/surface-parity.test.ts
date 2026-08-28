@@ -436,6 +436,10 @@ const COMMAND_PARITY: Readonly<Record<ShippedCommandName, CommandParity>> = {
     tools: ['mneia_review_queue'],
     sharedCore: ['sanitizeActorName'],
   },
+  hook: {
+    kind: 'command-only',
+    why: 'is the harness lifecycle entry point itself — a client spawns it at session start and reads an envelope off its stdout. The MCP surface is what that envelope substitutes for, so a tool counterpart would be mneia_rehydrate calling itself',
+  },
   verify: {
     kind: 'command-only',
     why: 'runs the human re-verification prompt through verifyContextItem. mneia_retire is not its counterpart: it retires through retireContextItem, a different store method with different preconditions, so the two surfaces do not share this path',

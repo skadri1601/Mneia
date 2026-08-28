@@ -28,11 +28,31 @@ const CODEX_CONTEXT_LIMIT_TOKENS = 6000;
  * How long a client waits for the slice before starting the session without it.
  *
  * This sits on the critical path of every session start, so it is a latency budget rather
- * than a generous ceiling: past this the hook gives up, says so, and the session proceeds
- * with no memory loaded. `mneia hook` enforces the same number itself so the degradation
- * is ours and legible, rather than the client killing the process mid-write.
+ * than a generous ceiling: past this the client gives up and the session proceeds with no
+ * memory loaded, and with no note saying so.
  */
 export const HOOK_TIMEOUT_SECONDS = 12;
+
+/**
+ * How long `mneia hook` itself waits for the slice, before writing the unavailable note.
+ *
+ * Strictly below HOOK_TIMEOUT_SECONDS, and that gap is the whole point. The two clocks do
+ * not start together: the harness starts counting when it launches the process, while this
+ * one starts only after stdin has been read, the config loaded, and the branch looked up -
+ * and under `npx` there is a package resolution before any of that. Set equal, a slow API
+ * means the harness kills the process during the catch block, so the explicit "memory not
+ * loaded" note is never written and the agent cannot tell an empty project from a
+ * timed-out one. The headroom below is what buys the note the time to be printed.
+ */
+export const HOOK_DEADLINE_SECONDS = 8;
+
+/**
+ * The floor on that gap, asserted in hooks-config.test.ts rather than trusted to a comment.
+ *
+ * Process start, stdin, config load, and the git lookup all happen on the harness clock and
+ * not on ours; three seconds is what those cost together in the worst case measured.
+ */
+export const MIN_HOOK_DEADLINE_HEADROOM_SECONDS = 3;
 
 export interface HookClientSpec {
   readonly client: HookClient;
@@ -64,21 +84,69 @@ export const HOOK_CLIENT_SPECS: Readonly<Record<HookClient, HookClientSpec>> = {
   },
 };
 
-export const hookCommandFor = (client: HookClient): string =>
-  `mneia hook session-start --client ${client}`;
-
 /**
  * How an already-installed entry is recognised on a re-run.
  *
  * Matched on the subcommand rather than the whole command string so an entry a user has
  * edited - a different binary path, an added flag - is still recognised as ours and
- * updated in place, instead of being duplicated beside the original.
+ * updated in place, instead of being duplicated beside the original. Not on `mneia hook
+ * ...` either, because the npx form below does not carry `mneia` as the command: the two
+ * halves are tested separately, so `/opt/bin/mneia hook session-start` and
+ * `npx -y @mneia/cli@0.17.0 hook session-start` are both recognised and a foreign hook that
+ * merely mentions one of them is not.
  */
-const MNEIA_HOOK_MARKER = 'mneia hook session-start';
+const MNEIA_HOOK_MARKER = 'hook session-start';
+const MNEIA_PACKAGE_MARKER = 'mneia';
+
+/**
+ * Where the `mneia` this process is running from lives, and whether it will still be there.
+ *
+ * `npx @mneia/cli init` is a documented way to set a repository up, and it is the one case
+ * where a bare `mneia` cannot be persisted: npm unpacks the package into its `_npx` cache
+ * and puts that directory on PATH for the lifetime of one process. Write `mneia hook ...`
+ * from there and every future session fails with command-not-found - not loudly, but
+ * silently, because a hook that cannot start also cannot emit the unavailable-memory
+ * envelope that would say so. The agent then reads an absent hook as an empty project.
+ */
+export interface HookRuntime {
+  readonly ephemeral: boolean;
+  readonly version: string;
+}
+
+const NPX_CACHE_SEGMENT = /[\\/]_npx[\\/]/;
+
+export function detectHookRuntime(
+  binPath: string | undefined,
+  version: string,
+  env: Readonly<Record<string, string | undefined>> = {},
+): HookRuntime {
+  const fromEnv = env.npm_config_local_prefix;
+  const ephemeral =
+    (typeof binPath === 'string' && NPX_CACHE_SEGMENT.test(binPath)) ||
+    (typeof fromEnv === 'string' && NPX_CACHE_SEGMENT.test(fromEnv));
+  return { ephemeral, version };
+}
+
+/**
+ * The invocation persisted into a client config, which must outlive this process.
+ *
+ * A permanent install answers to a bare `mneia`, which is what the user typed and what
+ * their PATH already resolves. An ephemeral one is pinned through `npx` instead: the
+ * version is fixed at the one that ran `mneia init`, so the hook a repository carries does
+ * not silently change under it when a new version publishes.
+ */
+export const hookCommandFor = (client: HookClient, runtime: HookRuntime): string => {
+  const binary = runtime.ephemeral ? `npx -y @mneia/cli@${runtime.version}` : 'mneia';
+  return `${binary} ${MNEIA_HOOK_MARKER} --client ${client}`;
+};
 
 const isMneiaEntry = (value: unknown): boolean => {
   const command = asRecord(value)?.command;
-  return typeof command === 'string' && command.includes(MNEIA_HOOK_MARKER);
+  return (
+    typeof command === 'string' &&
+    command.includes(MNEIA_HOOK_MARKER) &&
+    command.includes(MNEIA_PACKAGE_MARKER)
+  );
 };
 
 export type HookInstallResult = 'created' | 'updated' | 'unchanged';
@@ -142,8 +210,8 @@ async function readJsonFile(path: string): Promise<Record<string, unknown>> {
  * Claude Code and Codex both nest the command under a matcher group; Cursor takes a flat
  * list. Codex additionally needs its context limit raised - see CODEX_CONTEXT_LIMIT_TOKENS.
  */
-function entryFor(client: HookClient): Record<string, unknown> {
-  const command = hookCommandFor(client);
+function entryFor(client: HookClient, runtime: HookRuntime): Record<string, unknown> {
+  const command = hookCommandFor(client, runtime);
 
   if (client === 'cursor') {
     return { command };
@@ -171,8 +239,9 @@ function entryFor(client: HookClient): Record<string, unknown> {
 function mergeEntries(
   existing: unknown,
   client: HookClient,
+  runtime: HookRuntime,
 ): { readonly entries: unknown[]; readonly changed: boolean } {
-  const desired = entryFor(client);
+  const desired = entryFor(client, runtime);
   const current = Array.isArray(existing) ? [...existing] : [];
   const index = current.findIndex((entry) => {
     if (isMneiaEntry(entry)) return true;
@@ -201,6 +270,7 @@ function mergeEntries(
 export async function installSessionStartHook(
   repoRoot: string,
   client: HookClient,
+  runtime: HookRuntime,
 ): Promise<HookInstallOutcome> {
   const spec = HOOK_CLIENT_SPECS[client];
   const path = join(repoRoot, spec.configPath);
@@ -208,7 +278,7 @@ export async function installSessionStartHook(
   const existed = Object.keys(config).length > 0;
 
   const hooks = asRecord(config.hooks) ?? {};
-  const { entries, changed } = mergeEntries(hooks[spec.event], client);
+  const { entries, changed } = mergeEntries(hooks[spec.event], client, runtime);
 
   if (!changed) {
     return { client, path, result: 'unchanged' };
