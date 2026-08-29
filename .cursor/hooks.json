@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "mneia hook session-start --client cursor"
+      }
+    ]
+  },
+  "version": 1
+}

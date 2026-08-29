@@ -11,7 +11,9 @@ import {
   type HookRuntime,
   hookCommandFor,
   installSessionStartHook,
+  installStopHook,
   MIN_HOOK_DEADLINE_HEADROOM_SECONDS,
+  STOP_HOOK_TIMEOUT_SECONDS,
 } from './hooks-config.js';
 
 const repo = () => mkdtemp(join(tmpdir(), 'mneia-hooks-'));
@@ -209,5 +211,80 @@ describe('GUARD the internal deadline stays below the harness timeout', () => {
     ).SessionStart as { hooks: { timeout?: number }[] }[];
 
     expect(entries[0]?.hooks[0]?.timeout).toBe(HOOK_TIMEOUT_SECONDS);
+  });
+});
+
+describe('the end-of-turn checkpoint hook', () => {
+  const permanent: HookRuntime = { ephemeral: false, version: '9.9.9' };
+
+  const repo = async (): Promise<string> => mkdtemp(join(tmpdir(), 'mneia-stop-'));
+
+  it('installs a Stop entry for Claude Code, because reading without writing drains the store', async () => {
+    const root = await repo();
+
+    const outcome = await installStopHook(root, 'claude-code', permanent);
+
+    expect(outcome).not.toBeNull();
+    expect(outcome?.event).toBe('stop');
+    const written = JSON.parse(await readFile(join(root, '.claude', 'settings.json'), 'utf8'));
+    const entry = written.hooks.Stop[0].hooks[0];
+    expect(entry.command).toBe('mneia hook stop --client claude-code');
+    expect(entry.timeout).toBe(STOP_HOOK_TIMEOUT_SECONDS);
+  });
+
+  it('installs nothing for a client with no verified end-of-turn event', async () => {
+    const root = await repo();
+
+    expect(await installStopHook(root, 'codex', permanent)).toBeNull();
+    expect(await installStopHook(root, 'cursor', permanent)).toBeNull();
+  });
+
+  it('keeps the two events apart, so installing one never overwrites the other', async () => {
+    const root = await repo();
+
+    await installSessionStartHook(root, 'claude-code', permanent);
+    await installStopHook(root, 'claude-code', permanent);
+
+    const written = JSON.parse(await readFile(join(root, '.claude', 'settings.json'), 'utf8'));
+    expect(written.hooks.SessionStart[0].hooks[0].command).toContain('hook session-start');
+    expect(written.hooks.Stop[0].hooks[0].command).toContain('hook stop');
+  });
+
+  it('is idempotent, so init twice does not checkpoint twice and bill for it', async () => {
+    const root = await repo();
+
+    await installStopHook(root, 'claude-code', permanent);
+    const again = await installStopHook(root, 'claude-code', permanent);
+
+    expect(again?.result).toBe('unchanged');
+    const written = JSON.parse(await readFile(join(root, '.claude', 'settings.json'), 'utf8'));
+    expect(written.hooks.Stop).toHaveLength(1);
+  });
+
+  it('pins the npx form for an ephemeral install, exactly as session-start does', async () => {
+    const root = await repo();
+
+    await installStopHook(root, 'claude-code', { ephemeral: true, version: '0.19.0' });
+
+    const written = JSON.parse(await readFile(join(root, '.claude', 'settings.json'), 'utf8'));
+    expect(written.hooks.Stop[0].hooks[0].command).toBe(
+      'npx -y @mneia/cli@0.19.0 hook stop --client claude-code',
+    );
+  });
+
+  it('leaves a foreign Stop hook in place', async () => {
+    const root = await repo();
+    await mkdir(join(root, '.claude'), { recursive: true });
+    await writeFile(
+      join(root, '.claude', 'settings.json'),
+      JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: 'command', command: 'make tidy' }] }] } }),
+      'utf8',
+    );
+
+    await installStopHook(root, 'claude-code', permanent);
+
+    const written = JSON.parse(await readFile(join(root, '.claude', 'settings.json'), 'utf8'));
+    expect(written.hooks.Stop).toHaveLength(2);
+    expect(written.hooks.Stop[0].hooks[0].command).toBe('make tidy');
   });
 });

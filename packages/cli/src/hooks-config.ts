@@ -47,6 +47,16 @@ export const HOOK_TIMEOUT_SECONDS = 12;
 export const HOOK_DEADLINE_SECONDS = 8;
 
 /**
+ * How long a client waits for the end-of-turn checkpoint before giving up on it.
+ *
+ * Far larger than the session-start budget because it buys something different. Nothing is
+ * waiting on this: the turn has already ended, so the cost of the wait is not latency the
+ * person feels but a process lingering. What it has to cover is a transcript extraction
+ * through a model, which is seconds to tens of seconds and occasionally worse.
+ */
+export const STOP_HOOK_TIMEOUT_SECONDS = 60;
+
+/**
  * The floor on that gap, asserted in hooks-config.test.ts rather than trusted to a comment.
  *
  * Process start, stdin, config load, and the git lookup all happen on the harness clock and
@@ -60,6 +70,16 @@ export interface HookClientSpec {
   readonly configPath: string;
   /** How this client spells the session-start event inside that file. */
   readonly event: string;
+  /**
+   * How this client spells the end-of-turn event, or null where we have not verified one.
+   *
+   * Only Claude Code's `Stop` is verified, against the hook this repository ran by hand for
+   * weeks. Codex and Cursor may well have an equivalent, but writing a guessed event name
+   * into a user's config is worse than writing nothing: it looks installed, never fires, and
+   * the store quietly stays empty. Add one here only with a citation, the way
+   * docs/CLIENTS.md carries verified-versus-documented for MCP transports.
+   */
+  readonly stopEvent: string | null;
   readonly label: string;
 }
 
@@ -68,18 +88,21 @@ export const HOOK_CLIENT_SPECS: Readonly<Record<HookClient, HookClientSpec>> = {
     client: 'claude-code',
     configPath: join('.claude', 'settings.json'),
     event: 'SessionStart',
+    stopEvent: 'Stop',
     label: 'Claude Code',
   },
   codex: {
     client: 'codex',
     configPath: join('.codex', 'hooks.json'),
     event: 'SessionStart',
+    stopEvent: null,
     label: 'Codex',
   },
   cursor: {
     client: 'cursor',
     configPath: join('.cursor', 'hooks.json'),
     event: 'sessionStart',
+    stopEvent: null,
     label: 'Cursor',
   },
 };
@@ -96,7 +119,23 @@ export const HOOK_CLIENT_SPECS: Readonly<Record<HookClient, HookClientSpec>> = {
  * merely mentions one of them is not.
  */
 const MNEIA_HOOK_MARKER = 'hook session-start';
+const MNEIA_STOP_MARKER = 'hook stop';
 const MNEIA_PACKAGE_MARKER = 'mneia';
+
+/**
+ * The two lifecycle events we install, and what each one is for.
+ *
+ * Installing only `session-start` is what a repository looked like until now: memory was
+ * read at the top of every session and never written at the end of one, so a fresh install
+ * rehydrated forever from a store nothing ever filled. Reading without writing is not half
+ * a product, it is a product that drains.
+ */
+export type HookEvent = 'session-start' | 'stop';
+
+export const HOOK_EVENTS: readonly HookEvent[] = ['session-start', 'stop'];
+
+const markerFor = (event: HookEvent): string =>
+  event === 'stop' ? MNEIA_STOP_MARKER : MNEIA_HOOK_MARKER;
 
 /**
  * Where the `mneia` this process is running from lives, and whether it will still be there.
@@ -135,16 +174,20 @@ export function detectHookRuntime(
  * version is fixed at the one that ran `mneia init`, so the hook a repository carries does
  * not silently change under it when a new version publishes.
  */
-export const hookCommandFor = (client: HookClient, runtime: HookRuntime): string => {
+export const hookCommandFor = (
+  client: HookClient,
+  runtime: HookRuntime,
+  event: HookEvent = 'session-start',
+): string => {
   const binary = runtime.ephemeral ? `npx -y @mneia/cli@${runtime.version}` : 'mneia';
-  return `${binary} ${MNEIA_HOOK_MARKER} --client ${client}`;
+  return `${binary} ${markerFor(event)} --client ${client}`;
 };
 
-const isMneiaEntry = (value: unknown): boolean => {
+const isMneiaEntry = (value: unknown, event: HookEvent): boolean => {
   const command = asRecord(value)?.command;
   return (
     typeof command === 'string' &&
-    command.includes(MNEIA_HOOK_MARKER) &&
+    command.includes(markerFor(event)) &&
     command.includes(MNEIA_PACKAGE_MARKER)
   );
 };
@@ -155,6 +198,7 @@ export interface HookInstallOutcome {
   readonly client: HookClient;
   readonly path: string;
   readonly result: HookInstallResult;
+  readonly event: HookEvent;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -210,8 +254,12 @@ async function readJsonFile(path: string): Promise<Record<string, unknown>> {
  * Claude Code and Codex both nest the command under a matcher group; Cursor takes a flat
  * list. Codex additionally needs its context limit raised - see CODEX_CONTEXT_LIMIT_TOKENS.
  */
-function entryFor(client: HookClient, runtime: HookRuntime): Record<string, unknown> {
-  const command = hookCommandFor(client, runtime);
+function entryFor(
+  client: HookClient,
+  runtime: HookRuntime,
+  event: HookEvent,
+): Record<string, unknown> {
+  const command = hookCommandFor(client, runtime, event);
 
   if (client === 'cursor') {
     return { command };
@@ -220,10 +268,13 @@ function entryFor(client: HookClient, runtime: HookRuntime): Record<string, unkn
   const inner: Record<string, unknown> = {
     type: 'command',
     command,
-    timeout: HOOK_TIMEOUT_SECONDS,
-    statusMessage: 'Rehydrating project memory',
+    // A checkpoint extracts a transcript through a model, so it is not on the same clock as
+    // a slice read. It also blocks nothing: the turn is already over when Stop fires.
+    timeout: event === 'stop' ? STOP_HOOK_TIMEOUT_SECONDS : HOOK_TIMEOUT_SECONDS,
+    statusMessage:
+      event === 'stop' ? 'Checkpointing to project memory' : 'Rehydrating project memory',
   };
-  if (client === 'codex') {
+  if (client === 'codex' && event === 'session-start') {
     inner.additionalContextLimit = CODEX_CONTEXT_LIMIT_TOKENS;
   }
   return { hooks: [inner] };
@@ -240,13 +291,14 @@ function mergeEntries(
   existing: unknown,
   client: HookClient,
   runtime: HookRuntime,
+  event: HookEvent,
 ): { readonly entries: unknown[]; readonly changed: boolean } {
-  const desired = entryFor(client, runtime);
+  const desired = entryFor(client, runtime, event);
   const current = Array.isArray(existing) ? [...existing] : [];
   const index = current.findIndex((entry) => {
-    if (isMneiaEntry(entry)) return true;
+    if (isMneiaEntry(entry, event)) return true;
     const nested = asRecord(entry)?.hooks;
-    return Array.isArray(nested) && nested.some(isMneiaEntry);
+    return Array.isArray(nested) && nested.some((one) => isMneiaEntry(one, event));
   });
 
   if (index < 0) {
@@ -272,21 +324,55 @@ export async function installSessionStartHook(
   client: HookClient,
   runtime: HookRuntime,
 ): Promise<HookInstallOutcome> {
+  return installHook(repoRoot, client, runtime, 'session-start');
+}
+
+/**
+ * Installs the end-of-turn checkpoint hook, where the client has a verified event for it.
+ *
+ * Returns null rather than throwing for a client with no `stopEvent`, because that is not a
+ * failure to report to the user - it is a harness we have not verified an event name for,
+ * and the caller says so in its own words.
+ */
+export async function installStopHook(
+  repoRoot: string,
+  client: HookClient,
+  runtime: HookRuntime,
+): Promise<HookInstallOutcome | null> {
+  return HOOK_CLIENT_SPECS[client].stopEvent === null
+    ? null
+    : installHook(repoRoot, client, runtime, 'stop');
+}
+
+async function installHook(
+  repoRoot: string,
+  client: HookClient,
+  runtime: HookRuntime,
+  event: HookEvent,
+): Promise<HookInstallOutcome> {
   const spec = HOOK_CLIENT_SPECS[client];
+  const key = event === 'stop' ? spec.stopEvent : spec.event;
+  if (key === null) {
+    throw new CliError(
+      'failed',
+      `${spec.label} has no verified ${event} event, so there is nothing to install it under`,
+      'this is a bug: check stopEvent in HOOK_CLIENT_SPECS before calling this',
+    );
+  }
   const path = join(repoRoot, spec.configPath);
   const config = await readJsonFile(path);
   const existed = Object.keys(config).length > 0;
 
   const hooks = asRecord(config.hooks) ?? {};
-  const { entries, changed } = mergeEntries(hooks[spec.event], client, runtime);
+  const { entries, changed } = mergeEntries(hooks[key], client, runtime, event);
 
   if (!changed) {
-    return { client, path, result: 'unchanged' };
+    return { client, path, result: 'unchanged', event };
   }
 
   const next: Record<string, unknown> = {
     ...config,
-    hooks: { ...hooks, [spec.event]: entries },
+    hooks: { ...hooks, [key]: entries },
   };
   // Cursor rejects a hooks file with no version, and defaults nothing. Set only when
   // absent so a future schema revision the user has already adopted is not walked back.
@@ -305,5 +391,5 @@ export async function installSessionStartHook(
     );
   }
 
-  return { client, path, result: existed ? 'updated' : 'created' };
+  return { client, path, result: existed ? 'updated' : 'created', event };
 }

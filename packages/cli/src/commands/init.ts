@@ -20,6 +20,7 @@ import {
   type HookInstallOutcome,
   type HookRuntime,
   installSessionStartHook,
+  installStopHook,
 } from '../hooks-config.js';
 import { httpInitApi } from '../http-api.js';
 import {
@@ -342,8 +343,9 @@ function describeHooks(outcome: InitOutcome): string {
   if (outcome.hooksSkipped !== null) {
     return `not installed — ${outcome.hooksSkipped}`;
   }
-  const installed = outcome.hooks.filter((hook) => hook.result !== 'unchanged');
-  const labels = outcome.hooks.map((hook) => HOOK_CLIENT_SPECS[hook.client].label);
+  const starts = outcome.hooks.filter((hook) => hook.event === 'session-start');
+  const installed = starts.filter((hook) => hook.result !== 'unchanged');
+  const labels = starts.map((hook) => HOOK_CLIENT_SPECS[hook.client].label);
   // Said out loud, because it is the difference between a hook that runs a binary already
   // on PATH and one that resolves a package first. The user chose npx and can undo it.
   const via = outcome.hookRuntime.ephemeral
@@ -353,6 +355,31 @@ function describeHooks(outcome: InitOutcome): string {
     return `already configured for ${labels.join(', ')}${via}`;
   }
   return `${labels.join(', ')} now rehydrate automatically${via}`;
+}
+
+/**
+ * What captures the session, and - just as importantly - what does not.
+ *
+ * Named separately from session start because the two used to be conflated: init installed
+ * only the read half and still reported "rehydrate automatically", which reads as a working
+ * loop. A harness with no verified stop event is said out loud here, so a user knows to
+ * checkpoint it by hand rather than discovering an empty store later.
+ */
+function describeStopHooks(outcome: InitOutcome): string {
+  const stops = outcome.hooks.filter((hook) => hook.event === 'stop');
+  const without = HOOK_CLIENTS.filter((client) => HOOK_CLIENT_SPECS[client].stopEvent === null).map(
+    (client) => HOOK_CLIENT_SPECS[client].label,
+  );
+
+  if (stops.length === 0) {
+    return `not installed — no verified end-of-turn event for ${without.join(', ')}; run mneia checkpoint by hand`;
+  }
+  const labels = stops.map((hook) => HOOK_CLIENT_SPECS[hook.client].label);
+  const trailing =
+    without.length === 0
+      ? ''
+      : `; ${without.join(', ')} have no verified end-of-turn event, so checkpoint those by hand`;
+  return `${labels.join(', ')} now checkpoint when a turn ends${trailing}`;
 }
 
 function renderHuman(outcome: InitOutcome): string {
@@ -370,9 +397,16 @@ function renderHuman(outcome: InitOutcome): string {
       ['imported', describeConstraints(outcome)],
       [AGENTS_FILE, WRITE_BACK_TEXT[outcome.writeBack]],
       ['session start', describeHooks(outcome)],
+      ['session end', describeStopHooks(outcome)],
     ]),
     '',
     'Next: just start your agent. It loads this project memory on its own.',
+    // The hooks above are the automatic half and cover the loop on their own. The MCP
+    // server is the half an agent drives on purpose - search, handoff, retire, review -
+    // and init does not configure it, because that writes to a client config outside this
+    // repository. Saying so is the point: this line exists because a user who was never
+    // told assumed those tools were missing from the product.
+    'For the tools an agent calls itself — search, handoff, review — also run: mneia mcp install --all',
   ];
   return `${lines.join('\n')}\n`;
 }
@@ -389,11 +423,12 @@ function renderJson(outcome: InitOutcome): string {
     constraintsImported: outcome.attach.constraintsImported,
     sources: outcome.sources,
     agentsFile: { path: outcome.agentsPath, result: outcome.writeBack },
-    sessionStartHooks: outcome.hooks.map((hook) => ({
-      client: hook.client,
-      path: hook.path,
-      result: hook.result,
-    })),
+    sessionStartHooks: outcome.hooks
+      .filter((hook) => hook.event === 'session-start')
+      .map((hook) => ({ client: hook.client, path: hook.path, result: hook.result })),
+    stopHooks: outcome.hooks
+      .filter((hook) => hook.event === 'stop')
+      .map((hook) => ({ client: hook.client, path: hook.path, result: hook.result })),
     sessionStartHooksSkipped: outcome.hooksSkipped,
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
@@ -455,6 +490,14 @@ async function installHooks(
   for (const client of HOOK_CLIENTS) {
     try {
       installed.push(await installSessionStartHook(repoRoot, client as HookClient, runtime));
+      // The end-of-turn capture, where the harness has a verified event for it. Installed
+      // in the same pass rather than behind its own flag: a repository that rehydrates and
+      // never checkpoints reads from a store nothing fills, which is the failure this
+      // whole pair exists to prevent.
+      const stop = await installStopHook(repoRoot, client as HookClient, runtime);
+      if (stop !== null) {
+        installed.push(stop);
+      }
     } catch (cause) {
       failures.push(`${client}: ${describeError(cause)}`);
     }
@@ -544,7 +587,15 @@ export function createInitCommand(deps: InitDeps): CommandDefinition {
           endpoint,
           constraintsImported: attach.constraintsImported,
           sources: imported.sources,
-          sessionStartHooks: hooks.map((hook) => HOOK_CLIENT_SPECS[hook.client].label),
+          // Session-start only, and deduplicated. A client with both hooks installed appears
+          // twice in this list otherwise, and the generated section then names it twice.
+          sessionStartHooks: [
+            ...new Set(
+              hooks
+                .filter((hook) => hook.event === 'session-start')
+                .map((hook) => HOOK_CLIENT_SPECS[hook.client].label),
+            ),
+          ],
         }),
       );
 

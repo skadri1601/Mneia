@@ -11,14 +11,37 @@ const run = promisify(execFile);
 
 export type StdinReader = () => Promise<string>;
 
+/**
+ * Captures the session that has just ended. Injected so the stop path is testable without
+ * driving a real extraction, and so this file does not depend on the checkpoint command's
+ * shape beyond "run it for this directory".
+ */
+export interface CheckpointRequest {
+  readonly cwd: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  /** The harness, which is also the trajectory source it writes. */
+  readonly client: HookClient;
+  /**
+   * The session that just ended, when the harness named one.
+   *
+   * Targeting matters: without it `mneia checkpoint` falls back to sweeping every recently
+   * active session in the directory, so one agent finishing a turn would checkpoint the
+   * transcripts of every other agent working the same repository - and pay for each.
+   */
+  readonly sessionRef: string | null;
+}
+
+export type CheckpointRunner = (request: CheckpointRequest) => Promise<void>;
+
 export interface HookDeps {
   readonly api: BriefApi;
   readonly loadConfig: ProjectConfigLoader;
   readonly readStdin: StdinReader;
   readonly branchOf?: ((cwd: string) => Promise<string>) | undefined;
+  readonly checkpoint?: CheckpointRunner | undefined;
 }
 
-const USAGE = 'mneia hook session-start --client <claude-code|codex|cursor>';
+const USAGE = 'mneia hook <session-start|stop> --client <claude-code|codex|cursor>';
 
 /**
  * The payload a harness writes to the hook's stdin.
@@ -31,6 +54,14 @@ const USAGE = 'mneia hook session-start --client <claude-code|codex|cursor>';
 interface HookPayload {
   readonly cwd?: unknown;
   readonly workspace_roots?: unknown;
+  /**
+   * Claude Code sets this when the turn it is ending was itself continued by a Stop hook.
+   *
+   * Checkpointing again there would checkpoint the checkpoint, and each one costs a paid
+   * extraction, so this is the difference between a hook and a billing loop.
+   */
+  readonly stop_hook_active?: unknown;
+  readonly session_id?: unknown;
 }
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -195,6 +226,7 @@ async function withDeadline<T>(work: Promise<T>, ms: number): Promise<T> {
 
 export function createHookCommand(deps: HookDeps): CommandDefinition {
   const branchOf = deps.branchOf ?? currentBranch;
+  const checkpointWith = deps.checkpoint ?? defaultCheckpoint;
 
   return {
     name: 'hook',
@@ -202,10 +234,41 @@ export function createHookCommand(deps: HookDeps): CommandDefinition {
     usage: USAGE,
     async run(invocation: CommandInvocation): Promise<number> {
       const [event, ...extra] = invocation.args;
-      if (event !== 'session-start' || extra.length > 0) {
-        throw new CliError('usage', 'mneia hook expects exactly one event: session-start', USAGE);
+      if ((event !== 'session-start' && event !== 'stop') || extra.length > 0) {
+        throw new CliError(
+          'usage',
+          `mneia hook expects exactly one event, session-start or stop; received ${event === undefined ? 'none' : [event, ...extra].join(' ')}`,
+          USAGE,
+        );
       }
       const client = readClient(invocation.flags);
+
+      if (event === 'stop') {
+        // Writes nothing to stdout. Claude Code reads a Stop hook's stdout as a directive,
+        // so a slice printed here would be injected as if the agent had said it.
+        try {
+          const raw = await deps.readStdin().catch(() => '');
+          const payload = asRecord(safeParse(raw)) as HookPayload | null;
+          if (payload?.stop_hook_active === true) {
+            return EXIT_OK;
+          }
+          const sessionId = payload?.session_id;
+          await checkpointWith({
+            cwd: cwdFrom(payload, invocation.io.cwd),
+            env: invocation.io.env,
+            client,
+            sessionRef:
+              typeof sessionId === 'string' && sessionId.trim().length > 0
+                ? sessionId.trim()
+                : null,
+          });
+        } catch (error) {
+          // Same contract as session-start: never fail the harness. A checkpoint that could
+          // not run is a lost capture, but a hook that exits non-zero is a broken session.
+          invocation.io.stderr(`mneia: checkpoint on stop did not run - ${describe(error)}`);
+        }
+        return EXIT_OK;
+      }
 
       // Everything past this point exits 0 and writes an envelope, whatever happens. A hook
       // that fails loudly blocks the session it was meant to improve, and a session-start
@@ -254,6 +317,38 @@ const defaultReadStdin: StdinReader = async () => {
 const defaultLoadConfig: ProjectConfigLoader = async (cwd, env) => {
   const { requireProjectConfig } = await import('../config.js');
   return requireProjectConfig(cwd, env);
+};
+
+/**
+ * Runs the shipped checkpoint command in-process for the hook's directory.
+ *
+ * In-process rather than spawning `mneia checkpoint`, because the hook cannot know which
+ * binary it is: under npx there is no `mneia` on PATH once resolution ends, which is the
+ * same failure the persisted hook command already has to work around.
+ */
+const defaultCheckpoint: CheckpointRunner = async ({ cwd, env, client, sessionRef }) => {
+  const { checkpointCommand } = await import('./checkpoint.js');
+  // A turn ending is a task boundary; there is no stop-specific trigger and adding one
+  // would be a schema change to CHECKPOINT_TRIGGERS for no gain in meaning.
+  const flags: Record<string, string | boolean> = { trigger: 'task_boundary' };
+  if (sessionRef !== null) {
+    flags.session = sessionRef;
+    flags.source = client;
+  }
+  await checkpointCommand.run({
+    args: [],
+    flags,
+    json: true,
+    io: {
+      cwd,
+      env,
+      // The harness shows a Stop hook's stderr and injects its stdout. Neither is wanted
+      // for a capture nobody asked to watch, so both are dropped here and the outcome is
+      // read from the store instead.
+      stdout: () => {},
+      stderr: () => {},
+    },
+  });
 };
 
 export const hookCommand: CommandDefinition = createHookCommand({
