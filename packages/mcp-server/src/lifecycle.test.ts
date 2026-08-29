@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   createFaultBudget,
+  DRAIN_TIMEOUT_MS,
   FAULT_LIMIT,
   FAULT_WINDOW_MS,
   installLifecycle,
   type LifecycleLogger,
 } from './lifecycle.js';
 
-function harness() {
+function harness(opts: { destroyed?: boolean; shutdown?: () => Promise<void> } = {}) {
   const handlers = new Map<string, (arg?: unknown) => void>();
   const stdinHandlers = new Map<string, (arg?: unknown) => void>();
   const exits: number[] = [];
@@ -19,7 +20,7 @@ function harness() {
     error: (m) => logs.push(`error: ${m}`),
   };
 
-  const shutdown = vi.fn(async () => {});
+  const shutdown = vi.fn(opts.shutdown ?? (async () => {}));
 
   let clock = 0;
   installLifecycle({
@@ -35,6 +36,7 @@ function harness() {
     },
     stdin: {
       on: (event, listener) => stdinHandlers.set(event, listener as (arg?: unknown) => void),
+      destroyed: opts.destroyed ?? false,
     },
     now: () => clock,
   });
@@ -202,5 +204,92 @@ describe('the server lifecycle', () => {
     // A failed drain loses one session's telemetry. Not exiting loses a core.
     expect(exits).toEqual([0]);
     expect(logs.join(' ')).toContain('the telemetry sink hung');
+  });
+});
+
+describe('the exit is never gated behind I/O', () => {
+  it('exits on the deadline when the drain never resolves', async () => {
+    // The defect this whole file exists for, twice over. The first fix awaited shutdown() and
+    // then exited, which is no exit at all when the drain hangs - and it hangs exactly when it
+    // matters, because draining talks to the transport that just died. Thirteen servers were
+    // found spinning on 2026-08-29 running that fix.
+    vi.useFakeTimers();
+    try {
+      const h = harness({ shutdown: () => new Promise<void>(() => {}) });
+
+      h.fireStdin('end');
+      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS + 1);
+
+      expect(h.exits).toEqual([0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('exits once, not twice, when a slow drain finishes after the deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      let release: (() => void) | undefined;
+      const h = harness({
+        shutdown: () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      });
+
+      h.fireStdin('end');
+      await vi.advanceTimersByTimeAsync(DRAIN_TIMEOUT_MS + 1);
+      expect(h.exits).toEqual([0]);
+
+      release?.();
+      await vi.advanceTimersByTimeAsync(10);
+
+      // A second exit would be harmless in production and misleading here; the guard is real.
+      expect(h.exits).toEqual([0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('does not wait for the deadline when the drain is quick', async () => {
+    vi.useFakeTimers();
+    try {
+      const h = harness();
+
+      h.fire('SIGTERM');
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(h.exits).toEqual([0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('a fault while the client is already gone', () => {
+  it('exits on the first one, without waiting for the budget to fill', async () => {
+    const h = harness({ destroyed: true });
+
+    h.fire('uncaughtException', new Error('ERR_STREAM_DESTROYED'));
+    await settle();
+
+    expect(h.exits).toEqual([1]);
+    expect(h.logs.join(' ')).toContain('nothing left to serve');
+  });
+
+  it('stays silent and does no work once it is already ending', async () => {
+    const h = harness({ destroyed: true });
+
+    h.fire('uncaughtException', new Error('first'));
+    const after = h.logs.length;
+    for (let i = 0; i < 500; i += 1) {
+      h.fire('uncaughtException', new Error('flood'));
+    }
+    await settle();
+
+    // Every line written here is a write inside the loop the exit is escaping. On the
+    // profiled spinners this path was 15% of the CPU burn.
+    expect(h.logs.length).toBe(after);
+    expect(h.exits).toEqual([1]);
   });
 });
