@@ -31,6 +31,8 @@ import {
   loadServerConfig,
 } from './config.js';
 import { LINKED_TOOLS } from './linked-tools.js';
+import type { LifecycleProcess, LifecycleStdin } from './lifecycle.js';
+import { installLifecycle } from './lifecycle.js';
 import type { ErasedToolDefinition } from './registry.js';
 import { findToolDefinition, ToolRegistrationError, ToolRegistry } from './registry.js';
 import type { ReviewQueue } from './review-queue.js';
@@ -433,25 +435,11 @@ function createHostedRuntime(
 }
 
 function installProcessHandlers(mneia: MneiaServer, logger: ServerLogger): void {
-  const stop = (signal: string): void => {
-    void (async () => {
-      logger.info(`received ${signal}; draining in-flight tool calls before exiting`);
-      await mneia.shutdown();
-      process.exit(0);
-    })();
-  };
-
-  process.on('SIGINT', () => {
-    stop('SIGINT');
-  });
-  process.on('SIGTERM', () => {
-    stop('SIGTERM');
-  });
-  process.on('uncaughtException', (error) => {
-    logger.error(`uncaught exception, session continues: ${describeCause(error)}`);
-  });
-  process.on('unhandledRejection', (reason) => {
-    logger.error(`unhandled rejection, session continues: ${describeCause(reason)}`);
+  installLifecycle({
+    shutdown: () => mneia.shutdown(),
+    logger,
+    proc: process as unknown as LifecycleProcess,
+    stdin: process.stdin as unknown as LifecycleStdin,
   });
 }
 

@@ -1,0 +1,206 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  createFaultBudget,
+  FAULT_LIMIT,
+  FAULT_WINDOW_MS,
+  installLifecycle,
+  type LifecycleLogger,
+} from './lifecycle.js';
+
+function harness() {
+  const handlers = new Map<string, (arg?: unknown) => void>();
+  const stdinHandlers = new Map<string, (arg?: unknown) => void>();
+  const exits: number[] = [];
+  const logs: string[] = [];
+
+  const logger: LifecycleLogger = {
+    info: (m) => logs.push(`info: ${m}`),
+    warn: (m) => logs.push(`warn: ${m}`),
+    error: (m) => logs.push(`error: ${m}`),
+  };
+
+  const shutdown = vi.fn(async () => {});
+
+  let clock = 0;
+  installLifecycle({
+    shutdown,
+    logger,
+    proc: {
+      on: (event, listener) => handlers.set(event, listener as (arg?: unknown) => void),
+      exit: ((code: number) => {
+        exits.push(code);
+        // Real process.exit never returns; the tests need it to, so the caller can assert.
+        return undefined as never;
+      }) as (code: number) => never,
+    },
+    stdin: {
+      on: (event, listener) => stdinHandlers.set(event, listener as (arg?: unknown) => void),
+    },
+    now: () => clock,
+  });
+
+  return {
+    fire: (event: string, arg?: unknown) => handlers.get(event)?.(arg),
+    fireStdin: (event: string, arg?: unknown) => stdinHandlers.get(event)?.(arg),
+    advance: (ms: number) => {
+      clock += ms;
+    },
+    exits,
+    logs,
+    shutdown,
+  };
+}
+
+const settle = async (): Promise<void> => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+describe('the fault budget', () => {
+  it('tolerates faults that are spread out, because those are a bad day not a loop', () => {
+    const budget = createFaultBudget(3, 1000);
+
+    expect(budget.record(0)).toBe(false);
+    expect(budget.record(2000)).toBe(false);
+    expect(budget.record(4000)).toBe(false);
+  });
+
+  it('trips once the limit is reached inside the window', () => {
+    const budget = createFaultBudget(3, 1000);
+
+    expect(budget.record(0)).toBe(false);
+    expect(budget.record(10)).toBe(false);
+    expect(budget.record(20)).toBe(true);
+  });
+
+  it('is sized so a real transient error cannot trip it', () => {
+    // Twenty throws inside five seconds is not a retry, and the numbers are asserted here
+    // rather than trusted to the comment beside them.
+    expect(FAULT_LIMIT).toBeGreaterThanOrEqual(10);
+    expect(FAULT_WINDOW_MS).toBeGreaterThanOrEqual(1000);
+  });
+});
+
+describe('the server lifecycle', () => {
+  it('exits when stdin ends, because that is the client going away', async () => {
+    const h = harness();
+
+    h.fireStdin('end');
+    await settle();
+
+    expect(h.shutdown).toHaveBeenCalledOnce();
+    expect(h.exits).toEqual([0]);
+  });
+
+  it('exits when stdin errors, which is the npx-orphan case', async () => {
+    const h = harness();
+
+    // Under npx the intermediates hold the handle open, so the clean `end` never arrives
+    // and a failing read is the only signal left.
+    h.fireStdin('error', new Error('EBADF: bad file descriptor'));
+    await settle();
+
+    expect(h.exits).toEqual([0]);
+    expect(h.logs.join(' ')).toContain('EBADF');
+  });
+
+  it('keeps serving through an isolated fault, because one bad call is not a dead server', async () => {
+    const h = harness();
+
+    h.fire('uncaughtException', new Error('one bad tool call'));
+    await settle();
+
+    expect(h.exits).toEqual([]);
+    expect(h.logs.join(' ')).toContain('session continues');
+  });
+
+  it('exits rather than spinning once faults arrive in a loop', async () => {
+    const h = harness();
+
+    for (let i = 0; i < FAULT_LIMIT; i += 1) {
+      h.fire('uncaughtException', new Error('EPIPE: broken pipe'));
+    }
+    await settle();
+
+    // This is the whole point: the old handler logged and returned, so a permanently
+    // failing read was retried as fast as the event loop allowed - 33.9 CPU-hours of it.
+    expect(h.exits).toEqual([1]);
+    expect(h.logs.join(' ')).toContain('burning a core');
+  });
+
+  it('counts unhandled rejections toward the same budget', async () => {
+    const h = harness();
+
+    for (let i = 0; i < FAULT_LIMIT; i += 1) {
+      h.fire('unhandledRejection', 'the store is gone');
+    }
+    await settle();
+
+    expect(h.exits).toEqual([1]);
+  });
+
+  it('does not trip when faults are spread beyond the window', async () => {
+    const h = harness();
+
+    for (let i = 0; i < FAULT_LIMIT * 3; i += 1) {
+      h.fire('uncaughtException', new Error('occasional'));
+      h.advance(FAULT_WINDOW_MS + 1);
+    }
+    await settle();
+
+    expect(h.exits).toEqual([]);
+  });
+
+  it('exits on a signal, draining first', async () => {
+    const h = harness();
+
+    h.fire('SIGTERM');
+    await settle();
+
+    expect(h.shutdown).toHaveBeenCalledOnce();
+    expect(h.exits).toEqual([0]);
+  });
+
+  it('ends once even when several routes fire together', async () => {
+    const h = harness();
+
+    h.fireStdin('end');
+    h.fireStdin('close');
+    h.fire('SIGTERM');
+    await settle();
+
+    expect(h.shutdown).toHaveBeenCalledOnce();
+    expect(h.exits).toEqual([0]);
+  });
+
+  it('still exits when the drain itself fails', async () => {
+    const handlers = new Map<string, (arg?: unknown) => void>();
+    const exits: number[] = [];
+    const logs: string[] = [];
+
+    installLifecycle({
+      shutdown: async () => {
+        throw new Error('the telemetry sink hung');
+      },
+      logger: {
+        info: (m) => logs.push(m),
+        warn: (m) => logs.push(m),
+        error: (m) => logs.push(m),
+      },
+      proc: {
+        on: (event, listener) => handlers.set(event, listener as (arg?: unknown) => void),
+        exit: ((code: number) => {
+          exits.push(code);
+          return undefined as never;
+        }) as (code: number) => never,
+      },
+      stdin: { on: () => undefined },
+    });
+
+    handlers.get('SIGTERM')?.();
+    await settle();
+
+    // A failed drain loses one session's telemetry. Not exiting loses a core.
+    expect(exits).toEqual([0]);
+    expect(logs.join(' ')).toContain('the telemetry sink hung');
+  });
+});
