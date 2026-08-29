@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "mneia hook session-start --client codex",
+            "timeout": 12,
+            "statusMessage": "Rehydrating project memory",
+            "additionalContextLimit": 6000
+          }
+        ]
+      }
+    ]
+  }
+}

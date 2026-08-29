@@ -17,6 +17,32 @@ const slice = (overrides: Partial<Slice> = {}): Slice =>
     ...overrides,
   }) as unknown as Slice;
 
+function invokeStop(deps: Partial<HookDeps>, payload: unknown) {
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  const command = createHookCommand({
+    api: { rehydrate: async () => slice() },
+    loadConfig: () => ({ endpoint: 'https://api.test' }) as never,
+    readStdin: async () => JSON.stringify(payload),
+    branchOf: async () => 'feat/x',
+    ...deps,
+  });
+
+  const invocation: CommandInvocation = {
+    args: ['stop'],
+    flags: { client: 'claude-code' },
+    json: false,
+    io: {
+      stdout: (text) => stdout.push(text),
+      stderr: (text) => stderr.push(text),
+      cwd: '/repo',
+      env: {},
+    },
+  };
+
+  return { command, invocation, stdout, stderr };
+}
+
 function invoke(deps: Partial<HookDeps>, flags: Record<string, string | boolean> = {}) {
   const written: string[] = [];
   const command = createHookCommand({
@@ -147,5 +173,77 @@ describe('mneia hook session-start', () => {
     await expect(command.run({ ...invocation, args: ['session-end'] })).rejects.toBeInstanceOf(
       CliError,
     );
+  });
+});
+
+describe('mneia hook stop', () => {
+  it('checkpoints the session the harness names, not every session in the directory', async () => {
+    const checkpoint = vi.fn(async () => {});
+    const { command, invocation } = invokeStop(
+      { checkpoint },
+      { cwd: '/work/repo', session_id: 'sess-abc' },
+    );
+
+    expect(await command.run(invocation)).toBe(0);
+    expect(checkpoint).toHaveBeenCalledWith({
+      cwd: '/work/repo',
+      env: {},
+      client: 'claude-code',
+      sessionRef: 'sess-abc',
+    });
+  });
+
+  it('refuses to recurse when the turn was itself continued by a stop hook', async () => {
+    const checkpoint = vi.fn(async () => {});
+    const { command, invocation } = invokeStop(
+      { checkpoint },
+      { cwd: '/work/repo', session_id: 'sess-abc', stop_hook_active: true },
+    );
+
+    expect(await command.run(invocation)).toBe(0);
+    // Each checkpoint is a paid extraction, so this guard is the difference between a
+    // hook and a billing loop.
+    expect(checkpoint).not.toHaveBeenCalled();
+  });
+
+  it('falls back to no session ref when the harness names none', async () => {
+    const checkpoint = vi.fn(async () => {});
+    const { command, invocation } = invokeStop({ checkpoint }, { cwd: '/work/repo' });
+
+    await command.run(invocation);
+    expect(checkpoint).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionRef: null, cwd: '/work/repo' }),
+    );
+  });
+
+  it('writes nothing to stdout, because a Stop hook stdout is read as a directive', async () => {
+    const { command, invocation, stdout } = invokeStop(
+      { checkpoint: async () => {} },
+      { cwd: '/work/repo' },
+    );
+
+    await command.run(invocation);
+    expect(stdout).toEqual([]);
+  });
+
+  it('never fails the harness when the checkpoint throws', async () => {
+    const { command, invocation, stderr } = invokeStop(
+      {
+        checkpoint: async () => {
+          throw new Error('the API is down');
+        },
+      },
+      { cwd: '/work/repo' },
+    );
+
+    expect(await command.run(invocation)).toBe(0);
+    expect(stderr.join(' ')).toContain('the API is down');
+  });
+
+  it('rejects an event that is neither session-start nor stop', async () => {
+    const { command, invocation } = invokeStop({ checkpoint: async () => {} }, {});
+    const bad = { ...invocation, args: ['compact'] };
+
+    await expect(command.run(bad)).rejects.toBeInstanceOf(CliError);
   });
 });
