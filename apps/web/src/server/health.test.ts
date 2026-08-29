@@ -31,7 +31,7 @@ const SENTRY_KEYS = { SENTRY_DSN: 'https://key@o1.ingest.sentry.io/1' };
 const NO_SENTRY_DETAIL =
   'SENTRY_DSN is unset, so every unhandled error on this deployment is lost silently and nothing reports that it happened';
 const NO_BILLING_DETAIL =
-  'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /api/stripe/webhook answers 503 and drops every Stripe event, and the checkout and portal actions on /billing throw when pressed, so no workspace can subscribe. The /billing page itself renders, so nothing looks broken until someone tries — set the three repository secrets and re-run the deploy';
+  'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /api/stripe/webhook answers 503 and drops every Stripe event, and the checkout and portal actions on /billing throw when pressed, so no workspace can subscribe. The /billing page itself renders, so nothing looks broken until someone tries. This is expected: billing is a retired capability (see CAPABILITY_TIERS) because the Stripe account has not cleared activation, so nothing is alarming on it';
 const NO_MODELS = {
   extraction: 'no_key',
   extractionFallback: 'no_key',
@@ -129,7 +129,8 @@ describe('checkHealth', () => {
       capabilities: {
         ready: ['database', 'rls', 'schema', 'telemetry'],
         failing: ['extraction', 'extractionFallback', 'embeddings'],
-        unconfigured: ['billing', 'errorReporting'],
+        unconfigured: ['errorReporting'],
+        retired: ['billing'],
       },
       detail: `${NO_MODEL_DETAIL}; ${NO_BILLING_DETAIL}; ${NO_SENTRY_DETAIL}`,
     });
@@ -288,7 +289,7 @@ describe('model posture', () => {
       embeddings: 'key_present',
       billing: 'configured',
       errorReporting: 'unproven',
-      capabilities: { ready: [...CAPABILITY_NAMES], failing: [], unconfigured: [] },
+      capabilities: { ready: [...CAPABILITY_NAMES], failing: [], unconfigured: [], retired: [] },
     });
   });
 
@@ -556,9 +557,9 @@ describe('the capability manifest', () => {
       billing: 'not_configured',
     });
 
-    expect([...verdict.ready, ...verdict.failing, ...verdict.unconfigured].sort()).toEqual(
-      [...CAPABILITY_NAMES].sort(),
-    );
+    expect(
+      [...verdict.ready, ...verdict.failing, ...verdict.unconfigured, ...verdict.retired].sort(),
+    ).toEqual([...CAPABILITY_NAMES].sort());
   });
 
   it('fails the deploy for a required capability and only warns for an advisory one', () => {
@@ -570,11 +571,11 @@ describe('the capability manifest', () => {
     });
 
     expect(verdict.failing).toEqual(['schema']);
-    expect(verdict.unconfigured).toEqual(['billing', 'errorReporting']);
+    expect(verdict.unconfigured).toEqual(['errorReporting']);
   });
 
-  it('calls billing advisory, because a hard gate on it blocks every lane for days (MNE-141)', () => {
-    expect(CAPABILITY_TIERS.billing).toBe('advisory');
+  it('calls billing retired, because the Stripe account has not cleared activation (2026-08-28)', () => {
+    expect(CAPABILITY_TIERS.billing).toBe('retired');
     expect(CAPABILITY_TIERS.errorReporting).toBe('advisory');
   });
 
@@ -610,7 +611,7 @@ describe('the capability manifest', () => {
       noDelivery,
     );
 
-    expect(report.capabilities.unconfigured).toEqual(['billing']);
+    expect(report.capabilities.unconfigured).toEqual([]);
     expect(report.capabilities.failing).toEqual([]);
   });
 
@@ -635,7 +636,15 @@ describe('the capability manifest', () => {
 
     expect(report.database).toBe('unreachable');
     expect(report.capabilities.failing).toContain('database');
-    expect(report.capabilities.unconfigured).toEqual(['billing', 'errorReporting']);
+    expect(report.capabilities.unconfigured).toEqual(['errorReporting']);
+  });
+
+  it('keeps a retired capability out of both buckets the workflows read, so it wakes nobody', () => {
+    const verdict = assessCapabilities({ ...ALL_READY, billing: 'not_configured' });
+
+    expect(verdict.retired).toEqual(['billing']);
+    expect(verdict.failing).not.toContain('billing');
+    expect(verdict.unconfigured).not.toContain('billing');
   });
 
   it('serialises the manifest as arrays the deploy reader can read as a comma-joined list', () => {
@@ -648,7 +657,8 @@ describe('the capability manifest', () => {
     const parsed: HealthReport['capabilities'] = JSON.parse(JSON.stringify(verdict));
 
     expect(String(parsed.failing)).toBe('schema,telemetry');
-    expect(String(parsed.unconfigured)).toBe('billing');
+    expect(String(parsed.unconfigured)).toBe('');
+    expect(String(parsed.retired)).toBe('billing');
     expect(String(assessCapabilities(ALL_READY).failing)).toBe('');
   });
 });

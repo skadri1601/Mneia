@@ -48,7 +48,17 @@ export const CAPABILITY_NAMES = [
 
 export type CapabilityName = (typeof CAPABILITY_NAMES)[number];
 
-export type CapabilityTier = 'required' | 'advisory';
+/**
+ * `retired` is a deliberate, dated decision that a capability is not expected to come up on this
+ * deployment, so neither the deploy gate nor health-watch should speak about it. It is the escape
+ * hatch health-watch.yml's own header names -- "until they are set or deliberately retired" --
+ * and it exists so silencing a capability is a reviewed code change with a reason attached rather
+ * than a workflow somebody switched off.
+ *
+ * A retired capability is still measured and still reported on /api/health. Retiring changes who
+ * is woken, never whether the truth is told.
+ */
+export type CapabilityTier = 'required' | 'advisory' | 'retired';
 
 export const CAPABILITY_TIERS: Readonly<Record<CapabilityName, CapabilityTier>> = {
   database: 'required',
@@ -58,7 +68,11 @@ export const CAPABILITY_TIERS: Readonly<Record<CapabilityName, CapabilityTier>> 
   extraction: 'required',
   extractionFallback: 'required',
   embeddings: 'required',
-  billing: 'advisory',
+  // Retired 2026-08-28 by the founder. Stripe cannot go live until the account clears activation
+  // (charges_enabled was false, with 13 requirements past due), and vision.md:1030 still says not
+  // to ship a checkout page until MNE-26 answers what a paying customer gets. A check that stays
+  // red for months teaches everyone to skim past red, which costs more than it catches.
+  billing: 'retired',
   errorReporting: 'advisory',
 };
 
@@ -66,6 +80,8 @@ export interface CapabilityVerdict {
   readonly ready: readonly CapabilityName[];
   readonly failing: readonly CapabilityName[];
   readonly unconfigured: readonly CapabilityName[];
+  /** Deliberately not expected to come up here. Reported, never alarmed on. */
+  readonly retired: readonly CapabilityName[];
 }
 
 export interface HealthReport {
@@ -115,18 +131,24 @@ export const assessCapabilities = (states: CapabilityStates): CapabilityVerdict 
   const ready: CapabilityName[] = [];
   const failing: CapabilityName[] = [];
   const unconfigured: CapabilityName[] = [];
+  const retired: CapabilityName[] = [];
 
   for (const name of CAPABILITY_NAMES) {
+    const tier = CAPABILITY_TIERS[name];
     if (isReady(name, states)) {
+      // A retired capability that came up anyway is still just ready. Retirement lowers the
+      // alarm, it does not hide a working capability from the report.
       ready.push(name);
-    } else if (CAPABILITY_TIERS[name] === 'required') {
+    } else if (tier === 'required') {
       failing.push(name);
+    } else if (tier === 'retired') {
+      retired.push(name);
     } else {
       unconfigured.push(name);
     }
   }
 
-  return { ready, failing, unconfigured };
+  return { ready, failing, unconfigured, retired };
 };
 
 const keyed = (value: string | undefined): ModelHealth =>
@@ -177,7 +199,7 @@ export const describeErrorReportingPosture = (
 export const describeBillingPosture = (billing: BillingHealth): string | null =>
   billing === 'configured'
     ? null
-    : 'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /api/stripe/webhook answers 503 and drops every Stripe event, and the checkout and portal actions on /billing throw when pressed, so no workspace can subscribe. The /billing page itself renders, so nothing looks broken until someone tries — set the three repository secrets and re-run the deploy';
+    : 'STRIPE_SECRET_KEY, STRIPE_PRICE_ID and STRIPE_WEBHOOK_SECRET are not all set, so /api/stripe/webhook answers 503 and drops every Stripe event, and the checkout and portal actions on /billing throw when pressed, so no workspace can subscribe. The /billing page itself renders, so nothing looks broken until someone tries. This is expected: billing is a retired capability (see CAPABILITY_TIERS) because the Stripe account has not cleared activation, so nothing is alarming on it';
 
 export const describeModelPosture = (posture: ModelPosture): string | null => {
   const missing: string[] = [];
