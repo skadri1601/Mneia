@@ -82,6 +82,11 @@ jobs:
             fi
           fi
 
+          retired=$(read_field capabilities.retired)
+          if [ -n "${retired}" ] && [ "${retired}" != "absent" ]; then
+            echo "::notice::deliberately retired, so this run says nothing about them: ${retired//,/, }. Retirement is a dated decision in CAPABILITY_TIERS, not a switched-off check - read it there before assuming one of these works."
+          fi
+
           if [ -z "${short}" ]; then
             echo "::notice::every capability came up: $(read_field capabilities.ready)"
             exit 0
@@ -100,6 +105,9 @@ jobs:
             done
             for name in ${unconfigured//,/ }; do
               echo "| \`${name}\` | advisory |"
+            done
+            for name in ${retired//,/ }; do
+              echo "| \`${name}\` | retired - not alarmed on |"
             done
             echo
             echo "${detail}"

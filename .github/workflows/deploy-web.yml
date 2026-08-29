@@ -247,6 +247,11 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
+          retired=$(read_field capabilities.retired)
+          if [ -n "${retired}" ] && [ "${retired}" != "absent" ]; then
+            echo "::notice::deliberately retired, so this deploy says nothing about them: ${retired//,/, }. The reason and its date are in CAPABILITY_TIERS - retiring is a reviewed code change, not a check somebody switched off."
+          fi
+
           if [ "${failed}" -eq 0 ] && [ -z "${unconfigured}" ]; then
             echo "::notice::every capability the deployed build names came up: $(read_field capabilities.ready)"
           fi
