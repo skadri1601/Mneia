@@ -29,6 +29,21 @@ export interface LifecycleLogger {
 export const FAULT_LIMIT = 20;
 export const FAULT_WINDOW_MS = 5_000;
 
+/**
+ * How long the drain gets before the process leaves without it.
+ *
+ * The first version of this file awaited shutdown() and then exited, which reads as careful and
+ * is in fact the bug it was written to fix. Measured on 2026-08-29: thirteen servers, all running
+ * that fix, still spinning after their clients died. A CPU profile showed the exit path had run --
+ * `record` from this file was 15% of the burn -- but shutdown() never resolved, because draining
+ * flushes telemetry and closes a store over the very transport that just died. Exit was gated
+ * behind I/O that could not complete, so it never happened.
+ *
+ * Nothing may gate the exit. The drain is best effort inside this window and then the process
+ * leaves regardless.
+ */
+export const DRAIN_TIMEOUT_MS = 2_000;
+
 export interface FaultBudget {
   /** Records a fault. Returns true once the budget is exhausted inside the window. */
   record(at: number): boolean;
@@ -61,6 +76,13 @@ export interface LifecycleProcess {
 /** The subset of `process.stdin` this needs. */
 export interface LifecycleStdin {
   on(event: string, listener: (...args: unknown[]) => void): unknown;
+  /**
+   * True once the client's pipe is gone. Read on the fault path rather than trusted to the
+   * `close` event alone: a destroyed stdin with a live process is exactly the state the
+   * spinning servers were found in, so a fault arriving in it means there is nobody left to
+   * serve and no reason to wait for a budget to fill.
+   */
+  readonly destroyed?: boolean;
 }
 
 export interface LifecycleOptions {
@@ -80,7 +102,8 @@ export interface LifecycleOptions {
  * - a signal, which is the ordinary case
  * - stdin ending, which is what a client exiting looks like when the pipe is honest
  * - stdin erroring, which is what it looks like when the pipe is not
- * - faults arriving faster than a working server ever produces
+ * - faults arriving faster than a working server ever produces, or a single fault once the
+ *   client's pipe is already gone
  *
  * The third and fourth exist because of `npx`. On Windows it inserts `node npx-cli.js` and
  * `cmd.exe` between the client and this process, and those intermediates hold the stdin
@@ -97,18 +120,33 @@ export function installLifecycle(options: LifecycleOptions): void {
       return;
     }
     ending = true;
+
+    // The deadline is armed BEFORE the drain is started, and it is what actually guarantees
+    // the exit. Awaiting shutdown() and then exiting is what the previous version did, and a
+    // drain that never resolves turned that into no exit at all.
+    let left = false;
+    const leave = (): void => {
+      if (left) {
+        return;
+      }
+      left = true;
+      options.proc.exit(code);
+    };
+    const deadline = setTimeout(leave, DRAIN_TIMEOUT_MS);
+
     void (async () => {
-      options.logger.info(`${reason}; draining in-flight tool calls before exiting`);
+      // Logged once, and only here. The fault path below stays silent once ending, because
+      // every line it writes is I/O inside the loop it is trying to escape.
+      options.logger.info(`${reason}; draining for up to ${DRAIN_TIMEOUT_MS}ms before exiting`);
       try {
         await options.shutdown();
       } catch (cause) {
-        // Never let a failed drain keep the process alive. Exiting without flushing loses
-        // at most the telemetry of one session; not exiting is what burned the CPU-hours.
         options.logger.warn(
           `shutdown did not complete cleanly: ${cause instanceof Error ? cause.message : String(cause)}`,
         );
       }
-      options.proc.exit(code);
+      clearTimeout(deadline);
+      leave();
     })();
   };
 
@@ -132,7 +170,25 @@ export function installLifecycle(options: LifecycleOptions): void {
   });
 
   const fault = (kind: string, cause: unknown): void => {
+    // Already leaving. Doing anything here - recording, and above all logging, which is a
+    // write per fault - only feeds the loop the exit is escaping. On the profiled spinners
+    // this branch and the budget behind it were 15% of the burn.
+    if (ending) {
+      return;
+    }
+
     const message = cause instanceof Error ? cause.message : String(cause);
+
+    // A fault while the client's pipe is already gone needs no budget. There is nobody left
+    // to serve, and waiting twenty faults to prove it is twenty faults of CPU.
+    if (options.stdin.destroyed === true) {
+      options.logger.error(
+        `${kind} after the client's pipe was destroyed: ${message}. There is nothing left to serve, so this server is exiting.`,
+      );
+      end(1, 'the client is gone');
+      return;
+    }
+
     if (budget.record(now())) {
       options.logger.error(
         `${FAULT_LIMIT} ${kind}s in under ${FAULT_WINDOW_MS / 1000}s, the last being: ${message}. That is a loop rather than a session having a bad time, so this server is exiting instead of burning a core on it. Restart the MCP client to get a working server.`,
